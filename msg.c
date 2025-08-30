@@ -30,15 +30,6 @@
 #include "sklaff.h"
 #include "ext_globals.h"
 
-static void clear_prompt(int num) /* Little helper to avoid extra '(') 2025-08-26 PL */
-{
-    int x;
-    output("\r");
-    for (x = 0; x < num; x++)
-        output(" ");
-    output("\r");
-}
-
 void
 add_to_mlist(struct MSG_ENTRY * me)
 {
@@ -147,7 +138,7 @@ newmsg(int tmp)
 int
 display_msg(int num)
 {
-    int nl, r, fd; /* Again, we declare l later 2025-08-11 PL */
+    int nl, r, fd; /* We declare l later 2025-08-11 PL */
     char *oldbuf, *buf;
     sigset_t sigmask, oldsigmask;
     LINE name, msgfile;
@@ -196,15 +187,15 @@ display_msg(int num)
 
         add_to_mlist(&me);
         if ((me.type == MSG_SAY) && Say) {
-            clear_prompt(num);    /* modified on 2025-08-25, PL */
-            nl = 1;
+            clear_prompt_cols(num); /* modified on 2025-08-30, PL */
+			nl = 1;
             if (output("\007%s: %s\n",
                     user_name(me.num, name), me.msg) == -1) {
                 break;
             }
         } else if ((me.type == MSG_YELL) && Shout) {
             if (!nl)
-                    clear_prompt(num);    /* modified on 2025-08-25, PL */
+                clear_prompt_cols(num);    /* modified on 2025-08-30, PL */
             nl = 1;
             if (output("\007%s %s %s\n", user_name(me.num, name), MSG_YELLS,
                     me.msg) == -1) {
@@ -212,7 +203,7 @@ display_msg(int num)
             }
         } else if ((me.type == MSG_I) && Shout) {
             if (!nl)
-                    clear_prompt(num);    /* modified on 2025-08-25, PL */
+                clear_prompt_cols(num);    /* modified on 2025-08-30, PL */
             nl = 1;
             if (!Presbeep || Special)
                 output("\007");
@@ -224,7 +215,7 @@ display_msg(int num)
             }
         } else if ((me.type == MSG_MY) && Shout) {
             if (!nl)
-                    clear_prompt(num);    /* modified on 2025-08-25, PL */
+                clear_prompt_cols(num);    /* modified on 2025-08-30, PL */
             nl = 1;
             if (!Presbeep || Special)
                 output("\007");
@@ -247,14 +238,14 @@ display_msg(int num)
             }
         } else if ((me.type == MSG_SMS) && Shout) {
             if (!nl)
-                    clear_prompt(num);    /* modified on 2025-08-25, PL */
+                clear_prompt_cols(num);    /* modified on 2025-08-30, PL */
             nl = 1;
             if (output("%s\n", me.msg) == -1) {
                 break;
             }
         } else if ((me.type == MSG_LOGIN) && (Present || Special)) {
             if (!nl)
-                clear_prompt(num);    /* modified on 2025-08-25, PL */
+                clear_prompt_cols(num);    /* modified on 2025-08-30, PL */
             nl = 1;
             if (Presbeep || Special)
                 output("\007");
@@ -263,7 +254,7 @@ display_msg(int num)
             }
         } else if ((me.type == MSG_LOGOUT) && (Present || Special)) {
             if (!nl)
-                    clear_prompt(num);    /* modified on 2025-08-25, PL */
+                clear_prompt_cols(num);    /* modified on 2025-08-30, PL */
             nl = 1;
             if (Presbeep || Special)
                 output("\007");
@@ -278,7 +269,7 @@ display_msg(int num)
                 (me.type != MSG_LOGIN) &&
             (me.type != MSG_LOGOUT)) {
             if (!nl)
-               clear_prompt(num);    /* modified on 2025-08-25, PL */
+                clear_prompt_cols(num);    /* modified on 2025-08-30, PL */
             nl = 1;
             if (output("\007%s %s: %s\n", MSG_STRANGEMSG,
                     user_name(me.num, name), me.msg) == -1) {

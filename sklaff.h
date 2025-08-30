@@ -181,6 +181,10 @@ https://github.com/joacimmelin/sklaffkom-1.32/wiki/Install-Instructions */
 #define PURPLE		"\e[35m"
 #define CYAN		"\e[36m"
 #define WHITE		"\e[37m"
+#define BR_WHITE	"\e[97m"
+#define BR_RED		"\e[91m"
+#define BR_YELLOW	"\e[93m"
+#define BR_BLUE		"\e[94m"
 #define DOT		"\e[0m" /* Reset to default */
 #define RESET		"\e[0m" /* Alias for the above */
 
@@ -315,7 +319,8 @@ char *prog_name(char *);
 char *mbox_dir(int, char *);
 int output_ansi_fmt(const char *ansi_fmt, const char *plain_fmt, ...); 	/* 2025-07-30 PL */
 int detect_terminal_lines(void);					/* 2025-08-10 PL */
-
+void clear_prompt(int num); 						/* Little helper to avoid extra '(') 2025-08-26 PL */
+void clear_prompt_cols(int cols);					/* Enhanced version of the above but keeping both for now */
 /* Debugging */
 /* void *my_malloc (size_t); */
 /* void my_free (void *);    */

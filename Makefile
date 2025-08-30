@@ -7,9 +7,9 @@ SKLAFFBIN=/usr/local/bin
 SKLAFFDIR=/usr/local/sklaff
 
 # Define target system, one of: FREEBSD, SOLARIS, LINUX
-SKLAFFSYS = FREEBSD	# FreeBSD
+#SKLAFFSYS = FREEBSD	# FreeBSD
 #SKLAFFSYS = SOLARIS	# Solaris
-#SKLAFFSYS = LINUX	# Linux
+SKLAFFSYS = LINUX	# Linux
 
 CC=gcc
 SKLAFFFLAGS = -D$(SKLAFFSYS) -DSKLAFFDIR=\"$(SKLAFFDIR)\" -DSKLAFFBIN=\"$(SKLAFFBIN)\"
@@ -25,10 +25,11 @@ CFLAGS = $(SKLAFFFLAGS) -O2 -g -pipe -Wall -Werror
 #LIBS=-lsklaff -ltermcap -lelf -lm
 
 #uncomment for BSD
-LIBS=-lsklaff -lm
+#LIBS=-lsklaff -lm
 
 # uncomment for LINUX/SUNOS/ULTRIX
-#LIBS=-lsklaff -lbsd -lm
+# Requires package "libbsd-dev"
+LIBS=-lsklaff -lbsd -lm
 
 # uncomment for SOLARIS
 #CFLAGS=-g -I/usr/ucbinclude

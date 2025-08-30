@@ -43,7 +43,7 @@
 char *
 display_prompt(char *p, char *oldp, int type)
 {
-    int y, x;
+    int y;
 
     if (Change_prompt) {
         Nextconf = -1;
@@ -72,10 +72,8 @@ display_prompt(char *p, char *oldp, int type)
     if (type == 0) {
         output("%s " PROMPT , p);
     } else if (strcmp(oldp, p)) {
-        y = strlen(oldp) + 3;
-        for (x = 0; x < y; x++) {
-            output("\b \b");
-        }
+        y = (int)strlen(oldp) + 1 + (int)(sizeof(PROMPT) - 1);
+        clear_prompt_cols(y);
         output("\007%s " PROMPT , p);
     }
     Lines = 1;
@@ -147,22 +145,19 @@ display_welcome(void)
         Timeout = 0;
     }
 
-//  output("%s%s, %s.\n\n", MSG_CPY1, sklaff_version, MSG_LANG);
-//  output_ansi_fallback(YELLOW "%s%s, %s.\n\n", MSG_CPY1, sklaff_version, MSG_LANG DOT, "%s%s, %s.\n\n", MSG_CPY1, sklaff_version, MSG_LANG);
+
     output_ansi_fmt(YELLOW "%s%s, %s.\n\n" DOT, "%s%s, %s.\n\n", MSG_CPY1, sklaff_version, MSG_LANG);
-//    output("NO CHARACTER CONVERSIONS IS HAPPENING NOW, ALSO THE ANSI-FLAG IS TURNED OFF, STILL THE PADDING IS AN ISSUE\n");
-//    output("AND NOW IT'S BACK... GIVING MSG_CPY2 LOTS OF EXTRA WHITE SPACES\n");
-//    output_ansi_fmt(YELLOW "%s%s, %s.\n\n" DOT, "%s%s, %s.\n\n", MSG_CPY1, sklaff_version, MSG_LANG);
-//    output("%s%s, %s.\n\n", MSG_CPY1, sklaff_version, MSG_LANG);
-    output_ansi_fallback(BLUE MSG_CPY2 DOT, MSG_CPY2);
-    output_ansi_fallback(BLUE MSG_CPY3 DOT, MSG_CPY3);
-    output_ansi_fallback(BLUE MSG_CPY4 DOT, MSG_CPY4);
-    output_ansi_fallback(BLUE MSG_CPY4a DOT,  MSG_CPY4a);;
+    output_ansi_fallback(BR_BLUE MSG_CPY2 DOT, MSG_CPY2);
+    output_ansi_fallback(BR_BLUE MSG_CPY3 DOT, MSG_CPY3);
+    output_ansi_fallback(BR_BLUE MSG_CPY4 DOT, MSG_CPY4);
+    output_ansi_fallback(BR_BLUE MSG_CPY4a DOT,  MSG_CPY4a);;
 //    output_ansi_fallback(BLUE MSG_CPY5 DOT, MSG_CPY5);
-    output_ansi_fallback(BLUE MSG_CPY6 DOT, MSG_CPY6);
-    output_ansi_fallback(BLUE MSG_CPY7 DOT, MSG_CPY7);
-//    output(MSG_CPY8);
-//    output(MSG_CPY9);
+    output_ansi_fallback(BR_BLUE MSG_CPY6 DOT, MSG_CPY6);
+    output_ansi_fallback(BR_BLUE MSG_CPY7 DOT, MSG_CPY7);
+    output_ansi_fallback(BR_BLUE MSG_CPY8 DOT, MSG_CPY8);
+    output_ansi_fallback(BR_BLUE MSG_CPY9 DOT, MSG_CPY9);
+
+
 
 #ifdef MODEM_POOL
 #ifdef MODEM_GROUP
