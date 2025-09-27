@@ -31,14 +31,15 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <math.h>   /* for floor() in Swatch Internet Time  2025-09-10 PL */
 #include <ctype.h>  /* isspace */
-//* a bunch of new includes for zork */
-//#include <limits.h>
-//#include <unistd.h>
-//#include <errno.h>
-//#include <ctype.h>
-//#include <stdio.h>
-//#include <string.h>
+/* a bunch of new includes below for zork  2025-08-xx PL*/
+#include <limits.h>
+#include <unistd.h>
+#include <errno.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
 
 /*
  * cmd_sendbatch - send all texts in database format, zipped
@@ -674,7 +675,7 @@ int rc_set_scalar(int uid, const char *key, const char *value)
     vlen = strlen(value);
 
     if (user_dir(uid, path) == NULL) return -1;          
-    strncat(path, "sklaffrc", sizeof(path)-strlen(path)-1);
+    strncat(path, "/sklaffrc", sizeof(path)-strlen(path)-1); /* Bug fixed September 2025 PL */
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);
 
     /* read existing */
@@ -801,14 +802,15 @@ cmd_where(char *args)
     int left;
 
     conf_name(Current_conf, confname);
-    output("\n%s\n", confname);
+    //output("\n%s %s\n", MSG_WHERE2, confname);
+    output_ansi_fmt("\n%s "BR_RED "%s\n"DOT, "\n%s %s\n", MSG_WHERE2, confname);
     left = num_unread(Uid, Current_conf, last_text(Current_conf, Uid));
     if (left == 0)
         output("%s\n\n", MSG_NOUNREAD);
     else if (left == 1)
-        output("%s\n\n", MSG_ONEUNREAD);
+        output_ansi_fmt("%s\n\n","%s\n\n", MSG_ONEUNREAD);
     else
-        output("%d %s\n\n", left, MSG_UNREADTEXTS);
+        output_ansi_fmt(CYAN"%d"DOT" %s\n\n", "%d %s\n\n", left, MSG_UNREADTEXTS);
     return 0;
 }
 
@@ -859,8 +861,171 @@ cmd_change_conf(char *args)
  * cmd_display_time - display current time
  * args: user arguments (args)
  * ret: ok (0) or error (-1)
+ *
+ * Upgraded on 2025-08-15 by PL:
+ * - Friendly Swedish timestamp and login duration
+ * - Rotating nerdy @beat messages (Swatch Internet Time)
+ * - Random tip from SKLAFFDIR "/etc/strings"
  */
+ 
+ 
+ /*
+ * HERREJÖSSES VILKEN RÖRA NEDAN - DET ÄR INTE FÄRDIGT ÄN, SKALL FIXAS! :D
+ */
+int
+cmd_display_time(char *args)
+{
+    char *tip = NULL;
+    char linebuf[512];
+    FILE *fp = NULL;
+    int linecount = 0, chosen = 0, current = 0;
+    int beatstyle;
+    long at;
+    time_t now;
+    struct tm ltm = {0};       /* <- zero-init to silence -Wmaybe-uninitialized */
+    struct tm *gmt = NULL;
 
+    now = time(0);
+    get_wallclock_localtime(&now, &ltm);   /* fills ltm using /etc/localtime */
+    gmt = gmtime(&now);                   /* for @beat */
+    at = active_time(Uid);
+
+        /* === Swatch Internet Time (@beats) and Sweden local-day percent === */
+    /* fixed on 2025-09-10, PL: correct label + compute Sweden % from localtime */
+
+    int beats = 0;
+    double se_pct = 0.0;
+
+    if (gmt) {
+        /* BMT = UTC+1, no DST */
+        long bmt_secs =
+            (((gmt->tm_hour + 1) % 24) * 3600L) +
+            (gmt->tm_min * 60L) +
+            gmt->tm_sec;
+
+        /* 1 beat = 86.4 seconds */
+        double bmt_beats = bmt_secs / 86.4;
+        beats = (int)floor(bmt_beats);
+        if (beats >= 1000) beats = 0; /* clamp edge */
+    } else {
+        beats = 0;
+    }
+
+    /* Sweden (Europe/Stockholm) local day progress */
+    {
+        long se_secs = ltm.tm_hour * 3600L + ltm.tm_min * 60L + ltm.tm_sec;
+        se_pct = (se_secs / 86400.0) * 100.0;
+    }
+
+	/* The actual output starts here, finally */ 
+	output("\n%s %02d:%02d %s %d %s %d,\n%s ",
+           MSG_DISPTIME,
+           ltm.tm_hour, ltm.tm_min,
+           MSG_IT,
+           ltm.tm_mday, month_name(ltm.tm_mon),
+           1900 + ltm.tm_year,
+           MSG_DISPTIME2);
+
+    if (at == 1)
+        output("%s", MSG_ONEMIN);
+    else
+        output("%ld %s", at, MSG_MINUTES);
+
+    output("\n");
+
+    beatstyle = rand() % 5;
+    switch (beatstyle) {
+        case 0:
+        //  output("(@%03d) = Swatch Internet Time — %.1f%% through the UTC day\n", tbeat, tbeat / 10.0);
+      //    output("(@%03d) = Swatch Internet Time — %.1f%% through the UTC day\n", tbeat, tbeat / 10.0);
+      //      output("Tiden på internet är (@%03d), och i Sverige har %.1f%% av dygnet hunnit gå.\n", beats, se_pct);
+	   output("%s(@%03d), %s %.1f%% %s\n",
+           MSG_BEATS1,   // "Tiden på internet {r"
+           beats,
+           MSG_BEATS2,   // "och i Sverige har"
+           se_pct,
+           MSG_BEATS3);  // "av dygnet hunnit g}.  
+	break;
+        case 1:
+     //       output("System Clock (Internet Time): @%03d. Transmission window optimal.\n", tbeat);
+     //       output("Tiden på internet är (@%03d), och i Sverige har %.1f%% av dygnet hunnit gå.\n", beats, se_pct);
+   output("%s(@%03d), %s %.1f%% %s\n",
+           MSG_BEATS1,   // "Tiden på internet {r"
+           beats,
+           MSG_BEATS2,   // "och i Sverige har"
+           se_pct,
+           MSG_BEATS3);  // "av dygnet hunnit g}.
+            break;
+        case 2:
+     //       output("UTC Sync: @%03d beats — %.1f%% of the day has elapsed.\n", tbeat, tbeat / 10.0);
+     //       output("Tiden på internet är (@%03d), och i Sverige har %.1f%% av dygnet hunnit gå.\n", beats, se_pct);
+     output("%s(@%03d), %s %.1f%% %s\n",
+           MSG_BEATS1,   // "Tiden på internet {r"
+           beats,
+           MSG_BEATS2,   // "och i Sverige har"
+           se_pct,
+           MSG_BEATS3);  // "av dygnet hunnit g}.
+            break;
+        case 3:
+       //     output("(@%03d)  // Internet Time: one beat = 86.4 seconds (UTC)\n", tbeat);
+      //        output("Tiden på internet är (@%03d), och i Sverige har %.1f%% av dygnet hunnit gå.\n", beats, se_pct);
+   output("%s(@%03d), %s %.1f%% %s\n",
+           MSG_BEATS1,   // "Tiden på internet {r"
+           beats,
+           MSG_BEATS2,   // "och i Sverige har"
+           se_pct,
+           MSG_BEATS3);  // "av dygnet hunnit g}.
+
+            break;
+        case 4:
+       //      output("Tiden på internet är (@%03d), och i Sverige har %.1f%% av dygnet hunnit gå.\n", beats, se_pct);
+      //      output(">>> Timecode @%03d // Swatch Internet Time engaged\n", tbeat);
+   output("%s(@%03d), %s %.1f%% %s\n",
+           MSG_BEATS1,   // "Tiden på internet {r"
+           beats,
+           MSG_BEATS2,   // "och i Sverige har"
+           se_pct,
+           MSG_BEATS3);  // "av dygnet hunnit g}.
+            break;
+    }
+
+    fp = fopen(SKLAFFDIR "/etc/strings", "r");
+    if (fp) {
+        while (fgets(linebuf, sizeof(linebuf), fp)) {
+            if (linebuf[0] == '#' || linebuf[0] == '\n' || linebuf[0] == '\r')
+                continue;
+            linecount++;
+        }
+
+        if (linecount > 0) {
+            rewind(fp);
+            chosen = rand() % linecount;
+            current = 0;
+            while (fgets(linebuf, sizeof(linebuf), fp)) {
+                if (linebuf[0] == '#' || linebuf[0] == '\n' || linebuf[0] == '\r')
+                    continue;
+                if (current == chosen) {
+                    chomp(linebuf);
+                    tip = strdup(linebuf);
+                    break;
+                }
+                current++;
+            }
+        }
+        fclose(fp);
+    }
+
+    if (tip) {
+        output("\n%s\n", tip);
+        free(tip);
+    }
+
+    output("\n");
+    return 0;
+}
+
+
+/*
 int
 cmd_display_time(char *args)
 {
@@ -872,9 +1037,9 @@ cmd_display_time(char *args)
 
     now = time(0);
     at = active_time(Uid);
-
+*/
     /* Time beats */
-
+/*
     gmt = gmtime(&now);
     tbeat = ((gmt->tm_hour + 1) % 24) * 3600 / 86.4 + gmt->tm_min * 60 / 86.4 + gmt->tm_sec / 86.4;
 
@@ -888,7 +1053,7 @@ cmd_display_time(char *args)
     return 0;
 }
 
-
+*/
 /*
  * cmd_end_session - end session for user
  * args: user arguments (args)
@@ -918,6 +1083,7 @@ cmd_restart(char *args)
     if (args && *args) {
         output("\n%s\n\n", MSG_NOARG);
     } else {
+        debuglog("Restart command issued by user", 1);  /* modified on 2025-09-25, PL */
         End_sklaff = 1;
         restart = 1;
     }
@@ -2874,7 +3040,7 @@ cmd_comment(char *args)
         }
         free(oldbuf);
         snprintf(cmdline, sizeof(cmdline), "%s", NEWSPRGM);
-        if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
+	if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
             output("%s\n\n", MSG_NOINEWS);
             return -1;
         }
@@ -4450,7 +4616,19 @@ cmd_upload(char *args)
     signal(SIGNAL_NEW_TEXT, SIG_IGN);
     signal(SIGNAL_NEW_MSG, SIG_IGN);
     snprintf(filed, sizeof(filed), "%s/%d", FILE_DB, Current_conf);
-    if (chdir(filed) == -1) {
+    /* Ensure upload dir exists (PL 2025-09-15) */
+    if (access(filed, F_OK) == -1) {
+     /* fprintf(stderr, "Directory %s does not exist, creating it...\n", filed);*/ 	/* debug output */
+        if (mkdir(filed, 0775) == -1) {
+            perror("mkdir failed"); /* mkdir may fail if permission denied */
+            return -1;
+        }
+        if (chown(filed, getuid(), getgid()) == -1) {
+            perror("chown failed"); /* optional but helpful if ownership matters */
+            /* not fatal, so we don't return */
+        }
+    }
+	if (chdir(filed) == -1) {
     perror("chdir"); /* Keeps grumpy compiler happy on Linux PL 2025-07-25 */
     return 0;
     }
@@ -4461,8 +4639,8 @@ cmd_upload(char *args)
 
        
 
-/* fprintf(stderr, "Executing: %s %s\n\n\n", UPLOADPRGM, ULOPT1); */  	/* debugging */
-/* fprintf(stderr, "EUID: %d\n", getuid()); */			/* Debug: Check the effective user ID */
+/* fprintf(stderr, "Executing: %s %s\n\n\n", UPLOADPRGM, ULOPT1);*/   	/* debugging */
+/* fprintf(stderr, "EUID: %d\n", getuid());*/							/* Debug: Check the effective user ID */
 
     char *args[] = {UPLOADPRGM, ULOPT1, NULL};  			/* Added by PL 2025-07-17 */
     execvp(UPLOADPRGM, args); 						/* Replaces execl() that was broken. PL 2025-07-17 */
@@ -4483,7 +4661,7 @@ cmd_upload(char *args)
     return -1;
 }
     /* Temporary "fix", soon we will instead call cmd_describe here */
-    output("Tackar f|r det! \nBeskriv nu g{rna filen genom att ge kommandet 'Beskriv <filnamn>'.\n\n");
+    output("Tackar f|r det! \nBeskriv nu g{rna filen genom att ge kommandot 'Beskriv <filnamn>'.\n\n");
     set_avail(Uid, 0);
     return 0;
 }
@@ -5132,7 +5310,7 @@ int
 cmd_nethack(char *args)
 {
     sigset_t sigmask, oldsigmask;
-    char nethack_path[256] = "/usr/local/bin/nethack";  /* default path */
+    char nethack_path[256] = DEFAULT_NETHACK_PATH; /* Now set in sklaff.h as it should be, 2025-09-24 PL */
     FILE *which_fp;
     char which_buf[256];
 
@@ -5994,3 +6172,254 @@ cmd_mod_numlines(char *args)
     output(MSG_NUMLNSOK, v);
     return 0;
 }
+
+/*
+* Implementation of Zork (and possibly other z-code games
+* Work in progress, only testing for now
+*/
+
+static int ensure_dir(const char *path, mode_t mode)
+{
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) return 0;
+        errno = ENOTDIR;
+        return -1;
+    }
+    if (errno != ENOENT) return -1;
+    return mkdir(path, mode);
+}
+
+static int file_exists_r(const char *path)
+{
+    return access(path, R_OK) == 0;
+}
+
+static int find_frotz(char *out, size_t outsz)
+{
+    /* Prefer pinned path */
+    if (access(FROTZ_BIN, X_OK) == 0) {
+        snprintf(out, outsz, "%s", FROTZ_BIN);
+        return 0;
+    }
+    /* Fallback to PATH using which (silent) */
+    FILE *pf = popen("which frotz 2>/dev/null", "r");
+    if (!pf) return -1;
+    char buf[PATH_MAX] = {0};
+    if (fgets(buf, sizeof buf, pf) == NULL) {
+        pclose(pf);
+        return -1;
+    }
+    pclose(pf);
+    /* strip trailing newline */
+    size_t n = strcspn(buf, "\r\n");
+    buf[n] = '\0';
+    if (buf[0] == '\0' || access(buf, X_OK) != 0) return -1;
+    snprintf(out, outsz, "%s", buf);
+    return 0;
+}
+
+int
+cmd_zork(char *args)
+{
+    char *p = args;
+    char gamefile[PATH_MAX], zdir[PATH_MAX], datadir[PATH_MAX];
+    char frotz_path[PATH_MAX];
+    const char *zname = NULL;
+
+    Change_msg = 1;
+    Change_prompt = 1;
+
+    /* No arguments => prompt */
+    if (!p) {
+        output(MSG_BADARG);
+        return 0;
+    }
+
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p == '\0') {
+        output(MSG_BADARG);
+        return 0;
+    }
+
+    /* Accept “1”, “2”, or “3” (also tolerant of words like “zork 1”) */
+    if (*p == '1') zname = FROTZ_ZORK1;
+    else if (*p == '2') zname = FROTZ_ZORK2;
+    else if (*p == '3') zname = FROTZ_ZORK3;
+    else {
+        output(MSG_NOARG);
+        return 0;
+    }
+
+    /* Build paths: /usr/local/sklaff/doors/frotz and .../data */
+    {
+        int r;
+
+        r = snprintf(zdir, sizeof zdir, "%s", FROTZ_HOME);
+        if (r < 0 || (size_t)r >= sizeof zdir) {
+            output("Frotz home path is too long.\n");
+            return 0;
+        }
+
+        r = snprintf(datadir, sizeof datadir, "%s/data", FROTZ_HOME);
+        if (r < 0 || (size_t)r >= sizeof datadir) {
+            output("Frotz data path is too long.\n");
+            return 0;
+        }
+    }
+
+    if (ensure_dir(zdir, 0755) == -1) {
+        output("Could not find or create Frotz home directory.\n");
+        return 0;
+    }
+
+    if (ensure_dir(datadir, 0700) == -1) {
+        output("Could not find or create Frotz save directory.\n");
+        return 0;
+    }
+
+    /* Verify chosen z-code file exists */
+    {
+        size_t need = strlen(zdir) + 1 + strlen(zname) + 1;
+        if (need > sizeof gamefile) {
+            output("Zork game path is too long.\n");
+            return 0;
+        }
+        int r = snprintf(gamefile, sizeof gamefile, "%s/%s", zdir, zname);
+        if (r < 0 || (size_t)r >= sizeof gamefile) {
+            output("Failed to build Zork game path.\n");
+            return 0;
+        }
+    }
+
+    if (!file_exists_r(gamefile)) {
+        output(MSG_NO_ZORK);
+        return 0;
+    }
+
+    /* Find frotz binary */
+    if (find_frotz(frotz_path, sizeof frotz_path) == -1) {
+        output("Frotz not found. Please install it or set FROTZ_BIN.\n");
+        return 0;
+    }
+
+    /* Prepare argv: frotz -Z 0 -R <datadir> <gamefile> */
+    char *const argv[] = {
+        frotz_path,
+        "-Z", "0",
+        "-R", (char *)datadir,
+        (char *)gamefile,
+        NULL
+    };
+
+    /* Full signal handling and terminal reset block */
+    sigset_t sigmask, oldsigmask;
+    sigemptyset(&sigmask);
+    sigaddset(&sigmask, SIGNAL_NEW_TEXT);
+    sigaddset(&sigmask, SIGNAL_NEW_MSG);
+    sigprocmask(SIG_BLOCK, &sigmask, &oldsigmask);
+    signal(SIGNAL_NEW_TEXT, SIG_IGN);
+    signal(SIGNAL_NEW_MSG, SIG_IGN);
+    set_avail(Uid, 1);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        set_avail(Uid, 0);
+        sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
+        return 0;
+    } else if (pid == 0) {
+        /* child */
+        sig_reset();
+        tty_reset();
+        execv(frotz_path, argv);
+        perror("execv");
+        _exit(127);
+    }
+
+    /* parent */
+    int status = 0;
+    (void)waitpid(pid, &status, 0);
+    signal(SIGNAL_NEW_TEXT, baffo);
+    signal(SIGNAL_NEW_MSG, newmsg);
+    sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
+    tty_raw();
+    output("\n");
+    set_avail(Uid, 0);
+    return 1;
+}
+
+int cmd_bbslink(char *args)
+{
+    Change_msg = 1;
+    Change_prompt = 1;
+
+    static char uid_buf[16];
+    snprintf(uid_buf, sizeof(uid_buf), "%d", Uid);
+
+    /* Define lookup table for command → script arg mapping */
+    static const struct {
+        const char *input;
+        const char *mapped;
+    } bbslink_aliases[] = {
+        { "usurper", "usrp" },
+        { "lord",    "lord" },
+        { NULL,      NULL }
+    };
+
+    const char *mapped = NULL;
+
+    if (args && *args) {
+        while (*args == ' ')
+            args++;
+
+        for (int i = 0; bbslink_aliases[i].input != NULL; i++) {
+            if (strcasecmp(args, bbslink_aliases[i].input) == 0) {
+                mapped = bbslink_aliases[i].mapped;
+                break;
+            }
+        }
+
+        if (!mapped) {
+            output("\nOkänt BBSLink-spel: %s\n", args);
+            return 0;
+        }
+    }
+
+    if (!mapped) {
+        FILE *fp = fopen(BBSLINK_INTRO, "r");
+        if (!fp) {
+            output("\nKunde inte läsa introduktionstexten (%s)\n", BBSLINK_INTRO);
+            return 0;
+        }
+
+        char line[256];
+        while (fgets(line, sizeof(line), fp)) {
+            output("%s", line);
+        }
+
+        fclose(fp);
+        return 0;
+    }
+
+    /* Build command */
+    if (Utf8) {
+        const char *cmd[] = {
+            CP437_WRAPPER,
+            "/doors/bbslink/bbslink.py",
+            mapped,
+            uid_buf,
+            NULL
+        };
+        return run_external_cmd_args(cmd, 0);
+    } else {
+        const char *cmd[] = {
+            "/doors/bbslink/bbslink.py",
+            mapped,
+            uid_buf,
+            NULL
+        };
+        return run_external_cmd_args(cmd, 0);
+    }
+}
+

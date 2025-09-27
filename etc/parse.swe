@@ -12,7 +12,9 @@ Avprioritera (m|te):cmd_deprio:Avprioritera m|te
 (Skriv) brev:cmd_mail:Skicka brev till anv{ndare
 Backa:cmd_back_text:Backar ett antal texter
 B|rja om:cmd_restart:B|rjar om med en ny inloggning
-Cls:cmd_cls:Rensa sk{rmen
+BBSLink:cmd_bbslink:Spelar massa onlinespel!
+Clear:cmd_cls:Rensa sk{rmen
+Cls:cmd_cls:Synonym till Clear (rensar sk{rmen)
 Endast:cmd_only:V{lj hur m}nga texter i aktuellt m|te som skall vara nya
 Fr}n:cmd_from:Visa var du {r ifr}n
 Globals|k:cmd_global_grep:S|ka efter en str{ng i alla m|tens texter
@@ -101,6 +103,7 @@ Visa ol{sta (texter):cmd_reclaim_unread:Ol{smarkerar dina ol{sta texter direkt.
 [ndra timeout:cmd_mod_timeout:[ndra tid f|r inaktivitetsutloggning
 [ndra uppstartskommandon:cmd_mod_login:[ndra vilka kommandon som k|rs vid login
 Nethack:cmd_nethack:Spela nethack
+Zork:cmd_zork: Spela Zork 1, 2 eller 3
 
 ?:cmd_help:Synonymt med 'Lista kommandon'
 +:cmd_next_conf:Synonymt med '(G} till) n{sta m|te'

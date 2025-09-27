@@ -9,7 +9,8 @@ Add permissions:cmd_add_rights:Add permissions for user in current conference
 (Read) all (texts):cmd_readall:Displays all your unread articles
 Answer:cmd_answermsg:Answer a say-message
 Back:cmd_back_text:Unreads latest read <number of articles> articles
-Cls:cmd_cls:Clear screen
+Clear:cmd_cls:Clear screen
+Cls:cmd_cls:Same as Clear (clear screen)
 Change loginscript:cmd_mod_login:Change commands executed at login
 Change note:cmd_mod_note:Change your "note"
 Change password:cmd_change_passwd:Change your password
@@ -91,6 +92,7 @@ Yell:cmd_yell:Same as 'shout'
 I:cmd_I:Tell everyone how you are
 (Make) survey:cmd_post_survey:Make a survey in the current conference
 Nethack:cmd_nethack:Play Nethack
+Zork:cmd_zork:Play Zork 1,2 or 3
 
 ?:cmd_help:Same as 'List commands'
 +:cmd_next_conf:Same as 'Next conference'

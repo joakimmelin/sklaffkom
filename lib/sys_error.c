@@ -35,17 +35,14 @@
  *       function caused (causing function)
  */
 
-void
-sys_error(char *calling_function, int error_index, char *causing_function)
+void sys_error(const char *func, int level, const char *msg)
 {
     LONG_LINE rok;
 
-    sprintf(rok, "%s[%s #%d] %s(): %s\n", Program_name,
-        calling_function, error_index, causing_function,
-        strerror(errno));
-    debuglog(rok, 5);
-    output("%s[%s #%d] %s(): %s\n", Program_name,
-        calling_function, error_index, causing_function,
-        strerror(errno));
-    return;
+    snprintf(rok, sizeof rok, "%s[%s #%d] %s(): %s\n", Program_name,
+             func, level, msg, strerror(errno));
+
+    output(rok);             /* show to user */
+    debuglog(rok, 5);        /* log to debuglog */
+
 }

@@ -144,20 +144,16 @@ display_welcome(void)
     } else {
         Timeout = 0;
     }
-
-
     output_ansi_fmt(YELLOW "%s%s, %s.\n\n" DOT, "%s%s, %s.\n\n", MSG_CPY1, sklaff_version, MSG_LANG);
     output_ansi_fallback(BR_BLUE MSG_CPY2 DOT, MSG_CPY2);
     output_ansi_fallback(BR_BLUE MSG_CPY3 DOT, MSG_CPY3);
     output_ansi_fallback(BR_BLUE MSG_CPY4 DOT, MSG_CPY4);
     output_ansi_fallback(BR_BLUE MSG_CPY4a DOT,  MSG_CPY4a);;
-//    output_ansi_fallback(BLUE MSG_CPY5 DOT, MSG_CPY5);
+//  output_ansi_fallback(BLUE MSG_CPY5 DOT, MSG_CPY5);
     output_ansi_fallback(BR_BLUE MSG_CPY6 DOT, MSG_CPY6);
     output_ansi_fallback(BR_BLUE MSG_CPY7 DOT, MSG_CPY7);
     output_ansi_fallback(BR_BLUE MSG_CPY8 DOT, MSG_CPY8);
     output_ansi_fallback(BR_BLUE MSG_CPY9 DOT, MSG_CPY9);
-
-
 
 #ifdef MODEM_POOL
 #ifdef MODEM_GROUP
@@ -219,14 +215,14 @@ display_welcome(void)
     send_msg_to_all(MSG_LOGIN, "");
 
     user_name(Uid, name);
-    output("\n%s, %s.\n", MSG_WELCOME, name);
-
+    //output("\n%s, %s.\n", MSG_WELCOME, name);
+    output_ansi_fmt("\n%s, " BR_YELLOW "%s.\n"DOT, "\n%s, %s.\n", MSG_WELCOME, name);
     ue = get_user_struct(Uid);
 
     if (ue->last_session) {
         time_string(ue->last_session, name, 0);
         down_string(name);
-        output("\n%s %s\n", MSG_LASTHERE, name);
+        output_ansi_fmt("\n%s" CYAN " %s\n"DOT, "\n%s %s\n", MSG_LASTHERE, name);
     }
     cstack = NULL;
     ustack = NULL;
@@ -236,30 +232,9 @@ display_welcome(void)
 
 /*
  * display_news - display news file
- */
-
-void
-display_news(void)
-{
-    int fd;
-    char *buf;
-
-    if (file_exists(NEWS_FILE) != -1) {
-
-        if ((fd = open_file(NEWS_FILE, OPEN_QUIET)) == -1) {
-            return;
-        }
-        if ((buf = read_file(fd)) == NULL) {
-            return;
-        }
-        if (close_file(fd) == -1) {
-            return;
-        }
-        output("%s", buf);
-        free(buf);
-    }
-    return;
-}
+ * Moved to lib/helpers.c and made multilingual as it always should have been :)
+ * PL 2025-09-25
+*/
 
 /*
  * check_open - check if SklaffKOM login is allowed
@@ -387,7 +362,7 @@ grep(int conf, char *search)
                 if (fgets(lineread, 80, pipe) == NULL) {	/* error handling */
     		break;  					/* modified on 2025-07-25, PL */
 	}
-                if (!feof(pipe)) {
+                  if (!feof(pipe)) {
                     if (!found) {
                         output("\n");
                     }
@@ -479,13 +454,25 @@ exec_logout(int tmp)
 
     if (tmp != SIGHUP) {
         at = active_time(Uid);
-        output("\n%s, %s.\n%s ",
-            MSG_WELBACK, user_name(Uid, name), MSG_ACTIVETIME);
+        clear_screen();
+		display_logout();
+		output("\n%s, %s.\n%s ",
+       	     MSG_WELBACK, user_name(Uid, name), MSG_ACTIVETIME);
         if (at == 1L)
             output("%s\n\n", MSG_ONEMIN);
         else
             output("%ld %s\n\n", at, MSG_MINUTES);
+        /* Modem-style logout sequence because why not PL 2025-09-25*/
+        if (!restart) {
+    	/* But don't show unless we're truly logging out */
+		sleep(1);
+        output("ATH0\n");
         fflush(stdout);
+        sleep(2);
+        output("NO CARRIER\n\n");
+        fflush(stdout);
+        sleep(1);
+    	}
     }
     sprintf(tmpdir, "  removing from active list");
     debuglog(tmpdir, 20);
@@ -651,6 +638,12 @@ debuglog(char *s, int level)
         sprintf(entry, "%s : %d : %d : %s", tstr, Uid, getpid(), s);
 
         fp = fopen(logname, "a");
+        if (!fp) {
+            // modified on 2025-09-24, PL
+            // Prevent crash if log can't be written (e.g. permission denied)
+            return;
+        }
+
         fprintf(fp, "%s\n", entry);
         fclose(fp);
     }

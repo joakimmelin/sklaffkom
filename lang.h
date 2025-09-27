@@ -74,7 +74,7 @@
 #define MSG_CPY3        "                         Odd Petersson, Carl Sundbom.\n"
 #define MSG_CPY4        "QWK-hantering (C) 1994   Daniel Gr|njord\n"
 #define MSG_CPY4a       "Enk{tfunktion (C) 1996   Olof Runborg\n\n"
-#define MSG_CPY5        "Uppdateringar/buggfixar gjorda av Petri Stenberg, Fredrik Bj|reman, Marcus Sundberg, Peter London och Joakim Melin.\n\n"
+//#define MSG_CPY5        "Uppdateringar/buggfixar gjorda av Petri Stenberg, Fredrik Bj|reman, Marcus Sundberg, Peter London och Joakim Melin.\n\n"
 #define MSG_CPY6        "Programmet till{gnat Staffan Bergstr|ms minne.\n\n"
 #define MSG_CPY7        "SklaffKOM distribueras UTAN GARANTI. Detta {r fri programvara och alla\n"
 #define MSG_CPY8        "har r{tt sprida den enligt vissa villkor.\n\n"
@@ -203,7 +203,7 @@
 #define MSG_CONFTYPE	"M|testyp:      "
 #define MSG_CLOSED2	"slutet"
 #define MSG_SECRET2	"hemligt"
-#define MSG_NEWS2	"news"
+#define MSG_NEWS2	"usenet"
 #define MSG_CONFCREATE	"Skapat:        "
 #define MSG_CONFCOM	"Kommentarer i: "
 #define MSG_NUMTEXT	"Antal texter: "
@@ -294,8 +294,16 @@
 #define MSG_NUMLNSFAIL	"Kunde tyvärr inte spara inst{llningen, meddela SysOp!\n"
 #define MSG_NUMLNSOK	"Antal rader satt till %d.\n"
 #define MSG_NUMLNCONF	"Ingen {ndring.\n"
-//#define MSG_NO_ZORK	"No z3-file found, sorry"  					/*Zork */
-//#define MSG_BADARG      "\nFöljande infocom-spel finns för närvarande :\n\nZork 1\nZork 2\nZork 3\n\nFör att spela, ge kommandot Zork <nr>.\n\n"	/* Zork */
+#define MSG_NO_ZORK	"No z3-file found, sorry"  					/*Zork */
+#define MSG_BADARG      "\nF|ljande infocom-spel finns f|r n{rvarande :\n\nZork 1\nZork 2\nZork 3\n\nFör att spela, ge kommandot Zork <nr>.\n\n"	/* Zork */
+/* Nytt (Se) tiden-kommando */
+#define MSG_DISPTIME    "Klockan {r nu"
+#define MSG_IT          "den"
+#define MSG_DISPTIME2   "och du har varit inloggad i"
+#define MSG_BEATS1      "Tiden på internet {r"
+#define MSG_BEATS2      "och i Sverige har"
+#define MSG_BEATS3      "av dygnet hunnit g}."
+
 
 /* conf.c */
 
@@ -303,14 +311,14 @@
 #define MSG_MAILBOX	"Brevl}dan"
 #define MSG_CLOSED	"  (Slutet)"
 #define MSG_SECRET	"  (Hemligt)"
-#define MSG_NEWS	"  (news)"
+#define MSG_NEWS	"  (Usenet)"
 #define MSG_MEMBERMARK	'*'
 #define MSG_FILAREA	'F'
 #define MSG_CONFCREATOR	'S'
 #define MSG_TOTNULL	"Inga nya texter."
 #define MSG_TOTONE	"Totalt en ny text."
 #define MSG_TOTAL	"Totalt"
-
+#define MSG_WHERE2	"Du befinner dig i"
 /* edit.c */
 
 #define MSG_REMTEXT	"Vill du verkligen ta bort din text?"
@@ -499,7 +507,7 @@
 
 #define MSG_FROMSUB	"Fr}n: "
 #define MSG_TOSUB	"Till: "
-#define MSG_TEXTNAME	"Text"
+#define MSG_TEXTNAME	"Inl{gg"
 #define MSG_SURVEYNAME	"Enk{t"
 #define MSG_WRITTENBY	"Skriven av"
 #define MSG_TOFROM	"Till/Fr}n"
@@ -549,8 +557,8 @@
 
 #define MSG_SYSOP	"Systemoperat|r"
 #define MSG_ROOTERR	"Root kan inte k|ra SklaffKOM av interna orsaker."
-#define MSG_ALREADYON	"{r redan inloggad."
-#define MSG_QUITASK	"Vill du avsluta den andra processen? "
+#define MSG_ALREADYON	"{r redan inloggad i en annan terminal."
+#define MSG_QUITASK	"Vill att vi loggar ut dig d{rifr}n, s} att du kan forts{tta h{r?"
 #define MSG_QUITTRY	"\nF|rs|ker avsluta den andra processen..."
 #define MSG_QUITFAIL	"misslyckades."
 #define MSG_QUITOK	"lyckades!"
@@ -632,22 +640,22 @@
 #define MSG_ADMHELP17	"   up - Till}ter inloggning i SklaffKOM.\n\n"
 
 /* sklaffacct.c */
-
-#define MSG_INNAME	"F|r och efternamn      : "
+/* Let's do UTF-8 because at least we'll have a higher hitrate than SF7 */
+#define MSG_INNAME	"För och efternamn      : "
 #define MSG_INLOGIN	"Inloggningsnamn        : "
-#define MSG_INPASSWD	"|nskat l|senord        : "
-#define MSG_INMODEM	"Modempools-tillg}ng    : "
+#define MSG_INPASSWD	"Önskat lösenord        : "
+#define MSG_INMODEM	"Modempools-tillgång    : "
 #define MSG_INPOST	"E-postadress           : "
 #define MSG_INTELE	"Telefonnummer          : "
-#define MSG_ACCAPP	"Kontoans|kning: "
+#define MSG_ACCAPP	"Kontoansökning: "
 #define MSG_INSNAME	"Namn     : "
 #define MSG_INSLOGIN	"\nLogin    : "
-#define MSG_INSPASSWD	"\nL|sen    : "
+#define MSG_INSPASSWD	"\nLösen    : "
 #define MSG_INSMODEM	"\nModem    : "
 #define MSG_INSPOST	"\nE-post   : "
 #define MSG_INSTELE	"\nTelefon  : "
-#define MSG_APPLIED	"Din ans|kan {r registrerad.\nV{lkommen }ter.\n\n"
-#define MSG_UIDINUSE	"Inloggningsnamn kan ej anv{ndas. V{nligen v{lj annat."
+#define MSG_APPLIED	"Tackar för det! \nDin ansökan är registrerad och vi hör snart av oss.\nVälkommen åter.\n\n"
+#define MSG_UIDINUSE	"Inloggningsnamn kan ej anv{ndas. Vänligen välj annat."
 
 /* mailtoss.c */
 
@@ -744,7 +752,7 @@
 #define MSG_POWER	"Power failure, contact operator!"
 #define MSG_OP		"Logged out by operator!"
 #define MSG_TIMEOUT	"Inactive too long!"
-#define MSG_WELBACK	"Welcome back"
+#define MSG_WELBACK	"Welcome back anytime"
 #define MSG_ACTIVETIME	"You were online"
 #define MSG_MINUTES	"minutes."
 #define MSG_ONEMIN	"one minute."
@@ -845,7 +853,7 @@
 #define MSG_CONFTYPE	"Type:         "
 #define MSG_CLOSED2	"closed"
 #define MSG_SECRET2	"secret"
-#define MSG_NEWS2	"news"
+#define MSG_NEWS2	"usenet"
 #define MSG_CONFCREATE	"Created:      "
 #define MSG_CONFCOM	"Replies in:   "
 #define MSG_NUMTEXT	"Articles:    "
@@ -936,8 +944,14 @@
 #define MSG_NUMLNSFAIL	"Save failed, please contact SysOp!\n"
 #define MSG_NUMLNSOK	"Number of rows set to %d.\n"
 #define MSG_NUMLNCONF	"Same as before then.\n"
-//#define MSG_NO_ZORK     "No z3-file found, sorry"       /*Zork */
-//#define MSG_BADARG      "Hoppas, du glömde ange vilket Zork (1-3) du vill spela.\n\n"   /* Zork */
+#define MSG_NO_ZORK     "No z3-file found, sorry"       /*Zork */
+#define MSG_BADARG      "Oops bad input! Type Zork 1, or 2, or 3.\n\n"   /* Zork */
+#define MSG_DISPTIME    "Current time is"
+#define MSG_IT          "on the"
+#define MSG_DISPTIME2   "and you've been here for"
+#define MSG_BEATS1      "Internet time is now"
+#define MSG_BEATS2      "and in Sweden"
+#define MSG_BEATS3      "of the day has passed."
 
 
 
@@ -947,13 +961,14 @@
 #define MSG_MAILBOX	"Mailbox"
 #define MSG_CLOSED	"  (Closed)"
 #define MSG_SECRET	"  (Secret)"
-#define MSG_NEWS	"  (news)"
+#define MSG_NEWS	"  (Usenet)"
 #define MSG_MEMBERMARK	'*'
 #define MSG_FILAREA	'F'
 #define MSG_CONFCREATOR	'C'
 #define MSG_TOTNULL	"No new articles."
 #define MSG_TOTONE	"One new article."
 #define MSG_TOTAL	"A total of"
+#define MSG_WHERE2       "You're currently in"
 
 /* edit.c */
 

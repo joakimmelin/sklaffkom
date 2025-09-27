@@ -1,52 +1,135 @@
-v1.33 beta 3, Thursday August 21 2025 PL
+V1.33 beta9a Saturday 27 September 2025 PL
+* This is the version we're shipping to github, after a day or so trying
+  figure out why inews did not work on FreeBSD anymore :D. Should be fixed
+  now, and I can move on to beta10 :).
 
-	* Help files hopefully works for commands with more than one
+v1.33 beta 9 Thursday 25 September 2025 PL
+Yet another session at the hospital :
+* new function display_logout displays etc/logout during logout.
+  logout.swe and logout.eng for multilingual systems.
+  display_news moved to helpers.c to keep original codebase tidy.
+* new function clear_screen - more robust handling of clear_screen
+  available outside of commands.c.
+* safer logging in admin.c - prevents segfault when user permissions
+  are wrong
+* The command "Börja om" has probably never worked since there was no
+  logic for handling restarts in sklaffkom.c at all. Now there is, and
+  "Börja om" should work as intended.
+* improved display_langfile, should now always display correct language
+* CRUCIAL FIX : Proper logout sequence displaying hayes commands like
+  in the good old days. Also in sklaffact now, first impression last.
+* New command "Clear" same as "Cls" to avoid confusion amongst us
+  Linux-freaks.
+* Small tweaks to the file_exists function, mostly to keep compiler
+  happier in 2025.
+* lib/sys_error.c rewritten due to causing havoc while modifying other
+  functions (forgot which ones)
+* Makefile improvement : mailtoss and newstoss copied to SKLAFFBIN
+  instead of hardcoded /usr/local/bin (my bad)
+* More "junk" (my own code) moved to lib/helpers.c to keep the original
+  codebase as original as possible. This work will continue.
+* Serious sklaffrc bug fixed where numlines was written to the wrong file
+  (still worked though, just missing a /).
+* display_header moved to helpers.c after a heroic ctrl-v adventure 
+  with lost curly braces. Found and restored. All curly braces are well.
+* The hayes modem emulation is now displayed during logout only, not
+  during restart (which would defeat the purpose)
+
+v1.33 beta 8 Wednesday 24 September 2025 PL
+* Serious bug introduced by me where caller didn't see text body unless
+  ansi was turned on. Now fixed.
+
+v1.33 beta 7 Tuesday 16 September 2025 PL
+* Safer handling of uploads (directory is created if it doesn't exist for
+  some reason)
+* Small fix that I can't remember to keep compiler on FreeBSD happy
+
+v.133 beta 6, Monday 15 September 2025 PL
+* Realized -werror wasn't turned on, received warnings in /lib/rawio.c,
+  did some slight modernizations to the open_file-function which caused
+  a domino-effect so lib/rawio.c needed work as well. We should be good
+  now! :D (Still haven't tested in FreeBSD but I hope it works).
+  Being hospitalized (bad hernia) makes you productive, should try this
+  more often!
+
+v1.33 beta 5, Monday 15 September 2025 PL
+* Further improvements to (Se) tiden (hard coded language strings removed)
+* /usr/local/sklaff/etc/news is now multilingual - more to follow
+  (to use this feature, add two new files in /usr/local/sklaff/etc :
+  news.eng
+  news.swe
+  Now English users will se news.eng, and vice versa
+  As a fallback, the already existing file "news" will be displayed
+* While doing this, further modernization to open_file in lib/rawio.c
+  was made, and old obsolete code was removed. There's more work to be
+  done in this file one day :D
+
+v1.33 beta 4, Monday 15 September 2025 PL
+* Critical language bugfixes (so now the English version compiles also ;))
+* Mailtoss.c no longer deletes "spool file", instead trunctates
+* We can now play Zork 1,2,3 
+* More ANSI colors, in Usenet posts and other places
+* Usenet posts now show date when written instead of import date
+* Work has begun on a friendlier "(Se) tiden" command (not finished)
+* cmd_where has friendlier output also
+* Probably a dozen small fixes and tweaks that I have forgot
+* All SIGNAL messages fixed (no more '((')
+
+v1.33 beta 3, Thursday August 21 2025 PL
+* Help files hopefully works for commands with more than one
 	  underscore now (a 30 year old bug finally fixed?)
 
-2025-08-20
+2025-08-20 Merged old and new changelog into this file. // JM
 
-Merged old and new changelog into this file. // JM
+v1.33 beta 2, Tuesday August 18 2025 PL
 
-v1.33 beta 2, tisdag 18:e augusti 18:55:
+New features :
+=============
 
-So many changes here, sorry only in Swedish for now :
+* UTF-8 is supported and activated with a flag
+* Nicer prompt (in my opinion) - can now be changed in sklaff.h 
+  (#define PROMPT).
+* The screen length should now be detected automatically, and the setting 
+  is retained session out. If this doesn't work, there is also a new command :
+* New command - Ändra skärmlängd (current installations needs a copy of
+  /etc/parse.eng and /etc/parse.swe to /usr/local/sklaff/etc, as well as 
+  the help files "mod_numlines" for each language. (Nethack is also among 
+  the help files now btw).
+* Colors are supported via a new flag (ANSI), however, the coloring is not 
+  nearly finished (work in progress)
 
-Kända buggar :
+Bug fixes:
 
-Lite skakig UTF8 i editorn fortfarande - väldigt inkonsekvent så det är svårt att felsöka, men det pågår...
-Skräptecken uppstår ibland vid tex signal när nån annan loggar in, skall undersökas.
-Kommandot "hjälp" funkar sådär, snart åtgärdart. Debug avslaget igen ;).
+* Quoting usenet posts now works (I think).
+* Mailtoss now understands that the spool is often empty and no longer logs 
+  that "error".
+* Makefile now also copies newstoss and mailtoss to /usr/local/bin so you 
+  don't forget it.
+* Makefile: "make distrib" updated to modern standard, creates dist files in 
+  the ./dist directory. Good to have when you want to test run outside of 
+  github ;).
+* Shows the correct number of texts in "list meetings" in mailbox and meetings.
+* A couple of small fixes in the English version.
+* The bbs no longer "crashes" if the .plan file is missing.
+* We now create usenet header in outgoing mail in a more robust way to avoid 
+  errors in inews.
+* Fixed a bug I introduced myself because the compiler complained about unused 
+  variables if news posting was turned off.
+* Replace conf sometimes gave a segfault when emailing users outside of 
+  sklaffkom, now fixed.
 
-Nya funktioner :
+Other:
 
-UTF-8 stöds och aktiveras genom flagga (i nuläget avstängd "by default").
-Snyggare prompt (enligt mig) - kan numera ändras i sklaff.h (#define PROMPT).
-Skärmlängden ska nu detekteras automatiskt och inställningen behålls session ut. Funkar inte detta finns även ett nytt kommando nedan.
-Nytt kommando - Ändra skärmlängd (OBS! glöm ej att kopiera /etc/parse.eng och /etc/parse.swe, samt hjälpfilerna "mod_numlines" för respektive språk (även nethack ligger bland hjälpfilerna nu).
-Färger stöds via ny flagga (ANSI), dock är ej färgläggningen färdig (tog mig friheten att låna delta citys färgschema sålänge hehe).
-
-Buggfixar :
-
-fixat citering vid usenet-inlägg (tror jag).
-Mailtoss förstår nu att spoolen ofta är tom och loggar inte längre det "felet".
-Makefile kopierar nu också newstoss och mailtoss till /usr/local/bin så man inte glömmer det.
-Makefile : "make distrib" uppdaterad till modern standard, skapar dist-filer i ./dist-katalogen. Bra att ha när man vill testköra utanför github ;).
-Visar rätt antal texter i "lista möten" i brevlåda och möten.
-Ett par småfixar i den engelska versionen.
-Basen "krashar" inte längre om .plan-fil saknas.
-Vi skapar nu usenet header i utgående post på ett mer robust sätt för att slippa fel i inews.
-Fixade en egen bugg jag själv infört eftersom compilern klagade över unused variables om news-postning var avstängd.
-Replace conf gav ibland segfault när man mailade användare utanför sklaffkom, nu fixat.
-
-Övrigt :
-
-uppdaterat versionsnumret till 1.33-beta2.
-Visar riktigt namn i usenet-header och "footer" (när den infon finns, dvs typ jämt).
-Strippar onödiga tecken i författarens namn på usenet-inlägg.
-Avkodar "=?UTF-8?B?...?=...." strängar i namn och subject på usenet-inlägg.
-Ändlöst antal småfixar gör nu att vi kan behålla "-werror" även vid kompilering på linux.
-Ett antal fixar som förebygger segfault och istället visar rimliga felmeddelanden.
-
+* updated the version number to 1.33-beta2.
+* Shows real name in usenet header and "footer" (when that info is available, 
+  which is most of the times, if not fallback to old behaviour)
+* Strips unnecessary characters in the author's name on usenet posts.
+* Decodes "=?UTF-8?B?...?=...." strings in name and subject on usenet posts
+  (most of the times, there's still work to be done here).
+* Endless number of small fixes now allow us to keep "-werror" even when 
+  compiling on linux.
+* A number of fixes that prevent segfaults and instead show reasonable 
+  error messages.
 ------
 
 Sat Jan 11 17:01:21 1997  Olof Runborg  <olofr@c2m2-12.nada.kth.se>

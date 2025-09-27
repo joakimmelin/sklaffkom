@@ -32,9 +32,8 @@
 #include <time.h>
 
 /* Define language desired, one of: SWEDISH or ENGLISH */
-
 #define SWEDISH
-/* #define ENGLISH */
+//#define ENGLISH
 
 /* Define group ids and terminaltypes for modem_pool */
 
@@ -80,8 +79,8 @@
 
 #define UTMP_REC 	"/var/run/utmp"
 #define MAIL_LIB	"/var/mail"
-#define NEWS_SPOOL	"/var/spool/news"
-#define NEWS_GROUPS	"/var/lib/news/active"
+#define NEWS_SPOOL	"/usr/local/news/spool/articles"
+#define NEWS_GROUPS	"/usr/local/news/db/active"
 
 /* Programs used by SklaffKOM */
 
@@ -91,6 +90,21 @@
 #define GREPOPT		"-i -F" /* option to grep */
 #define SKLAFFAT 	"/usr/bin/at"
 #define SKLAFFECHO 	"/bin/echo"
+#define DEFAULT_NETHACK_PATH 	"/usr/local/bin/nethack"  /* default Nethack path */
+
+
+/* Everything related to Frotz and Zork */
+#define FROTZ_BIN       "/usr/local/bin/frotz"        /* Path to frotz binary */
+#define FROTZ_ARGS      "-D 0 -Z 0 -R "               /* Disable colors on top, report 0 errors, saves in ./data dir */
+#define FROTZ_HOME      DOORDIR "/frotz"              /* -> /doors/frotz on a standard install */
+#define FROTZ_ZORK1     "zork1.z3"
+#define FROTZ_ZORK2     "zork2.z3"
+#define FROTZ_ZORK3     "zork3.z3"
+
+/* OTHER NEW (2025) external commands */
+#define CP437_WRAPPER "/usr/local/bin/cp437"
+#define DEFAULT_BBSLINK_PATH    "/doors/bbslink"
+#define BBSLINK_INTRO           SKLAFFDIR "/etc/bbslink"
 
 /* Software for uploads and downloads. 
 Please read item 18 for instructions here: 
@@ -107,7 +121,7 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #define LSOPT		"-1"    /* option to make one column */
 #define MVPRGM		"/bin/mv"
 #define MAILPRGM	"/usr/sbin/sendmail --"
-#define NEWSPRGM	"/usr/bin/inews -h" /*-h needed!  */
+#define NEWSPRGM	"/usr/local/bin/inews -h" /*-h needed!  */
 #define SURVREPORT 	SKLAFFBIN "/srep"
 
 /* SklaffKOM-files */
@@ -117,11 +131,16 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #define FILE_DB		SKLAFFDIR "/files"
 #define MBOX_DB		SKLAFFDIR "/mbox"
 #define LOGDIR   	SKLAFFDIR "/log"
-
+#define DOORDIR		"/doors"
 #define USER_FILE 	SKLAFFDIR "/etc/user"
 #define	ACTIVE_FILE 	SKLAFFDIR "/etc/active"
 #define CONF_FILE 	SKLAFFDIR "/etc/conf"
 #define NEWS_FILE 	SKLAFFDIR "/etc/news"
+#define NEWS_FILE_ENG	SKLAFFDIR "/etc/news.eng"
+#define NEWS_FILE_SWE	SKLAFFDIR "/etc/news.swe"
+#define LOGOUT_FILE     "/usr/local/sklaff/etc/logout"
+#define LOGOUT_FILE_ENG     "/usr/local/sklaff/etc/logout.eng"
+#define LOGOUT_FILE_SWE "/usr/local/sklaff/etc/logout.swe"
 #define INFO_FILE	SKLAFFDIR "/etc/info"
 #define LICENS_FILE	SKLAFFDIR "/etc/COPYING"
 #define DOWN_FILE 	SKLAFFDIR "/etc/down"
@@ -161,11 +180,20 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #define ACT_FILE        "/act"
 
 /* Log level (lower means less logs, 0 = no logs) */
-
+/*
+0 : No logs
+1–2: Errors only
+3–4: Warnings
+5–6: High-level actions (command start/stop)
+7–8: Inputs/outputs (sanitized), decisions taken
+9–10: Verbose (command lines, env, sizes, timing)
+12+: Very verbose (bodies/snippets, hexdumps) — opt-in only
+*/
 #define LOGLEVEL 6
 
 /* Misc settings */
 #define PROMPT		"-> " /* one whitespace at the end is a good idea PL 2025-07-30*/
+#define ANSI_CLS    "\033[H\033[J"
 
 /* Macros */
 
@@ -281,7 +309,7 @@ int cmp_strings(char *, char *);
 int copy_file(char *, char *);
 void critical(void);
 char *down_string(char *);
-int file_exists(char *);
+int file_exists(const char *); /* 2025-09-25 PL */
 off_t file_size(int);
 char *user_dir(int, char *);
 char *in_string(char *, char *);
@@ -296,7 +324,7 @@ int output(char *,...);
 int outputex(char *,...);
 int close_file(int);
 int create_file(char *);
-int open_file(char *, int);
+int open_file(const char *filename, int flag);
 int parse_strings(char *, char *, int, char *);
 char *read_file(int);
 int write_file(int, char *);
@@ -304,7 +332,7 @@ char *rtrim(char *);
 char *ltrim(char *);
 void sig_reset(void);
 void sig_setup(void);
-void sys_error(char *, int, char *);
+void sys_error(const char *, int, const char *);
 char *time_string(time_t, char *, int);
 void tty_raw(void);
 void tty_reset(void);
@@ -317,10 +345,40 @@ char *real_string(char *);
 char *reorder_name(char *, char *);
 char *prog_name(char *);
 char *mbox_dir(int, char *);
-int output_ansi_fmt(const char *ansi_fmt, const char *plain_fmt, ...); 	/* 2025-07-30 PL */
-int detect_terminal_lines(void);					/* 2025-08-10 PL */
-void clear_prompt(int num); 						/* Little helper to avoid extra '(') 2025-08-26 PL */
-void clear_prompt_cols(int cols);					/* Enhanced version of the above but keeping both for now */
+int  output_ansi_fmt(const char *ansi_fmt, const char *plain_fmt, ...); 				/* 2025-07-30 PL */
+int  detect_terminal_lines(void);														/* 2025-08-10 PL */
+void se_time_string(time_t utc, LINE out, int flags);  									/* 2025-08-30 PL */
+int  parse_usenet_date_utc(const char *date_line, time_t *out_utc);						/* 2025-08-30 PL */
+int  parse_tz_token(const char *p, int *out_sec);										/* 2025-08-30 PL */
+int  month3_to_num(const char *m);														/* 2025-08-30 PL */
+time_t timegm_compat(struct tm *t); 													/* 2025-08-30 PL */
+void clear_prompt(int num); 															/* Little helper to avoid extra '(') 2025-08-26 PL */
+void clear_prompt_cols(int cols);														/* 2025-08-30 PL */
+int quote_depth(const char *s);  														/* Usenet quotes in colors 2025-08-31 PL */
+void get_wallclock_localtime(const time_t *t, struct tm *out);                          /* 2025-08-16 PL little helper used by (Se) tiden > */
+void extract_display_name(const char *from, char *out, size_t outlen);                  /* Humanizing usenet posts */
+int is_blank_line(const char *line);                                                    /* Blank line detection for usenet posts */
+size_t utf8_disp_len(const char *s);                                                    /* UTF8 related PL */
+void utf8_trunc_cols(const char *in, size_t max_cols, char *out, size_t outlen);        /* 2025-08-10, PL: truncate by display columns (UTF-8 safe, 1 col/codepoint) */
+void print_underlined_line(const char *line);                                           /* Build underline matching a printed line */
+int b64v(int c);                                                                        /* Base64 table */
+size_t qp_decode_bytes(const char *in, size_t inlen, unsigned char *out, size_t outlen);    /* Decode a single encoded-word's bytes with quoted-printable (Q) */
+size_t b64_decode_bytes(const char *in, size_t inlen, unsigned char *out, size_t outlen);   /* Decode a single encoded-word's bytes with base64 (B) */
+size_t latin1_to_utf8(const unsigned char *in, size_t inlen, char *out, size_t outlen);     /* Minimal charset -> UTF-8: utf-8 (pass), us-ascii (pass), iso-8859-1 (map) */
+size_t bytes_to_utf8(const char *charset, const unsigned char *in, size_t inlen, char *out, size_t outlen); /* Counting bytes when converting char tables (?) */
+void rfc2047_decode(const char *in, char *out, size_t outlen);                              /* RFC 2047 decoder: decodes any number of encoded-words in a header field */
+void normalize_label(const char *raw, char *norm, size_t nlen);                              /* Normalize a label to ensure exactly one trailing ": " */
+int output_body_line(const char *line, const char *col);                                    /* ANSI support fort text body in articles 2025-09-24 PL */
+int run_external_cmd_args(const char *argv[], int use_fallback);                            /* Better support for external commands 2025-09-24 PL */
+void display_langfile(const char *base, const char *base_eng, const char *base_swe);        /* Support for multilingual display of files (news etc) 2025-09-24 PL */
+void display_news(void);
+void display_logout(void);
+void clear_screen(void);                                                                     /* More sophisticated cls to use outside of commands.c */
+const char *month_name(int mon);                                                                /* "Se tiden"-stuff 2025-09.25 */
+void chomp(char *s);                                                                            /* "Se tiden"-stuff 2025-09.25 */
+void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
+
+
 /* Debugging */
 /* void *my_malloc (size_t); */
 /* void my_free (void *);    */
@@ -414,6 +472,7 @@ int cmd_reclaim_unread(char *);
 int cmd_nethack(char *);
 int cmd_mod_numlines(char *args); /* 2025-08-10 PL */
 int cmd_zork(char *args); /* 2025-08-17 PL */
+int cmd_bbslink(char *args); /* 2025-09-24 PL */
 
 /* admin.c */
 
@@ -512,7 +571,7 @@ char *expand_name(char *, int, int, int *);
 
 int check_if_read(long, int);
 void clear_comment(void);
-void display_header(struct TEXT_HEADER *, int, int, int, char *);
+//void display_header(struct TEXT_HEADER *, int, int, int, char *); /* Moved to lib-functioner 2025-09-25 */
 int display_text(int, long, int, int);
 int display_survey_result(int, long);
 int list_subj(char *);

@@ -1476,7 +1476,7 @@ list_news(int uid)
         if (left != 0L) {
             if (can_see_conf(Uid, ce.num, ce.type, ce.creator)) {
                 unreads += left;
-                if (output("%7ld   %s\n", left, ce.name) == -1) {
+                if (output_ansi_fmt(CYAN"%7ld"DOT  BR_RED" %s\n"DOT, "%7ld   %s\n", left, ce.name) == -1) {
                     xit = 1;
                 }
             }
@@ -1491,7 +1491,7 @@ list_news(int uid)
     } else if (unreads == 1) {
         output("\n%s\n\n", MSG_TOTONE);
     } else {
-        output("\n%s %ld %s\n\n", MSG_TOTAL, unreads, MSG_UNREADTEXTS);
+        output_ansi_fmt("\n%s "CYAN"%ld"DOT" %s\n\n","\n%s %ld %s\n\n", MSG_TOTAL, unreads, MSG_UNREADTEXTS);
     }
     free(allconfs);
     free(oldbuf2);
