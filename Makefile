@@ -7,9 +7,9 @@ SKLAFFBIN=/usr/local/bin
 SKLAFFDIR=/usr/local/sklaff
 
 # Define target system, one of: FREEBSD, SOLARIS, LINUX
-#SKLAFFSYS = FREEBSD	# FreeBSD
+SKLAFFSYS = FREEBSD	# FreeBSD
 #SKLAFFSYS = SOLARIS	# Solaris
-SKLAFFSYS = LINUX	# Linux
+#SKLAFFSYS = LINUX	# Linux
 
 CC=gcc
 SKLAFFFLAGS = -D$(SKLAFFSYS) -DSKLAFFDIR=\"$(SKLAFFDIR)\" -DSKLAFFBIN=\"$(SKLAFFBIN)\"
@@ -25,10 +25,10 @@ CFLAGS = $(SKLAFFFLAGS) -O2 -g -pipe -Wall -Werror
 #LIBS=-lsklaff -ltermcap -lelf -lm
 
 #uncomment for BSD
-#LIBS=-lsklaff -lm
+LIBS=-lsklaff -lm
 
 # uncomment for LINUX/SUNOS/ULTRIX
-# Requires package "libbsd-dev"
+# debian users : sudo apt install libbsd-dev
 LIBS=-lsklaff -lbsd -lm
 
 # uncomment for SOLARIS
@@ -102,11 +102,11 @@ sklaffacct: $(SKLAFFLIB) $(ACCTOBJ) $(OBJS)
 
 mailtoss: $(SKLAFFLIB) $(MTOSSOBJ) $(OBJS)
 	$(CC) -o mailtoss $(MTOSSOBJ) $(OBJS) -Llib $(LIBS)
-	strip mailtoss
+#	strip mailtoss
 
 newstoss: $(SKLAFFLIB) $(NTOSSOBJ) $(OBJS)
 	$(CC) -o newstoss $(NTOSSOBJ) $(OBJS) -Llib $(LIBS)
-	strip newstoss
+#	strip newstoss
 
 survreport: $(SKLAFFLIB) $(SURVREPOBJ) $(OBJS)
 	$(CC) -o survreport $(SURVREPOBJ) $(OBJS) -Llib $(LIBS)
@@ -145,6 +145,9 @@ install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss
 	cp newstoss mailtoss $(SKLAFFDIR)/etc
 	cp newstoss $(SKLAFFDIR)/etc/ntoss
 	cp mailtoss $(SKLAFFDIR)/etc/mtoss
+	# Better copy mailtoss and newstoss to sklaffbin also
+	cp mailtoss $(SKLAFFBIN)
+	cp newstoss $(SKLAFFBIN)
 	-chown root $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss
 	-chmod og-rxw $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss
 installdb:

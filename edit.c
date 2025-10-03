@@ -28,12 +28,11 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <signal.h>
-
-#include "sklaff.h"
-#include "ext_globals.h"
 #ifdef LINUX                                                                    
 #include <bsd/string.h>  /* for strlcat on Linux */                             
-#endif                                                                          
+#endif
+#include "sklaff.h"
+#include "ext_globals.h"
 
 
 
@@ -566,9 +565,7 @@ if (c == 0xC3) {
     		    if (c2 == MSG_YESANSWER) {
         		Lines = 1;
         		strcpy(ptr->line, "> ");
-//        		strncat(ptr->line, qline, 71);
-				strlcat(ptr->line, tb->line, sizeof(ptr->line));
-
+        		strncat(ptr->line, qline, 71);
         		ptr->line[73] = '\0';
         		numlines++;
         		Size++;

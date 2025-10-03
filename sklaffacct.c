@@ -143,6 +143,12 @@ errlogin:
     close_file(fd);
     output(MSG_APPLIED);
     sleep(1);
+    output("ATH0\n");
+    fflush(stdout);
+    sleep(2);
+    output("NO CARRIER\n\n");
+    fflush(stdout);
+    sleep(1);
     tty_reset();
     exit(0);
 }

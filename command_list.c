@@ -5,6 +5,7 @@ const struct COMMAND_ENTRY command_list[] = {
     { "cmd_alias", cmd_alias, },
     { "cmd_answermsg", cmd_answermsg, },
     { "cmd_back_text", cmd_back_text, },
+    { "cmd_bbslink", cmd_bbslink, },
     { "cmd_change_cname", cmd_change_cname, },
     { "cmd_change_comc", cmd_change_comc, },
     { "cmd_change_conf", cmd_change_conf, },
@@ -87,5 +88,6 @@ const struct COMMAND_ENTRY command_list[] = {
     { "cmd_who", cmd_who, },
     { "cmd_whole_text", cmd_whole_text, },
     { "cmd_yell", cmd_yell, },
+    { "cmd_zork", cmd_zork, },
     { NULL, NULL },
 };

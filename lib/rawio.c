@@ -89,95 +89,56 @@ read_file(int fildes)
 
 
 /*
- * TEST TEST TEST TEST
- * TEST TEST TEST TEST  This version of open_file is a test. The
- * TEST TEST TEST TEST  original is found below.
- * TEST TEST TEST TEST
+ * open_file - open file and lock it (modernized 2025-09-15, PL)
+ * args: const char *filename, int flag (OPEN_CREATE, OPEN_QUIET)
+ * ret : file descriptor or -1 on failure
  */
 
 int
-open_file(char *filename, int flag)
+open_file(const char *filename, int flag)
 {
-    int mode;
-    int tmp_filedesc;
-    char *function_name = "open_file";
+    int mode = O_RDWR;
+    int fd;
+    int count = 0;
     char dentry[180];
-    int count;
+    const char *function_name = "open_file";
 
-    mode = O_RDWR;
-    if ((flag & OPEN_CREATE) == OPEN_CREATE) {
-        mode |= O_CREAT;
-    }
-    if ((tmp_filedesc = open(filename, mode, NEW_FILE_MODE)) == -1) {
-        if ((flag & OPEN_QUIET) != OPEN_QUIET) {
-            sys_error(function_name, 1, "open");
-            return -1;
-        }
-    } else {
-        lseek(tmp_filedesc, 0L, 0);
-        if (flock(tmp_filedesc, LOCK_EX | LOCK_NB) == -1) {
-            sprintf(dentry, "file lock on [%s]", filename);
-            debuglog(dentry, 10);
-            count = 0;
-            while (flock(tmp_filedesc, LOCK_EX | LOCK_NB) == -1 && count < 30) {
-                sleep(1);
-                count++;
-            }
-            if (count >= 30) {
-                sprintf(dentry, "file [%s] reach lock limit", filename);
-                debuglog(dentry, 10);
-                return -1;
-            }
-            sprintf(dentry, "file [%s] released (%d)", filename, count);
-            debuglog(dentry, 10);
-        }
-    }
-
-    return tmp_filedesc;
-
-}
-
-/*
- * open_file - open file and locks it
- * args: filename (filename), modes for open (flags)
- * ret: filedescriptor or failure (-1)
- */
-
-/*
-int open_file(filename,flag)
-char	*filename;
-int	flag;
-{
-    int	mode;
-    int	tmp_filedesc;
-    char	*function_name = "open_file";
-
-    mode = O_RDWR;
-    if ((flag & OPEN_CREATE) == OPEN_CREATE) {
+    if (flag & OPEN_CREATE) {
         mode |= O_CREAT;
     }
 
-    if ((tmp_filedesc = open(filename, mode, NEW_FILE_MODE))  == -1) {
-        if ((flag & OPEN_QUIET) != OPEN_QUIET) {
+    fd = open(filename, mode, NEW_FILE_MODE);
+    if (fd == -1) {
+        if (!(flag & OPEN_QUIET)) {
             sys_error(function_name, 1, "open");
-            return -1;
         }
-    } else {
-      lock(tmp_filedesc);
+        return -1;
     }
 
-    return tmp_filedesc;
+    lseek(fd, 0L, SEEK_SET);
 
+    if (flock(fd, LOCK_EX | LOCK_NB) == -1) {
+        snprintf(dentry, sizeof dentry, "file lock on [%s]", filename);
+        debuglog(dentry, 10);
+
+        while (flock(fd, LOCK_EX | LOCK_NB) == -1 && count < 30) {
+            sleep(1);
+            count++;
+        }
+
+        if (count >= 30) {
+            snprintf(dentry, sizeof dentry, "file [%s] reached lock timeout", filename);
+            debuglog(dentry, 10);
+            close(fd);
+            return -1;
+        }
+
+        snprintf(dentry, sizeof dentry, "file [%s] lock acquired after %d sec", filename, count);
+        debuglog(dentry, 10);
+    }
+
+    return fd;
 }
-*/
-
-
-/*
- * close_file - close file and unlock it
- * args: filedescriptor (filedesc)
- * ret: ok (0), failure (-1)
- */
-
 int
 close_file(int filedesc)
 {
@@ -189,6 +150,7 @@ close_file(int filedesc)
     }
     return close(filedesc);
 }
+
 
 
 /*
