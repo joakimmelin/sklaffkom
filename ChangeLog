@@ -1,5 +1,7 @@
-Added documentation 2026-05-23: Connecting a modem to Sklaffkom. 
+2026-05-23: Added documentation : connecting a modem to Sklaffkom. 
 https://github.com/joakimmelin/sklaffkom/wiki/Connect-analogue-modem-to-Sklaffkom
+
+2026-05-13: Bugfix text body not displayed on terminals with light background
 
 V1.33 beta9a Saturday 27 September 2025 PL
 * This is the version we're shipping to github, after a day or so trying
