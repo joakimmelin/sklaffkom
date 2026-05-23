@@ -1035,7 +1035,7 @@ if (!ptr || strlen(ptr) == 0) {
            } else {
     		int qd = quote_depth(tb->line);
 		const char *col =
-        	(qd == 0) ? "\x1b[97m" :   /* 97: bright white body */
+            (qd == 0) ? "" :   /* bugfix, now displays on light terminals (used to be 97: bright white body) 2026-05-13 PL */
 	    	(qd == 1) ? "\x1b[33m" :   /* yellow (level 1)    */
 	    	(qd == 2) ? "\x1b[32m" :   /* green (level 2)   */
         	(qd == 3) ? "\x1b[94m" :   /* bright blue level 3 */
