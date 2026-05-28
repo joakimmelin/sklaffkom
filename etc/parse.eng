@@ -14,12 +14,14 @@ Cls:cmd_cls:Same as Clear (clear screen)
 Change loginscript:cmd_mod_login:Change commands executed at login
 Change note:cmd_mod_note:Change your "note"
 Change password:cmd_change_passwd:Change your password
+Change conferencedescription:cmd_change_cdesc:Change conference description
 Change conferencename:cmd_change_cname:Change conference name
 Change replyconference:cmd_change_comc:Change reply conference
 Change personal (information):cmd_mod_pinfo:Change personal information
 Change plan:cmd_mod_sig:Change your plan file
 Change rows:cmd_mod_numlines:Set number of rows
 Change screen (length):cmd_mod_numlines:Change number of screen rows
+Change signature:cmd_mod_sig:Change your signature
 Change timeout:cmd_mod_timeout:Change timeout period
 Create conference:cmd_create_conf:Create a new conference
 Delete article:cmd_delete_text:Delete a specific article
@@ -30,6 +32,7 @@ Display (article):cmd_read_text:Displays a specific article
 Download (file):cmd_download:Download a file from current conference
 Enter (article):cmd_post_text:Same as 'Write (article)'
 Find:cmd_grep:Search for a string in conference
+Footnote:cmd_footnote:Adds a footnote to a text
 Follow-up:cmd_comment:Post a follow-up to an article
 From:cmd_from:Show where you are from
 Get (QWK-packet):cmd_sendbatch:Send all your unread texts in QWK-format
@@ -58,7 +61,9 @@ New:cmd_only:Specify number of new articles in current conference
 (Display) next follow-up:cmd_next_comment:Displays next follow-up in current conference
 (Display) next article:cmd_next_text:Displays next new article in current conference
 Only:cmd_only:Same as 'New'
+Play (online games):cmd_bbslink:Calls games via the InterBBS-like service BBSLink
 Post (article):cmd_post_text:Same as 'Write (article)'
+Praise (article):cmd_like:Praise an article
 Reply:cmd_personal:Write a personal reply (mail) to article author
 Restart:cmd_restart:Restart program and login again
 (Report survey) result:cmd_survey_result:Report full survey result
@@ -82,6 +87,7 @@ Unread article:cmd_unread_text:Unread a specific article at logout-time
 Unread branch:cmd_goto_text:Unread all articles below a specific article
 Unread tree:cmd_unread_tree:Unread all articles in current tree
 Unread subject:cmd_unreadsub:Unread all articles with a certain subject
+Unpraise:cmd_unlike:Unpraise a text you have praised
 Unsubscribe (to):cmd_unsubscribe:Unsubscribe to a conference
 Upload (file):cmd_upload:Upload a file to current conference
 Where (am I):cmd_where:Show current conference

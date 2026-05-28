@@ -74,7 +74,7 @@
 #define MSG_CPY3        "                         Odd Petersson, Carl Sundbom.\n"
 #define MSG_CPY4        "QWK-hantering (C) 1994   Daniel Gr|njord\n"
 #define MSG_CPY4a       "Enk{tfunktion (C) 1996   Olof Runborg\n\n"
-//#define MSG_CPY5        "Uppdateringar/buggfixar gjorda av Petri Stenberg, Fredrik Bj|reman, Marcus Sundberg, Peter London och Joakim Melin.\n\n"
+#define MSG_CPY5        "Uppdateringar/buggfixar gjorda av Petri Stenberg, Fredrik Bj|reman, Marcus Sundberg, Peter London och Joakim Melin.\n\n"
 #define MSG_CPY6        "Programmet till{gnat Staffan Bergstr|ms minne.\n\n"
 #define MSG_CPY7        "SklaffKOM distribueras UTAN GARANTI. Detta {r fri programvara och alla\n"
 #define MSG_CPY8        "har r{tt sprida den enligt vissa villkor.\n\n"
@@ -278,9 +278,9 @@
 #define MSG_NGROUP	"Newsgroups:"
 #define MSG_NOTINCONF	"Du kan inte kommentera texter i andra m|ten."
 #define MSG_NOSUBJ	"Du m}ste ange ett {rende."
-#define MSG_MIMETYPE	"Mime-Version: 1.0"
-#define MSG_MIMECONT	"Content-Type: text/plain; charset=\"iso-8859-1\""
-#define MSG_MIMEENC	"Content-Transfer-Encoding: quoted-printable"
+#define MSG_MIMETYPE	"MIME-Version: 1.0"
+#define MSG_MIMECONT	"Content-Type: text/plain; charset=UTF-8"
+#define MSG_MIMEENC		"Content-Transfer-Encoding: 8bit"
 #define MSG_NOCMD       "Du m}ste ange ett kommandonamn."
 #define MSG_NOALIAS     "Du m}ste ange ett alias."
 #define MSG_THECOMMAND  "Kommandot"
@@ -291,19 +291,57 @@
 #define MSG_UNREADUNREAD "\n%d text(er) ol{smarkerades.\n"
 #define MSG_NUMLNSERR	"Ogiltigt v{rde. Ange 10 – 200.\n"
 #define MSG_NUMLNSHELLO	"Skriv in siffran du ser h|gst upp (0 f|r auto) :"
-#define MSG_NUMLNSFAIL	"Kunde tyvärr inte spara inst{llningen, meddela SysOp!\n"
+#define MSG_NUMLNSFAIL	"Kunde tyv{rr inte spara inst{llningen, meddela SysOp!\n"
 #define MSG_NUMLNSOK	"Antal rader satt till %d.\n"
 #define MSG_NUMLNCONF	"Ingen {ndring.\n"
 #define MSG_NO_ZORK	"No z3-file found, sorry"  					/*Zork */
-#define MSG_BADARG      "\nF|ljande infocom-spel finns f|r n{rvarande :\n\nZork 1\nZork 2\nZork 3\n\nFör att spela, ge kommandot Zork <nr>.\n\n"	/* Zork */
+#define MSG_BADARG      "\nF|ljande infocom-spel finns f|r n{rvarande :\n\nZork 1\nZork 2\nZork 3\n\nF|r att spela, ge kommandot Zork <nr>.\n\n"	/* Zork */
+#define MSG_SUCCESSUL   "Tackar f|r det! \nBeskriv nu g{rna filen genom att ge kommandot 'Beskriv <filnamn>'."
+#define MSG_FILE_DB_ER	"SysOp har inte konfigurerat filarkivet korrekt {n. Påminn denne."
+#define MSG_ULPRGMERROR "Uploadprogrammet saknas eller kan inte k|ras. Kontakta SysOp"
+#define MSG_FILES_OFF 	"Filöverföringar är inte konfigurerade på detta system."
+
 /* Nytt (Se) tiden-kommando */
 #define MSG_DISPTIME    "Klockan {r nu"
 #define MSG_IT          "den"
 #define MSG_DISPTIME2   "och du har varit inloggad i"
-#define MSG_BEATS1      "Tiden på internet {r"
+#define MSG_BEATS1      "Tiden p} internet {r "
 #define MSG_BEATS2      "och i Sverige har"
 #define MSG_BEATS3      "av dygnet hunnit g}."
-
+/* Fotnot */
+#define MSG_FOOTNOTE	"Fotnot"
+#define MSG_USEFOOT     "Syntax: fotnot <textnummer>"
+#define MSG_FOOTINLOCAL "Du kan bara l{gga in fotnötter i lokala möten."
+#define MSG_NOREADFILE  "Kunde inte l}sa textfilen. Kontakta SysOp"
+#define MSG_NOPARSEFILE "Kunde inte tolka textfilen. Kontakta SysOp."
+#define MSG_FNERROR01   "Du kan bara anv}nda detta kommando p} dina egna texter."
+#define MSG_FNERROR02   "H{r fanns det ju redan en fotnot, avbryter..."
+#define MSG_FOOTINPUT   "Skriv din fotnot och spara med Ctrl-Z."
+#define MSG_NOWRITEFILE "Kunde inte skriva till filen, sorry."
+#define MSG_NOOPENTMP   "Kunde inte |ppna textfilen."
+#define MSG_NOREADTMP   "Kunde inte l{sa textfilen."
+#define MSG_CANCELED	"Avbryter..."
+#define MSG_FOOTED		"Fotnot tillagd."
+/* Hylla */
+#define MSG_PRAISELOCAL	"Du kan bara hylla texter i lokala m|ten."
+#define MSG_NOTXTYET	"Du m}ste l{sa en text f|rst"
+#define MSG_NOTXTVALID	"Ogiltigt textnummer."
+#define MSG_NOTXT		"Den texten finns inte..."
+#define MSG_PRAISEOWN	"Du f}r bara hylla andras texter."
+#define MSG_1ISENOUGH	"Du har redan hyllat denna text en g}ng."
+#define MSG_TEXT		"Text "
+#define MSG_PRAISED		" hyllad."
+#define MSG_NOTPRAISED  "Du har ju inte hyllat denna text!"
+#define MSG_YOURPRAISE  "Din hyllning till text "
+#define MSG_ISREMOVED   " {r nu borttagen."
+/* Mötesbeskrivningar */
+#define MSG_CURRDESC    "Nuvarande beskrivning:"
+#define MSG_NODESCYET   "(Ingen beskrivning finns {nnu)"
+#define MSG_GIVENEWDESC "Ange ny beskrivning (max 80 tecken), eller l{mna tomt för att ta bort:"
+#define MSG_DESCDEL     "Beskrivningen togs bort."
+#define MSG_DESCERROR01 "Ingen beskrivning att ta bort, eller fel vid radering."
+#define MSG_DESCCONFIRM "Beskrivningen {r nu uppdaterad."
+#define MSG_DESCERROR02 "Fel vid uppdatering av beskrivningen."
 
 /* conf.c */
 
@@ -459,7 +497,7 @@
 #define MSG_FLAG17F     "Gammal (vilkalistesortering)"
 #define MSG_FLAG18	"ansi"
 #define MSG_FLAG18N	2
-#define MSG_FLAG18F	"ANSI-färger"
+#define MSG_FLAG18F	"ANSI-f{rger"
 #define MSG_FLAG19	"utf8"
 #define MSG_FLAG19N	1
 #define MSG_FLAG19F	"UTF-8 (teckenupps{ttning)"
@@ -472,6 +510,15 @@
 #define MSG_FLAG	"Flaggan"
 #define MSG_FLON	"p}slagen."
 #define MSG_FLOFF	"avslagen."
+
+/* lib/helpers.c */
+
+#define MSG_PRAISEDBY   "Denna text har hyllats av"
+#define MSG_PERSON      "person"
+#define MSG_PERSONS     "personer"
+#define MSG_CONFPRAISES "Texter som hyllats i detta m|te:"
+#define MSG_PRAISE      "hyllning"
+#define MSG_PRAISES     "hyllningar"
 
 /* msg.c */
 
@@ -629,12 +676,14 @@
 #define MSG_ADMHELP6	"   conflist - Listar m|ten och antal texter.\n"
 #define MSG_ADMHELP7	"   filelist - Listar storleken p} filer i m|ten.\n"
 #define MSG_ADMHELP8	"   maillist - Listar brevl}dor och antal texter.\n"
-#define MSG_ADMHELP9	"   life <conf> <num> - S{tter livsl{ngd f|r texter i <conf>, 0 = o{ndlig.\n"
-#define MSG_ADMHELP10	"   maillife <uid> <num> - S{tter livsl{ngd f|r texter i <uid>, 0 = o{ndlig.\n"
-#define MSG_ADMHELP11	"   purge <conf> <num> - Rensar texter, beh}ller minst <num> st.\n"
-#define MSG_ADMHELP12	"                        conf = -1 rensar i alla m|ten.\n"
-#define MSG_ADMHELP13	"   mailpurge <uid> <num> - Rensar brev, beh}ller minst <num> st.\n"
-#define MSG_ADMHELP14	"                           mbox = -1 rensar i alla brevl}dor.\n\n"
+#define MSG_ADMHELP9	"   life <conf> <num>      - S{tter livsl{ngd f|r texter i <conf>, 0 = o{ndlig.\n"
+#define MSG_ADMHELP10	"   maillife <uid> <num>   - S{tter livsl{ngd f|r texter i <uid>, 0 = o{ndlig.\n"
+#define MSG_ADMHELP11	"   purge <conf> <num>     - Rensar texter, beh}ller minst <num> st.\n"
+#define MSG_ADMHELP12	"                            conf = -1 rensar i alla m|ten.\n"
+#define MSG_ADMHELP13	"   mailpurge <uid> <num>  - Rensar brev, beh}ller minst <num> st.\n"
+#define MSG_ADMHELP14	"                            mbox = -1 rensar i alla brevl}dor.\n"
+#define MSG_ADMHELP18   "   forcepurge <uid> <num> - Rensar texter utan h{nsyn till livsl{ngd,\n"
+#define MSG_ADMHELP19   "                            beh}ller minst <num> st.\n\n"                                                     
 #define MSG_ADMHELP15	"   who - Inloggade anv{ndare.\n"
 #define MSG_ADMHELP16	"   down - Tar ner SklaffKOM snyggt.\n"
 #define MSG_ADMHELP17	"   up - Till}ter inloggning i SklaffKOM.\n\n"
@@ -946,14 +995,52 @@
 #define MSG_NUMLNCONF	"Same as before then.\n"
 #define MSG_NO_ZORK     "No z3-file found, sorry"       /*Zork */
 #define MSG_BADARG      "Oops bad input! Type Zork 1, or 2, or 3.\n\n"   /* Zork */
+#define MSG_SUCCESSUL   "Thanks! Please describe the file now by giving the command 'Describe <filename>'."
+#define MSG_FILES_OFF 	"File transfers are not configured on this system."
+#define MSG_FILE_DB_ER	"File DB configuration error, speak with your SysOp!"
+#define MSG_ULPRGMERROR "Upload program missing or can't be run. Contact your SysOp!"
+
+/* New time */
 #define MSG_DISPTIME    "Current time is"
 #define MSG_IT          "on the"
 #define MSG_DISPTIME2   "and you've been here for"
 #define MSG_BEATS1      "Internet time is now"
 #define MSG_BEATS2      "and in Sweden"
 #define MSG_BEATS3      "of the day has passed."
-
-
+/* Footnote */
+#define MSG_FOOTNOTE	"Footnote"
+#define MSG_USEFOOT     "Syntax: footnote <article>"
+#define MSG_FOOTINLOCAL "Footnotes only works in local meetings."
+#define MSG_NOREADFILE  "Text file read error. Sorry."
+#define MSG_NOPARSEFILE "Text file parsing error. Sorry."
+#define MSG_FNERROR01   "That's not your article. Footnote disallowed."
+#define MSG_FNERROR02   "This article has a foot note already!"
+#define MSG_FOOTINPUT   "Submit your footnote and save with Ctrl-Z on a new line."
+#define MSG_NOWRITEFILE "Text file write error. Sorry."
+#define MSG_NOOPENTMP   "Tmp file open error."
+#define MSG_NOREADTMP   "Tmp file read error."
+#define MSG_CANCELED	"Canceling..."
+#define MSG_FOOTED		"Footnote added."
+/* Hylla / praise */
+#define MSG_PRAISELOCAL	"You can only praise articles in local conferences."
+#define MSG_NOTXTYET	"You must read an article first"
+#define MSG_NOTXTVALID	"Invalid article number."
+#define MSG_NOTXT		"That article does not exist."
+#define MSG_PRAISEOWN	"You can't praise your own articles!"
+#define MSG_1ISENOUGH	"You have already praised this article"
+#define MSG_TEXT		"Article"
+#define MSG_PRAISED		"praised."
+#define MSG_NOTPRAISED  "You have not praised this article!"
+#define MSG_YOURPRAISE  "Your praise of article number "
+#define MSG_ISREMOVED   " is now removed."
+/* Conference descriptions */
+#define MSG_CURRDESC    "Current description:"
+#define MSG_NODESCYET   "(This conference has no description)"
+#define MSG_GIVENEWDESC "Submit a new description (max 80 chars), or leave emtpy to remove:"
+#define MSG_DESCDEL     "Description removed."
+#define MSG_DESCERROR01 "Nothing remove. Or error. Contact SysOp!"
+#define MSG_DESCCONFIRM "Succesful submit of description."
+#define MSG_DESCERROR02 "Error when trying to update the description. Contact your SysOp!"
 
 /* conf.c */
 
@@ -1060,8 +1147,15 @@
 #define MSG_CONFMSG	"Message sent to"
 #define MSG_IDLEWARNING "idle since"
 
-/* flag.c */
+/* lib/helpers.c */
+#define MSG_PRAISEDBY   "This article has been praised by"
+#define MSG_PERSON      "person"
+#define MSG_PERSONS     "persons"
+#define MSG_CONFPRAISES "Praised articles in this conference:"
+#define MSG_PRAISE      "praise"
+#define MSG_PRAISES     "praises"
 
+/* flag.c */
 #define MSG_FLAG0	"ibm-pc"
 #define MSG_FLAG0N	2
 #define MSG_FLAG0F	"IBM-PC (character set)"
@@ -1274,12 +1368,14 @@
 #define MSG_ADMHELP6	"   conflist - List conference and article status.\n"
 #define MSG_ADMHELP7	"   filelist - List total files in conferences.\n"
 #define MSG_ADMHELP8	"   maillist - List mailboxes and mail status.\n"
-#define MSG_ADMHELP9	"   life <conf> <num> - Sets life-time for texts in <conf>, 0 = eternal.\n"
-#define MSG_ADMHELP10	"   maillife <uid> <num> - Sets life-time for texts in <uid>, 0 = eternal.\n"
-#define MSG_ADMHELP11	"   purge <conf> <num> - Purges articles, leaves at leat <num> articles.\n"
-#define MSG_ADMHELP12	"                        conf = -1 purges all conferences.\n"
-#define MSG_ADMHELP13	"   mailpurge <uid> <num> - Purges mail, leaves at least <num> mails.\n"
-#define MSG_ADMHELP14	"                           mbox = -1 purges in all mailboxes.\n\n"
+#define MSG_ADMHELP9	"   life <conf> <num>      - Sets life-time for texts in <conf>, 0 = eternal.\n"
+#define MSG_ADMHELP10	"   maillife <uid> <num>   - Sets life-time for texts in <uid>, 0 = eternal.\n"
+#define MSG_ADMHELP11	"   purge <conf> <num>     - Purges articles, leaves at leat <num> articles.\n"
+#define MSG_ADMHELP12	"                            conf = -1 purges all conferences.\n"
+#define MSG_ADMHELP13	"   mailpurge <uid> <num>  - Purges mail, leaves at least <num> mails.\n"
+#define MSG_ADMHELP14	"                            mbox = -1 purges in all mailboxes.\n"
+#define MSG_ADMHELP18   "   forcepurge <uid> <num> - Purges articles with no consideration to it's age,\n"
+#define MSG_ADMHELP19   "                            beh}ller minst <num> st.\n\n"                  
 #define MSG_ADMHELP15	"   who - Display active users.\n"
 #define MSG_ADMHELP16	"   down - Shuts down SklaffKOM properly.\n"
 #define MSG_ADMHELP17	"   up - Opens SklaffKOM for login.\n\n"

@@ -100,7 +100,7 @@ open_file(const char *filename, int flag)
     int mode = O_RDWR;
     int fd;
     int count = 0;
-    char dentry[180];
+/*  char dentry[180]; */
     const char *function_name = "open_file";
 
     if (flag & OPEN_CREATE) {
@@ -118,8 +118,10 @@ open_file(const char *filename, int flag)
     lseek(fd, 0L, SEEK_SET);
 
     if (flock(fd, LOCK_EX | LOCK_NB) == -1) {
-        snprintf(dentry, sizeof dentry, "file lock on [%s]", filename);
+        /*
+		snprintf(dentry, sizeof dentry, "file lock on [%s]", filename);
         debuglog(dentry, 10);
+		*/
 
         while (flock(fd, LOCK_EX | LOCK_NB) == -1 && count < 30) {
             sleep(1);
@@ -127,14 +129,17 @@ open_file(const char *filename, int flag)
         }
 
         if (count >= 30) {
-            snprintf(dentry, sizeof dentry, "file [%s] reached lock timeout", filename);
+			/*            
+			snprintf(dentry, sizeof dentry, "file [%s] reached lock timeout", filename);
             debuglog(dentry, 10);
+			*/
             close(fd);
             return -1;
         }
-
+		/*
         snprintf(dentry, sizeof dentry, "file [%s] lock acquired after %d sec", filename, count);
         debuglog(dentry, 10);
+		*/
     }
 
     return fd;

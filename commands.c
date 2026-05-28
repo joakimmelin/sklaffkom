@@ -25,6 +25,10 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#ifndef LOGTAG /* We set logtag here for nicer logs with easier greps */
+#define LOGTAG "commands"
+#endif
+
 #include "sklaff.h"
 #include "ext_globals.h"
 #include <pwd.h>
@@ -2211,14 +2215,47 @@ cmd_only(char *args)
  * ret: ok (0) or error (-1)
  */
 
+/* New helper because we won't be sending sf7 in outgoing e-mail anymore (makes no sense 2026) PL 2026-05-26 */
+static void
+write_mail_utf8(FILE *pipe, const char *return_path, const char *subject_sf7,
+                const char *body_sf7)
+{
+    char *utf8_subject;
+    char *utf8_body;
+
+    utf8_subject = sf7_to_utf8_dup(subject_sf7);
+    utf8_body = sf7_to_utf8_dup(body_sf7);
+
+    if (!utf8_subject || !utf8_body) {
+        free(utf8_subject);
+        free(utf8_body);
+        return;
+    }
+
+    fprintf(pipe, "%s%s\n", MSG_EMRETURN, return_path);
+    fprintf(pipe, "MIME-Version: 1.0\n");
+    fprintf(pipe, "Content-Type: text/plain; charset=UTF-8\n");
+    fprintf(pipe, "Content-Transfer-Encoding: 8bit\n");
+    fprintf(pipe, "%s%s\n", MSG_EMSUB, utf8_subject);
+    fprintf(pipe, "\n");
+    fprintf(pipe, "%s", utf8_body);
+
+    if (utf8_body[0] != '\0' && utf8_body[strlen(utf8_body) - 1] != '\n') {
+        fprintf(pipe, "\n");
+    }
+
+    free(utf8_subject);
+    free(utf8_body);
+}
+
 int
 cmd_mail(char *args)
 {
     LINE fname, tmpstr;
     LONG_LINE cmdline, tmp;
-    char *username, *mailrec, *inbuf, *finbuf, *ptr, *inptr;
+	char *username, *mailrec, *inbuf;
     struct TEXT_HEADER th;
-    int conf, mailuid, uid, fd, msize;
+   	int conf, mailuid, uid, fd;
     FILE *pipe;
     struct passwd *pw;
 
@@ -2297,69 +2334,21 @@ cmd_mail(char *args)
             if (close_file(fd) == -1) {
                 return -1;
             }
-            /*
- 	    msize = (strlen(inbuf) * 3) + 1;
-            finbuf = (char *) malloc (msize);
-            memset(finbuf, 0, msize);
-            ptr = finbuf;
-            inptr = inbuf;
-            */
+			pw = getpwuid(Uid);
+			snprintf(tmpstr, sizeof(tmpstr), "<%s@%s>", pw->pw_name, MACHINE_NAME);
 
-            /* Modified to allow mails with initial line containing a
-             * header-like syntax. The extra blank line added to all mails
-             * will be stripped by sendmail but ensures that sendmail does not
-             * consider the first real line a part of the header. / OR
-             * 99-04-28 */
+			write_mail_utf8(pipe, tmpstr, th.subject, inbuf);
 
-            msize = (strlen(inbuf) * 3) + 1 + 1;
-            finbuf = (char *) malloc(msize);
-            memset(finbuf, 0, msize);
-            finbuf[0] = 10;
-            ptr = finbuf + 1;
-            inptr = inbuf;
-            while (*inptr) {
-                if (*inptr == '}') {
-                    *ptr++ = '=';
-                    *ptr++ = 'E';
-                    *ptr++ = '5';
-                } else if (*inptr == '{') {
-                    *ptr++ = '=';
-                    *ptr++ = 'E';
-                    *ptr++ = '4';
-                } else if (*inptr == '|') {
-                    *ptr++ = '=';
-                    *ptr++ = 'F';
-                    *ptr++ = '6';
-                } else if (*inptr == ']') {
-                    *ptr++ = '=';
-                    *ptr++ = 'C';
-                    *ptr++ = '5';
-                } else if (*inptr == '[') {
-                    *ptr++ = '=';
-                    *ptr++ = 'C';
-                    *ptr++ = '4';
-                } else if (*inptr == '\\') {
-                    *ptr++ = '=';
-                    *ptr++ = 'D';
-                    *ptr++ = '6';
-                } else if (*inptr == '=') {
-                    *ptr++ = '=';
-                    *ptr++ = '3';
-                    *ptr++ = 'D';
-                } else
-                    *ptr++ = *inptr;
-                inptr++;
-            }
-            free(inbuf);
-            pw = getpwuid(Uid);
-            snprintf(tmpstr, sizeof(tmpstr), "<%s@%s>", pw->pw_name, MACHINE_NAME);
-            fprintf(pipe, "%s%s\n%s\n%s\n%s\n%s%s\n%s", MSG_EMRETURN, tmpstr,
-                MSG_MIMETYPE, MSG_MIMECONT, MSG_MIMEENC, MSG_EMSUB,
-                th.subject, finbuf);
-            pclose(pipe);
-            if (Copy)
-                (void) save_mailcopy(mailrec, th.subject, finbuf);
-            free(finbuf);
+			pclose(pipe);
+
+			if (Copy) {
+    			/*
+     			* Keep local copy in SklaffKOM's internal SF7 form.
+     			*/
+    		(void) save_mailcopy(mailrec, th.subject, inbuf);
+			}
+
+free(inbuf);       
             unlink(fname);
             output("%s\n\n", MSG_MAILED);
         }
@@ -2381,8 +2370,8 @@ cmd_personal(char *args)
     LINE fname, mr, cmdline, tmpstr;
     LONG_LINE tmp;
     char *buf, *oldbuf, *mailrec, *ptr2, *ptr3, *inbuf, *ptr4;
-    char sav, *ptr, *inptr, *finbuf;
-    int conf, fd, commentuid, uid, msize;
+	char sav;
+	int conf, fd, commentuid, uid;
     long textnum, last, commenttext;
     struct TEXT_HEADER th, *thtmp;
     struct TEXT_BODY *tb;
@@ -2533,54 +2522,21 @@ cmd_personal(char *args)
         if (close_file(fd) == -1) {
             return -1;
         }
-        msize = (strlen(inbuf) * 3) + 1;
-        finbuf = (char *) malloc(msize);
-        memset(finbuf, 0, msize);
-        ptr = finbuf;
-        inptr = inbuf;
-        while (*inptr) {
-            if (*inptr == '}') {
-                *ptr++ = '=';
-                *ptr++ = 'E';
-                *ptr++ = '5';
-            } else if (*inptr == '{') {
-                *ptr++ = '=';
-                *ptr++ = 'E';
-                *ptr++ = '4';
-            } else if (*inptr == '|') {
-                *ptr++ = '=';
-                *ptr++ = 'F';
-                *ptr++ = '6';
-            } else if (*inptr == ']') {
-                *ptr++ = '=';
-                *ptr++ = 'C';
-                *ptr++ = '5';
-            } else if (*inptr == '[') {
-                *ptr++ = '=';
-                *ptr++ = 'C';
-                *ptr++ = '4';
-            } else if (*inptr == '\\') {
-                *ptr++ = '=';
-                *ptr++ = 'D';
-                *ptr++ = '6';
-            } else if (*inptr == '=') {
-                *ptr++ = '=';
-                *ptr++ = '3';
-                *ptr++ = 'D';
-            } else
-                *ptr++ = *inptr;
-            inptr++;
-        }
-        free(inbuf);
-        pw = getpwuid(Uid);
-        snprintf(tmpstr, sizeof(tmpstr), "<%s@%s>", pw->pw_name, MACHINE_NAME);
-        fprintf(pipe, "%s%s\n%s\n%s\n%s\n%s%s\n%s", MSG_EMRETURN, tmpstr,
-            MSG_MIMETYPE, MSG_MIMECONT, MSG_MIMEENC, MSG_EMSUB,
-            th.subject, finbuf);
-        pclose(pipe);
-        if (Copy)
-            (void) save_mailcopy(mailrec, th.subject, finbuf);
-        free(finbuf);
+       	pw = getpwuid(Uid);
+	   	snprintf(tmpstr, sizeof(tmpstr), "<%s@%s>", pw->pw_name, MACHINE_NAME);
+
+	   	write_mail_utf8(pipe, tmpstr, th.subject, inbuf);
+
+	   	pclose(pipe);
+
+	   	if (Copy) {
+          	/*
+     		* Keep local copy in SklaffKOM's internal SF7 form.
+     		*/
+       		(void) save_mailcopy(mailrec, th.subject, inbuf);
+       	}
+
+       	free(inbuf);
         unlink(fname);
         output("%s\n\n", MSG_MAILED);
         return 0;
@@ -2606,28 +2562,34 @@ cmd_post_text(char *args)
     long textnum;
     struct CONF_ENTRY *ce;
     LONG_LINE uname, cmdline; /* We don't use group anymore */
-    LONG_LINE tmp; /* moved here for inews header generation (2025-08-07, PL) */
+    LONG_LINE tmp;            /* moved here for inews header generation (2025-08-07, PL) */
     FILE *pipe;
     struct SKLAFFRC *rc;
-
+	/* Lot's of logging added November 2025 PL */
+    dlog(6, "cmd_post_text: enter args=[%s]", (args && *args) ? args : "(empty)");
     Change_prompt = 1;
     un = NULL;
     if (!args || (*args == '\0')) {
         strcpy(args, conf_name(Current_conf, cname));
         confid = Current_conf;
+        dlog(7, "cmd_post_text: no args -> default conf id=%d name=[%s]", confid, cname);
     } else {
         confname = expand_name(args, CONF, 0, NULL);
         if (!confname) {
+            dlog(4, "cmd_post_text: expand_name failed for args=[%s]", args);
             return 0;
         }
         confid = conf_num(confname);
+        dlog(7, "cmd_post_text: expanded conf args=[%s] -> id=%d", args, confid);
     }
 
     if (!confid) {
+        dlog(3, "cmd_post_text: invalid confid (0) -> MSG_NOPOSTMBOX");
         output("\n%s\n\n", MSG_NOPOSTMBOX);
         return 0;
     }
     if (!member_of(Uid, confid)) {
+        dlog(4, "cmd_post_text: user %d not member of conf %d -> MSG_NOSUB", Uid, confid);
         output("\n%s\n\n", MSG_NOSUB);
         return 0;
     }
@@ -2635,6 +2597,7 @@ cmd_post_text(char *args)
     ce = get_conf_struct(confid);
 #ifndef POSTING_OK
     if (ce->type == NEWS_CONF) {
+        dlog(5, "cmd_post_text: NEWS_CONF but POSTING_OK not defined -> MSG_NONEWS");
         output("\n%s\n\n", MSG_NONEWS);
         return 0;
     }
@@ -2642,12 +2605,11 @@ cmd_post_text(char *args)
 #ifdef POSTING_OK
     if (ce->type == NEWS_CONF) {
         struct passwd *pw = getpwuid(Uid);
-
-        snprintf(uname, sizeof(uname), "%s@%s (%s)", pw->pw_name, MACHINE_NAME,
-            user_name(Uid, tmp));
+        snprintf(uname, sizeof(uname), "%s@%s (%s)", pw->pw_name, MACHINE_NAME, user_name(Uid, tmp));
         un = uname;
- //       snprintf(group, sizeof(group), "%s %s", MSG_NGROUP, conf_name(confid, tmp));
+ //     snprintf(group, sizeof(group), "%s %s", MSG_NGROUP, conf_name(confid, tmp));
         th.author = 0;
+        dlog(6, "cmd_post_text: NEWS posting mode, uname=[%s]", uname);
     }
 #endif
     th.num = 0L;
@@ -2660,91 +2622,200 @@ cmd_post_text(char *args)
     th.type = TYPE_TEXT;
     strcpy(fname, Home);
     strcat(fname, EDIT_FILE);
+    dlog(7, "cmd_post_text: edit file path=[%s]", fname);
     output("\n");
+
     if (un) {
-        if ((fd = open_file(POST_INFO, 0)) == -1)
+        if ((fd = open_file(POST_INFO, 0)) == -1) {
+            dlog(2, "cmd_post_text: open_file POST_INFO failed: %s", POST_INFO);
             return -1;
-        if ((inbuf = read_file(fd)) == NULL)
+        }
+        if ((inbuf = read_file(fd)) == NULL) {
+            dlog(2, "cmd_post_text: read_file POST_INFO failed");
             return -1;
-        if (close_file(fd) == -1)
+        }
+        if (close_file(fd) == -1) {
+            dlog(3, "cmd_post_text: close_file POST_INFO failed");
             return -1;
+        }
+        dlog(8, "cmd_post_text: POST_INFO shown to user, bytes=%zu", strlen(inbuf));
         output(inbuf);
         free(inbuf);
         output("\n");
     }
     display_header(&th, 1, confid, 0, un);
+    dlog(7, "cmd_post_text: header done, subject=[%s]", th.subject);
+
     if (strlen(th.subject) == 0) {
+        dlog(6, "cmd_post_text: empty subject -> cancel");
         output("\n");
         return 0;
     }
     if (line_ed(fname, &th, confid, 1, 1, NULL, un) == NULL) {
+        dlog(5, "cmd_post_text: editor returned NULL -> MSG_TEXTREM");
         output("\n%s\n\n", MSG_TEXTREM);
         return 0;
     }
     if (un) {
+        /* Build inews command line; capture stderr if LOGLEVEL >= 8 */
+#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
+        snprintf(cmdline, sizeof(cmdline), "%s 2>/tmp/inews.err.%d", NEWSPRGM, getpid());
+#else
         snprintf(cmdline, sizeof(cmdline), "%s", NEWSPRGM);
+#endif
+        dlog(6, "cmd_post_text: inews NEWSPRGM=[%s]", NEWSPRGM);
+        dlog(6, "cmd_post_text: inews cmdline=[%s]", cmdline);
+        dlog(7, "cmd_post_text: env SERVER=[%s] NNTPSERVER=[%s] PATH=[%s]",
+             getenv("SERVER") ? getenv("SERVER") : "(unset)",
+             getenv("NNTPSERVER") ? getenv("NNTPSERVER") : "(unset)",
+             getenv("PATH") ? getenv("PATH") : "(unset)");
+
         if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
+            dlog(2, "cmd_post_text: popen inews failed");
             output("%s\n\n", MSG_NOINEWS);
             return -1;
         }
-        if ((fd = open_file(fname, 0)) == -1)
+
+        if ((fd = open_file(fname, 0)) == -1) {
+            dlog(2, "cmd_post_text: open_file edit file failed: %s", fname);
             return -1;
-        if ((inbuf = read_file(fd)) == NULL)
+        }
+        if ((inbuf = read_file(fd)) == NULL) {
+            dlog(2, "cmd_post_text: read_file edit file failed: %s", fname);
             return -1;
-        if (close_file(fd) == -1)
+        }
+        if (close_file(fd) == -1) {
+            dlog(3, "cmd_post_text: close_file edit file failed: %s", fname);
             return -1;
+        }
         rc = read_sklaffrc(Uid);
-        if (rc != NULL) {
-            if (strlen(rc->sig)) {
-             /*fprintf(pipe, "%s%s\n%s\n%s%s\n\n%s--\n%s", MSG_EMFROM,
-                    uname, group, MSG_EMSUB, th.subject, inbuf, rc->sig);*/
-/*
-		fprintf(pipe, "From: %s\n", uname);
-		fprintf(pipe, "Newsgroups: %s\n", conf_name(confid, tmp));
-		fprintf(pipe, "Subject: %s\n", th.subject);
-		fprintf(pipe, "\n%s\n--\n%s\n", inbuf, rc->sig);
-*/
+        char *utf8_body = NULL;
+		char *utf8_subject = NULL;
+		char *utf8_uname = NULL;
+		char *utf8_sig = NULL;
 
-fprintf(pipe, "From: %s\n", uname);
-fprintf(pipe, "Newsgroups: %s\n", conf_name(confid, tmp));
-fprintf(pipe, "Subject: %s\n", th.subject);
-fprintf(pipe, "Content-Type: text/plain; charset=UTF-8\n");
-fprintf(pipe, "MIME-Version: 1.0\n");
-fprintf(pipe, "\n");
-fprintf(pipe, "%s\n", inbuf);
-fprintf(pipe, "--\n%s\n", rc->sig);
+		utf8_body = sf7_to_utf8_dup(inbuf);
+		utf8_subject = sf7_to_utf8_dup(th.subject);
+		utf8_uname = sf7_to_utf8_dup(uname);
+
+		if (rc && rc->sig[0])
+    		utf8_sig = sf7_to_utf8_dup(rc->sig);
+
+		if (!utf8_body || !utf8_subject || !utf8_uname || ((rc && rc->sig[0]) && !utf8_sig)) {
+    		dlog(2, "cmd_post_text: sf7_to_utf8_dup failed");
+    		free(utf8_body);
+    		free(utf8_subject);
+    		free(utf8_uname);
+    		free(utf8_sig);
+    	if (rc != NULL ){
+        	free(rc);
+        }
+    		free(inbuf);
+    		pclose(pipe);
+    		return -1;
+		}
 
 
+		dlog(7, "cmd_post_text: post headers From=[%s] Group=[%s] Subject=[%s]",
+             uname, conf_name(confid, tmp), th.subject);
+        dlog(8, "cmd_post_text: body bytes=%zu sig=%s",
+             strlen(inbuf), (rc && rc->sig[0]) ? "yes" : "no");
+
+#if defined(LOGLEVEL) && (LOGLEVEL >= 9)
+        /* Optional: dump full article to /tmp for deep debugging */
+        {
+            char dbgfile[256];
+            FILE *dbg;
+            snprintf(dbgfile, sizeof(dbgfile), "/tmp/sklaffkom-inews-%d.txt", getpid());
+            dbg = fopen(dbgfile, "w");
+            if (dbg) {
+				fprintf(dbg, "From: %s\n", utf8_uname);
+                fprintf(dbg, "Newsgroups: %s\n", conf_name(confid, tmp));
+                fprintf(dbg, "Subject: %s\n", utf8_subject);
+                fprintf(dbg, "Content-Type: text/plain; charset=UTF-8\n");
+                fprintf(dbg, "MIME-Version: 1.0\n\n");
+                fputs(utf8_body, dbg);
+                if (utf8_sig && utf8_sig[0]) {
+    				fputs("\n-- \n", dbg);
+    				fputs(utf8_sig, dbg);
+    				fputc('\n', dbg);
+				}
+                fclose(dbg);
+                dlog(9, "cmd_post_text: article dump saved: %s", dbgfile);
             } else {
-                /*fprintf(pipe, "%s%s\n%s\n%s%s\n\n%s", MSG_EMFROM, uname,
-                    group, MSG_EMSUB, th.subject, inbuf);*/
+                dlog(8, "cmd_post_text: article dump fopen failed");
+            }
+        }
+#endif /* LOGLEVEL >= 9 */
 
-/*
-
-		fprintf(pipe, "From: %s\n", uname);
+        /* Emit article to inews */
+        /* We experiment with utf8 now */
+		fprintf(pipe, "From: %s\n", utf8_uname);
 		fprintf(pipe, "Newsgroups: %s\n", conf_name(confid, tmp));
-		fprintf(pipe, "Subject: %s\n", th.subject);
-		fprintf(pipe, "\n%s\n", inbuf);
-*/
-		fprintf(pipe, "From: %s\n", uname);
-		fprintf(pipe, "Newsgroups: %s\n", conf_name(confid, tmp));
-		fprintf(pipe, "Subject: %s\n", th.subject);
+		fprintf(pipe, "Subject: %s\n", utf8_subject);
 		fprintf(pipe, "Content-Type: text/plain; charset=UTF-8\n");
 		fprintf(pipe, "MIME-Version: 1.0\n");
-		fprintf(pipe, "\n");  // REQUIRED blank line between headers and body
-		fprintf(pipe, "%s\n", inbuf);
-        } 
-}
-	fflush(pipe);        /* Added for good measure 2025-08-07 PL */
-        fputs("\004", pipe); /* Writes ^D (not sure if really needed?) */
-        if (rc != NULL)
+		fprintf(pipe, "\n");
+		fprintf(pipe, "%s\n", utf8_body);
+		if (utf8_sig && utf8_sig[0]) {
+    		fprintf(pipe, "-- \n%s\n", utf8_sig);
+		}
+
+
+
+/*		fprintf(pipe, "From: %s\n", uname);
+        fprintf(pipe, "Newsgroups: %s\n", conf_name(confid, tmp));
+        fprintf(pipe, "Subject: %s\n", th.subject);
+        fprintf(pipe, "Content-Type: text/plain; charset=UTF-8\n");
+        fprintf(pipe, "MIME-Version: 1.0\n");
+        fprintf(pipe, "\n");
+        fprintf(pipe, "%s\n", inbuf);
+        if (rc && rc->sig[0]) {
+            fprintf(pipe, "-- \n%s\n", rc->sig);
+        }
+*/
+        if (fflush(pipe) != 0) {
+            dlog(3, "cmd_post_text: fflush(pipe) failed before pclose");
+        } else {
+            dlog(7, "cmd_post_text: fflush(pipe) OK");
+        }
+		/*
+        dlog(7, "cmd_post_text: sending EOT (^D) to inews");
+        fputs("\004", pipe);  
+		*/
+        free(utf8_uname);
+		free(utf8_subject);
+		free(utf8_body);
+		free(utf8_sig);
+
+		if (rc != NULL) {
             free(rc);
+        }
         free(inbuf);
-        pclose(pipe);
+
+        {
+            int pstat = pclose(pipe);
+            dlog(6, "cmd_post_text: inews pclose status=%d", pstat);
+#ifdef WIFEXITED
+            if (WIFEXITED(pstat)) dlog(7, "cmd_post_text: inews exit=%d", WEXITSTATUS(pstat));
+            if (WIFSIGNALED(pstat)) dlog(3, "cmd_post_text: inews signaled sig=%d", WTERMSIG(pstat));
+#endif
+#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
+            {
+                char errpath[64];
+                snprintf(errpath, sizeof(errpath), "/tmp/inews.err.%d", getpid());
+                dlog(8, "cmd_post_text: inews stderr (if any): %s", errpath);
+            }
+#endif
+        }
+
+        dlog(6, "cmd_post_text: unlink temp file %s", fname);
         unlink(fname);
         output("%s\n\n", MSG_POSTED);
+        dlog(6, "cmd_post_text: leave (posted via inews)");
         return 0;
     } else if ((textnum = save_text(fname, &th, confid)) == -1) {
+        dlog(3, "cmd_post_text: save_text failed -> MSG_CONFMISSING");
         output("\n%s\n\n", MSG_CONFMISSING);
         return -1;
     }
@@ -2755,6 +2826,7 @@ fprintf(pipe, "--\n%s\n", rc->sig);
         Last_text = textnum;
     }
     mark_as_read(textnum, confid);
+    dlog(6, "cmd_post_text: leave (saved local text %ld in conf %d)", textnum, confid);
     return 0;
 }
 
@@ -2770,8 +2842,7 @@ cmd_comment(char *args)
     LINE fname, newline, mr, cmdline, uname, refname, reference, tmpstr;
     LONG_LINE group, tmp, cname;
     char *buf, *oldbuf, *nbuf, *ptr2, *mailrec, *inbuf, *ptr3, *ptr4, sav;
-    char *finbuf, *inptr, *bptr;
-    int conf, fd, commentuid, allow, nc, *ptr, i, msize, right;
+    int conf, fd, commentuid, allow, nc, *ptr, i, right;
     long textnum, last, commenttext, savednum;
     struct TEXT_HEADER th, *thtmp;
     struct TEXT_BODY *tb;
@@ -2782,11 +2853,14 @@ cmd_comment(char *args)
     struct USER_LIST *ul;
     FILE *pipe;
 
+    dlog(6, "cmd_comment: enter args=[%s]", (args && *args) ? args : "(empty)");
+
     Change_prompt = 1;
     if (!args || (*args == '\0')) {
         if (Last_conf == Current_conf)
             textnum = Last_text;
         else {
+            dlog(4, "cmd_comment: not in current conf -> MSG_NOTINCONF");
             output("\n%s\n\n", MSG_NOTINCONF);
             return 0;
         }
@@ -2798,25 +2872,31 @@ cmd_comment(char *args)
     if ((textnum <= 0) || (textnum > last)) {
         if (textnum)
             output("\n%s\n\n", MSG_ERRTNUM);
+        dlog(5, "cmd_comment: invalid textnum=%ld (last=%ld)", textnum, last);
         return 0;
     }
     if (Current_conf > 0) {
         snprintf(cname, sizeof(cname), "%s/%d/%ld", SKLAFF_DB, Current_conf, textnum);
         allow = 1;
+        dlog(7, "cmd_comment: loading text from DB path=[%s] allow=%d", cname, allow);
     } else {
         snprintf(cname, sizeof(cname), "%s/%ld", Mbox, textnum);
         allow = 0;
+        dlog(7, "cmd_comment: loading text from MBOX path=[%s] allow=%d", cname, allow);
     }
 
     if ((fd = open_file(cname, OPEN_QUIET)) == -1) {
+        dlog(3, "cmd_comment: open_file failed: %s", cname);
         output("\n%s\n\n", MSG_NOTEXT);
         return 0;
     }
     if ((buf = read_file(fd)) == NULL) {
+        dlog(3, "cmd_comment: read_file failed: %s", cname);
         output("\n%s\n\n", MSG_NOREAD);
         return 0;
     }
     if (close_file(fd) == -1) {
+        dlog(3, "cmd_comment: close_file failed: %s", cname);
         return 0;
     }
     oldbuf = buf;
@@ -2827,8 +2907,12 @@ cmd_comment(char *args)
     thtmp = &te.th;
     commenttext = thtmp->num;
     commentuid = thtmp->author;
+    dlog(6, "cmd_comment: replying to text=%ld author=%d subject=[%s]",
+         commenttext, commentuid, thtmp->subject);
+
     mailrec = NULL;
     if (!commentuid) {
+        /* Extract mail recipient from From: lines in body for mail replies */
         tb = te.body;
         while (tb) {
             if ((ptr2 = strstr(tb->line, MSG_EMFROM)) != NULL)
@@ -2839,44 +2923,50 @@ cmd_comment(char *args)
                 break;
             tb = tb->next;
         }
-        ptr2 = ptr2 + strlen(MSG_EMFROM);
-        ptr3 = strchr(ptr2, '@');
-        if (!ptr3)
-            ptr3 = strchr(ptr2, '!');
-        if (ptr3) {
-            while ((*ptr3 != ' ') && (*ptr3 != '<'))
-                ptr3--;
-            ptr3++;
-            ptr4 = strchr(ptr3, '>');
-            if (!ptr4)
-                ptr4 = strchr(ptr3, ' ');
-            if (ptr4) {
-                sav = *ptr4;
-                *ptr4 = '\0';
-            }
-            strcpy(mr, ptr3);
-            if (ptr4)
-                *ptr4 = sav;
+        if (!ptr2) {
+            dlog(5, "cmd_comment: no From: marker found for mail reply");
         } else {
-            ptr3 = strchr(ptr2, '(');
+            ptr2 = ptr2 + strlen(MSG_EMFROM);
+            ptr3 = strchr(ptr2, '@');
             if (!ptr3)
-                ptr3 = strchr(ptr2, '<');
+                ptr3 = strchr(ptr2, '!');
             if (ptr3) {
-                ptr3--;
-                sav = *ptr3;
-                *ptr3 = '\0';
-                strcpy(mr, ptr2);
-                *ptr3 = sav;
-            } else
-                strcpy(mr, ptr2);
+                while ((*ptr3 != ' ') && (*ptr3 != '<'))
+                    ptr3--;
+                ptr3++;
+                ptr4 = strchr(ptr3, '>');
+                if (!ptr4)
+                    ptr4 = strchr(ptr3, ' ');
+                if (ptr4) {
+                    sav = *ptr4;
+                    *ptr4 = '\0';
+                }
+                strcpy(mr, ptr3);
+                if (ptr4)
+                    *ptr4 = sav;
+            } else {
+                ptr3 = strchr(ptr2, '(');
+                if (!ptr3)
+                    ptr3 = strchr(ptr2, '<');
+                if (ptr3) {
+                    ptr3--;
+                    sav = *ptr3;
+                    *ptr3 = '\0';
+                    strcpy(mr, ptr2);
+                    *ptr3 = sav;
+                } else
+                    strcpy(mr, ptr2);
+            }
+            strcpy(tmp, mr);
+            if (strip_string(tmp, "@+.-_%") != 0 || tmp[0] == '-') {
+                dlog(4, "cmd_comment: bad mail address parsed: [%s]", mr);
+                output("\n%s\n\n", MSG_BADAD);
+                free_text_entry(&te);
+                return 0;
+            }
+            mailrec = mr;
+            dlog(7, "cmd_comment: mail reply to=[%s]", mailrec);
         }
-        strcpy(tmp, mr);
-        /* Only allow a minimum of nonalphanum chars in mail address */
-        if (strip_string(tmp, "@+.-_%") != 0 || tmp[0] == '-') {
-            output("\n%s\n\n", MSG_BADAD);
-            return 0;
-        }
-        mailrec = mr;
     }
     free_text_entry(&te);
 
@@ -2884,6 +2974,8 @@ cmd_comment(char *args)
         conf = Current_conf;
     else
         conf = commentuid - (commentuid * 2);
+
+    /* Prepare new header for comment */
     th.num = 0L;
     th.author = Uid;
     th.comment_num = commenttext;
@@ -2895,6 +2987,7 @@ cmd_comment(char *args)
     strcpy(th.subject, thtmp->subject);
     strcpy(fname, Home);
     strcat(fname, EDIT_FILE);
+    dlog(7, "cmd_comment: edit file path=[%s]", fname);
     if (Current_conf || !commentuid) {
         output("\n");
 #ifdef POSTING_OK
@@ -2905,6 +2998,7 @@ cmd_comment(char *args)
                 return -1;
             if (close_file(fd) == -1)
                 return -1;
+            dlog(8, "cmd_comment: POST_INFO shown, bytes=%zu", strlen(buf));
             output(buf);
             free(buf);
             output("\n");
@@ -2914,6 +3008,7 @@ cmd_comment(char *args)
         disp_note(commentuid);
     }
 
+    /* Decide target conference for the comment */
     if (Current_conf) {
         ce = get_conf_struct(conf);
         if (ce->comconf) {
@@ -2927,6 +3022,7 @@ cmd_comment(char *args)
                 output(MSG_CMNTMOVED);
                 output(ce2->name);
                 output(".\n\n");
+                dlog(6, "cmd_comment: comment moved to comconf=%d (%s)", ce->comconf, ce2->name);
             } else {
                 nc = Current_conf;
             }
@@ -2938,96 +3034,91 @@ cmd_comment(char *args)
         ptr = NULL;
     }
 
+    dlog(6, "cmd_comment: display_header subject=[%s] nc=%d mailrec=%s",
+         th.subject, nc, mailrec ? mailrec : "(null)");
     display_header(&th, Subject_change, nc, 0, mailrec);
 
     if (line_ed(fname, &th, conf, 1, allow, ptr, mailrec) == NULL) {
+        dlog(5, "cmd_comment: editor returned NULL -> MSG_TEXTREM");
         output("\n%s\n\n", MSG_TEXTREM);
         return 0;
     }
+
+    /* News comment or local/mail branches */
     if (nc > 0) {
         ce = get_conf_struct(nc);
         if (ce->type == NEWS_CONF) {
             th.author = 0;
+            dlog(6, "cmd_comment: NEWS reply mode (author=0)");
         }
     }
     if (commentuid || (th.author && nc)) {
+        /* Save local comment */
         if ((savednum = save_text(fname, &th, nc)) == -1) {
+            dlog(3, "cmd_comment: save_text failed -> MSG_CONFMISSING");
             output("\n%s\n\n", MSG_CONFMISSING);
             return -1;
         }
+        dlog(6, "cmd_comment: saved local comment num=%ld in conf=%d", savednum, nc);
     } else if (!nc) {
+        /* Mail reply branch */
         snprintf(cmdline, sizeof(cmdline), "%s %s", MAILPRGM, mailrec);
+        dlog(6, "cmd_comment: MAIL start cmd=[%s]", cmdline);
+
         if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
+            dlog(2, "cmd_comment: popen MAIL failed");
             output("%s\n\n", MSG_NOMAIL);
             return -1;
         }
-        if ((fd = open_file(fname, 0)) == -1)
+        if ((fd = open_file(fname, 0)) == -1) {
+            dlog(2, "cmd_comment: open_file edit file failed: %s", fname);
             return -1;
-        if ((inbuf = read_file(fd)) == NULL)
-            return -1;
-        if (close_file(fd) == -1)
-            return -1;
-
-        msize = (strlen(inbuf) * 3) + 1;
-        finbuf = (char *) malloc(msize);
-        memset(finbuf, 0, msize);
-        bptr = finbuf;
-        inptr = inbuf;
-        while (*inptr) {
-            if (*inptr == '}') {
-                *bptr++ = '=';
-                *bptr++ = 'E';
-                *bptr++ = '5';
-            } else if (*inptr == '{') {
-                *bptr++ = '=';
-                *bptr++ = 'E';
-                *bptr++ = '4';
-            } else if (*inptr == '|') {
-                *bptr++ = '=';
-                *bptr++ = 'F';
-                *bptr++ = '6';
-            } else if (*inptr == ']') {
-                *bptr++ = '=';
-                *bptr++ = 'C';
-                *bptr++ = '5';
-            } else if (*inptr == '[') {
-                *bptr++ = '=';
-                *bptr++ = 'C';
-                *bptr++ = '4';
-            } else if (*inptr == '\\') {
-                *bptr++ = '=';
-                *bptr++ = 'D';
-                *bptr++ = '6';
-            } else if (*inptr == '=') {
-                *bptr++ = '=';
-                *bptr++ = '3';
-                *bptr++ = 'D';
-            } else
-                *bptr++ = *inptr;
-            inptr++;
         }
-        free(inbuf);
-        pw = getpwuid(Uid);
-        snprintf(tmpstr, sizeof(tmpstr), "<%s@%s>", pw->pw_name, MACHINE_NAME);
-        fprintf(pipe, "%s%s\n%s\n%s\n%s\n%s%s\n%s", MSG_EMRETURN, tmpstr,
-            MSG_MIMETYPE, MSG_MIMECONT, MSG_MIMEENC, MSG_EMSUB,
-            th.subject, finbuf);
-        pclose(pipe);
-        if (Copy)
-            (void) save_mailcopy(mailrec, th.subject, finbuf);
-        free(finbuf);
+        if ((inbuf = read_file(fd)) == NULL) {
+            dlog(2, "cmd_comment: read_file edit file failed: %s", fname);
+            return -1;
+        }
+        if (close_file(fd) == -1) {
+            dlog(3, "cmd_comment: close_file edit file failed: %s", fname);
+            return -1;
+        }
+       	pw = getpwuid(Uid);
+		snprintf(tmpstr, sizeof(tmpstr), "<%s@%s>", pw->pw_name, MACHINE_NAME);
+
+		write_mail_utf8(pipe, tmpstr, th.subject, inbuf);
+
+		pclose(pipe);
+
+		if (Copy) {
+    		/*
+     		* Keep local mail copy in SklaffKOM's internal SF7 format.
+     		*/
+    		(void) save_mailcopy(mailrec, th.subject, inbuf);
+		}
+		free(inbuf);
         unlink(fname);
         output("%s\n\n", MSG_MAILED);
+        dlog(6, "cmd_comment: leave (mailed reply to %s)", mailrec);
         return 0;
+
     } else {
+        /* Usenet follow-up via inews */
         snprintf(refname, sizeof(refname), "%s/%d/%ld", SKLAFF_DB, Current_conf, textnum);
-        if ((fd = open_file(refname, 0)) == -1)
+        dlog(6, "cmd_comment: building References from %s", refname);
+
+        if ((fd = open_file(refname, 0)) == -1) {
+            dlog(2, "cmd_comment: open_file ref failed: %s", refname);
             return -1;
-        if ((buf = read_file(fd)) == NULL)
+        }
+        if ((buf = read_file(fd)) == NULL) {
+            dlog(2, "cmd_comment: read_file ref failed");
             return -1;
+        }
         oldbuf = buf;
-        if (close(fd) == -1)
+        if (close(fd) == -1) {
+            dlog(3, "cmd_comment: close(ref) failed");
             return -1;
+        }
         strcpy(reference, "");
         ptr4 = strstr(buf, MSG_MSGID);
         if (ptr4) {
@@ -3038,50 +3129,176 @@ cmd_comment(char *args)
                 strcpy(reference, (ptr4 + 1));
             }
         }
+        dlog(7, "cmd_comment: References parsed=[%s]", (reference[0] ? reference : "(none)"));
         free(oldbuf);
+
+        /* Build inews command; capture stderr if LOGLEVEL >= 8 */
+#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
+        snprintf(cmdline, sizeof(cmdline), "%s 2>/tmp/inews.err.%d", NEWSPRGM, getpid());
+#else
         snprintf(cmdline, sizeof(cmdline), "%s", NEWSPRGM);
-	if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
+#endif
+        dlog(6, "cmd_comment: inews NEWSPRGM=[%s]", NEWSPRGM);
+        dlog(6, "cmd_comment: inews cmdline=[%s]", cmdline);
+        dlog(7, "cmd_comment: env SERVER=[%s] NNTPSERVER=[%s] PATH=[%s]",
+             getenv("SERVER") ? getenv("SERVER") : "(unset)",
+             getenv("NNTPSERVER") ? getenv("NNTPSERVER") : "(unset)",
+             getenv("PATH") ? getenv("PATH") : "(unset)");
+
+        if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
+            dlog(2, "cmd_comment: popen inews failed");
             output("%s\n\n", MSG_NOINEWS);
             return -1;
         }
         pw = getpwuid(Uid);
-        snprintf(uname, sizeof(uname), "%s@%s (%s)", pw->pw_name, MACHINE_NAME,
-            user_name(Uid, tmp));
+        snprintf(uname, sizeof(uname), "%s@%s (%s)", pw->pw_name, MACHINE_NAME, user_name(Uid, tmp));
         snprintf(group, sizeof(group), "%s %s", MSG_NGROUP, conf_name(nc, tmp));
-        if ((fd = open_file(fname, 0)) == -1)
+        dlog(7, "cmd_comment: uname=[%s] newsgroup=[%s] subject=[%s]", uname, conf_name(nc, tmp), th.subject);
+
+        if ((fd = open_file(fname, 0)) == -1) {
+            dlog(2, "cmd_comment: open_file edit file failed: %s", fname);
             return -1;
-        if ((inbuf = read_file(fd)) == NULL)
-            return -1;
-        if (close_file(fd) == -1)
-            return -1;
-        rc = read_sklaffrc(Uid);
-        if (rc != NULL) {
-            if (strlen(rc->sig)) {
-                fprintf(pipe, "%s%s\n%s\n%s <%s>\n%s%s\n\n%s--\n%s",
-                    MSG_EMFROM, uname, group, MSG_REFID, reference,
-                    MSG_EMSUB, th.subject, inbuf, rc->sig);
-            } else
-                fprintf(pipe, "%s%s\n%s\n%s <%s>\n%s%s\n\n%s", MSG_EMFROM,
-                    uname, group, MSG_REFID, reference, MSG_EMSUB,
-                    th.subject, inbuf);
         }
-        fputs("\004", pipe);
+        if ((inbuf = read_file(fd)) == NULL) {
+            dlog(2, "cmd_comment: read_file edit file failed: %s", fname);
+            return -1;
+        }
+        if (close_file(fd) == -1) {
+            dlog(3, "cmd_comment: close_file edit file failed: %s", fname);
+            return -1;
+        }
+        rc = read_sklaffrc(Uid);
+
+{
+    char *utf8_body = NULL;
+    char *utf8_subject = NULL;
+    char *utf8_uname = NULL;
+    char *utf8_sig = NULL;
+
+    utf8_body = sf7_to_utf8_dup(inbuf);
+    utf8_subject = sf7_to_utf8_dup(th.subject);
+    utf8_uname = sf7_to_utf8_dup(uname);
+
+    if (rc && rc->sig[0]) {
+        utf8_sig = sf7_to_utf8_dup(rc->sig);
+    }
+
+    if (!utf8_body || !utf8_subject || !utf8_uname ||
+        ((rc && rc->sig[0]) && !utf8_sig)) {
+        dlog(2, "cmd_comment: sf7_to_utf8_dup failed");
+
+        free(utf8_body);
+        free(utf8_subject);
+        free(utf8_uname);
+        free(utf8_sig);
+
         free(inbuf);
-        if (rc != NULL)
+        if (rc != NULL) {
             free(rc);
+        }
+
         pclose(pipe);
+        return -1;
+    }
+
+    dlog(8, "cmd_comment: body bytes=%zu sig=%s", strlen(inbuf),
+         (rc && rc->sig[0]) ? "yes" : "no");	
+
+#if defined(LOGLEVEL) && (LOGLEVEL >= 9)
+        /* Optional: dump full follow-up article to /tmp */
+        {
+            char dbgfile[256];
+            FILE *dbg;
+            snprintf(dbgfile, sizeof(dbgfile), "/tmp/sklaffkom-inews-reply-%d.txt", getpid());
+            dbg = fopen(dbgfile, "w");
+            if (dbg) {
+                fprintf(dbg, "%s%s\n", MSG_EMFROM, utf8_uname);
+                fprintf(dbg, "%s\n", group);
+                fprintf(dbg, "%s <%s>\n", MSG_REFID, reference);
+                fprintf(dbg, "%s%s\n\n", MSG_EMSUB, utf8_subject);
+                fputs(utf8_body, dbg);
+			if (utf8_sig && utf8_sig[0]) {
+    			fputs("\n-- \n", dbg);
+    			fputs(utf8_sig, dbg);
+    			fputc('\n', dbg);
+		}
+                fclose(dbg);
+                dlog(9, "cmd_comment: reply dump saved: %s", dbgfile);
+            } else {
+                dlog(8, "cmd_comment: reply dump fopen failed");
+            }
+        }
+#endif /* LOGLEVEL >= 9 */
+
+        /* Emit follow-up using your existing header text constants */
+/* Emit follow-up using UTF-8 converted text */
+fprintf(pipe, "%s%s\n", MSG_EMFROM, utf8_uname);
+fprintf(pipe, "%s\n", group);
+fprintf(pipe, "%s <%s>\n", MSG_REFID, reference);
+fprintf(pipe, "%s%s\n", MSG_EMSUB, utf8_subject);
+fprintf(pipe, "\n");
+fprintf(pipe, "%s", utf8_body);
+
+if (utf8_body[0] != '\0' && utf8_body[strlen(utf8_body) - 1] != '\n') {
+    fprintf(pipe, "\n");
+}
+
+if (utf8_sig && utf8_sig[0]) {
+    fprintf(pipe, "-- \n%s", utf8_sig);
+    if (utf8_sig[strlen(utf8_sig) - 1] != '\n') {
+        fprintf(pipe, "\n");
+    }
+}
+
+        /* End of input to inews */
+		/*
+        dlog(7, "cmd_comment: sending EOT (^D) to inews");
+        fputs("\004", pipe);
+		*/
+     free(utf8_body);
+free(utf8_subject);
+free(utf8_uname);
+free(utf8_sig);
+
+free(inbuf);
+if (rc != NULL) {
+    free(rc);
+}       
+                }   /* end UTF-8 conversion scope */
+
+
+        {
+            int pstat = pclose(pipe);
+            dlog(6, "cmd_comment: inews pclose status=%d", pstat);
+#ifdef WIFEXITED
+            if (WIFEXITED(pstat)) dlog(7, "cmd_comment: inews exit=%d", WEXITSTATUS(pstat));
+            if (WIFSIGNALED(pstat)) dlog(3, "cmd_comment: inews signaled sig=%d", WTERMSIG(pstat));
+#endif
+#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
+            {
+                char errpath[64];
+                snprintf(errpath, sizeof(errpath), "/tmp/inews.err.%d", getpid());
+                dlog(8, "cmd_comment: inews stderr (if any): %s", errpath);
+            }
+#endif
+        }
+
         unlink(fname);
         output("%s\n\n", MSG_POSTED);
+        dlog(6, "cmd_comment: leave (posted follow-up via inews)");
         return 0;
     }
 
+    /* After local save: update reply pointers if needed */
     if (Current_conf && (nc == conf)) {
 
         if ((fd = open_file(cname, OPEN_QUIET)) == -1) {
+            dlog(3, "cmd_comment: reopen conf file failed: %s", cname);
             output("\n%s\n\n", MSG_NOTEXT);
             return 0;
         }
         if ((buf = read_file(fd)) == NULL) {
+            dlog(3, "cmd_comment: reread conf file failed");
             output("\n%s\n\n", MSG_NOREAD);
             return 0;
         }
@@ -3100,21 +3317,26 @@ cmd_comment(char *args)
 
         critical();
         if (write_file(fd, nbuf) == -1) {
+            dlog(3, "cmd_comment: write_file failed for reply pointer");
             output("\n%s\n\n", MSG_NOREPPTR);
             return 0;
         }
         if (close_file(fd) == -1) {
+            dlog(3, "cmd_comment: close_file after write failed");
             return 0;
         }
         non_critical();
+        dlog(6, "cmd_comment: reply pointer updated %ld:%d", savednum, Uid);
     }
     if (Current_conf) {
         mark_as_read(savednum, nc);
         output("%s %ld %s\n\n", MSG_TEXTNAME, savednum, MSG_SAVED2);
         if (nc == Current_conf)
             Last_text = savednum;
+        dlog(6, "cmd_comment: leave (saved local comment %ld)", savednum);
     } else {
         output("%s\n\n", MSG_SAVED);
+        dlog(6, "cmd_comment: leave (saved to mailbox)");
     }
     return 0;
 }
@@ -3850,7 +4072,7 @@ cmd_list_subj(char *args)
 }
 
 /*
- * cmd_change_cname - change the name of a conference
+ * cmd_change_cname - change name and description (PL 2025-10-25) of a conference
  * args: user arguments (args)
  * ret: ok (0) or error (-1)
  */
@@ -4587,7 +4809,8 @@ cmd_licens(char *args)
     free(buf);
     return 0;
 }
-
+#undef LOGTAG
+#define LOGTAG "files"
 /*
  * cmd_upload - uploads file(s)
  * args: user arguments (args)
@@ -4599,70 +4822,196 @@ cmd_upload(char *args)
 {
     LINE cwd;
     LONG_LINE filed;
-    int fd;
+    int status;  /* wait() status */
+
+    dlog(6, "cmd_upload: enter args=[%s]", (args && *args) ? args : "(empty)");
 
     Change_msg = 1;
     Change_prompt = 1;
-    if (!Current_conf) {
+    
+	if (UPLOADPRGM == NULL || *UPLOADPRGM == '\0') {
+    dlog(3, "cmd_upload: UPLOADPRGM is empty");
+    output(MSG_FILES_OFF "\n\n");
+    return 0;
+}
+
+	if (!Current_conf) {
+        dlog(4, "cmd_upload: not in mailbox -> MSG_NOTINMBOX");
         output("\n%s\n\n", MSG_NOTINMBOX);
         return 0;
     }
     set_avail(Uid, 1);
     output("\n");
     if (getcwd(cwd, LINE_LEN) == NULL) {
-    perror("getcwd"); /* Keeps grumpy compiler happy on Linux PL 2025-07-25 */
-    return 0;
+        dlog(3, "cmd_upload: getcwd failed");
+        return 0;
     }
+    dlog(7, "cmd_upload: cwd=[%s]", cwd);
+
     signal(SIGNAL_NEW_TEXT, SIG_IGN);
     signal(SIGNAL_NEW_MSG, SIG_IGN);
     snprintf(filed, sizeof(filed), "%s/%d", FILE_DB, Current_conf);
-    /* Ensure upload dir exists (PL 2025-09-15) */
+    dlog(6, "cmd_upload: target dir=[%s]", filed);
+    
+     /*
+     * Sanity check: FILE_DB itself must exist and be usable.
+     */
+    if (access(FILE_DB, F_OK) == -1) {
+        dlog(3, "cmd_upload: FILE_DB missing: %s", FILE_DB);
+        output(MSG_FILE_DB_ER "\n\n");
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return 0;
+    }
+
+    if (access(FILE_DB, W_OK | X_OK) == -1) {
+        dlog(3, "cmd_upload: FILE_DB not writable/searchable: %s", FILE_DB);
+        output("\nKunde inte skriva till filkatalogen. Meddela SysOp.\n\n");
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return 0;
+    }
+	 /*
+     * Sanity check: upload program must be configured.
+     */
+    if (UPLOADPRGM == NULL || *UPLOADPRGM == '\0') {
+        dlog(3, "cmd_upload: UPLOADPRGM is empty");
+        output("\nUpload är inte konfigurerat på detta system.\n\n");
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return 0;
+    }
+
+    /*
+     * If UPLOADPRGM contains a slash, verify it directly.
+     * If it is just "rz", execvp() will later search PATH.
+     */
+    if (strchr(UPLOADPRGM, '/') != NULL && access(UPLOADPRGM, X_OK) == -1) {
+        dlog(3, "cmd_upload: UPLOADPRGM not executable: %s", UPLOADPRGM);
+        output(MSG_ULPRGMERROR"\n\n");
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return 0;
+    }
+    
+    /* Ensure upload dir within files root directory exists, if not create it */
     if (access(filed, F_OK) == -1) {
-     /* fprintf(stderr, "Directory %s does not exist, creating it...\n", filed);*/ 	/* debug output */
-        if (mkdir(filed, 0775) == -1) {
-            perror("mkdir failed"); /* mkdir may fail if permission denied */
-            return -1;
+        dlog(7, "cmd_upload: dir missing, creating %s (mode 0775)", filed);
+       if (mkdir(filed, 0775) == -1) {
+            dlog(3, "cmd_upload: mkdir failed for %s", filed);
+            output(MSG_FILE_DB_ER "\n\n");
+
+            signal(SIGNAL_NEW_TEXT, baffo);
+            signal(SIGNAL_NEW_MSG, newmsg);
+            set_avail(Uid, 0);
+            return 0;
         }
         if (chown(filed, getuid(), getgid()) == -1) {
-            perror("chown failed"); /* optional but helpful if ownership matters */
-            /* not fatal, so we don't return */
+            dlog(5, "cmd_upload: chown failed (non-fatal) for %s", filed);
         }
     }
-	if (chdir(filed) == -1) {
-    perror("chdir"); /* Keeps grumpy compiler happy on Linux PL 2025-07-25 */
-    return 0;
+
+     if (chdir(filed) == -1) {
+        dlog(3, "cmd_upload: chdir failed to %s", filed);
+        output(MSG_FILE_DB_ER "\n\n");
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return 0;
     }
-    if (fork()) {
-        (void) wait(&fd);
+    dlog(7, "cmd_upload: chdir -> %s", filed);
+
+    pid_t pid = fork();
+       if (pid < 0) {
+        dlog_with("files", 2, "cmd_upload: fork failed");
+
+        if (chdir(cwd) == -1) {
+            dlog_errno_with("files", 3, "cmd_upload: chdir back to cwd after fork failure");
+        }
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return -1;
+    }
+
+    if (pid > 0) {
+        /* parent */
+        dlog(6, "cmd_upload: parent waiting for child pid=%d", (int)pid);
+        (void) wait(&status);
+#ifdef WIFEXITED
+        if (WIFEXITED(status)) {
+            dlog(7, "cmd_upload: child exit=%d", WEXITSTATUS(status));
+
+            if (WEXITSTATUS(status) == 127) {
+                output("\nUploadprogrammet kunde inte startas.\n\n");
+
+                if (chdir(cwd) == -1) {
+                    dlog(3, "cmd_upload: chdir back to cwd failed after exec failure: %s", cwd);
+                }
+
+                signal(SIGNAL_NEW_TEXT, baffo);
+                signal(SIGNAL_NEW_MSG, newmsg);
+                set_avail(Uid, 0);
+                return 0;
+            }
+        }
+
+        if (WIFSIGNALED(status))
+            dlog(3, "cmd_upload: child signaled sig=%d", WTERMSIG(status));
+#endif
     } else {
+        /* child */
         sig_reset();
 
-       
+        /* Build args and exec */
+        char *execv_args[] = { (char*)UPLOADPRGM, (char*)ULOPT1, NULL };
 
-/* fprintf(stderr, "Executing: %s %s\n\n\n", UPLOADPRGM, ULOPT1);*/   	/* debugging */
-/* fprintf(stderr, "EUID: %d\n", getuid());*/							/* Debug: Check the effective user ID */
+        dlog(6, "cmd_upload: execvp %s %s (euid=%d)",
+             UPLOADPRGM, ULOPT1, (int)geteuid());
 
-    char *args[] = {UPLOADPRGM, ULOPT1, NULL};  			/* Added by PL 2025-07-17 */
-    execvp(UPLOADPRGM, args); 						/* Replaces execl() that was broken. PL 2025-07-17 */
-    
+#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
+        /* We can capture stderr here */
+#endif
 
-
-
+        execvp(UPLOADPRGM, execv_args);
+        /* If we get here, exec failed */
+        dlog(2, "cmd_upload: execvp failed for %s", UPLOADPRGM);
+        _exit(127);
     }
+
     if (chdir(cwd) == -1) {
-    perror("chdir"); /* Keeps grumpy compiler happy on Linux PL 2025-07-25 */
-    return 0;
+        dlog(3, "cmd_upload: chdir back to cwd failed: %s", cwd);
+        return 0;
     }
+    dlog(7, "cmd_upload: chdir back -> %s", cwd);
+
     signal(SIGNAL_NEW_TEXT, baffo);
     signal(SIGNAL_NEW_MSG, newmsg);
- /* rebuild_index_file();*/ 	/* Replaced with new code with error checking below, PL 2025-07-17 */
+
+    /* Rebuild index after upload */
+    dlog(6, "cmd_upload: rebuild_index_file()");
     if (rebuild_index_file() == -1) {
-    fprintf(stderr, "Failed to rebuild index file.\n");
-    return -1;
-}
-    /* Temporary "fix", soon we will instead call cmd_describe here */
-    output("Tackar f|r det! \nBeskriv nu g{rna filen genom att ge kommandot 'Beskriv <filnamn>'.\n\n");
+        dlog(3, "cmd_upload: rebuild_index_file FAILED");
+        output("\n%s\n\n", "Failed to rebuild index file."); /* original stderr line, but visible to user now */
+        set_avail(Uid, 0);
+        return -1;
+    }
+
+    /* Tell user to describe file */
+    output(MSG_SUCCESSUL"\n\n");
+
     set_avail(Uid, 0);
+    dlog(6, "cmd_upload: leave OK");
     return 0;
 }
 
@@ -4679,9 +5028,19 @@ cmd_download(char *args)
     LONG_LINE filed;
     sigset_t sigmask, oldsigmask;
 
+    dlog(6, "cmd_download: enter args=[%s]", (args && *args) ? args : "(empty)");
+
     Change_msg = 1;
     Change_prompt = 1;
-    if (!Current_conf) {
+    
+	    if (DOWNLOADPRGM == NULL || *DOWNLOADPRGM == '\0') {
+        dlog(4, "cmd_download: DOWNLOADPRGM is empty, download disabled");
+        output("\n%s\n\n", MSG_FILES_OFF);
+        return 0;
+    }
+
+	if (!Current_conf) {
+        dlog(4, "cmd_download: not in mailbox -> MSG_NOTINMBOX");
         output("\n%s\n\n", MSG_NOTINMBOX);
         return 0;
     }
@@ -4691,22 +5050,27 @@ cmd_download(char *args)
         output(MSG_FILENAME);
         input("", fname, LINE_LEN, 0, 0, 0);
         output("\n");
-    } else
+    } else {
         strcpy(fname, args);
+    }
 
     if (*fname == '\0') {
+        dlog(5, "cmd_download: empty filename -> cancel");
         return 0;
     }
-    if (strchr(fname, '/') || strchr(fname, ';') || strchr(fname, ':')
-        || strchr(fname, '<') || strchr(fname, '>') || strchr(fname, '?')
-        || strchr(fname, '*') || strchr(fname, '|') || strchr(fname, '&')) {
+
+    if (strchr(fname, '/') || strchr(fname, ';') || strchr(fname, ':') ||
+        strchr(fname, '<') || strchr(fname, '>') || strchr(fname, '?') ||
+        strchr(fname, '*') || strchr(fname, '|') || strchr(fname, '&')) {
+        dlog(5, "cmd_download: bad filename rejected: [%s]", fname);
         output("%s\n\n", MSG_BADFNAME);
         return 0;
     }
     if (getcwd(cwd, LINE_LEN) == NULL) {
-    perror("getcwd"); /* Keeps grumpy compiler happy on Linux PL 2025-07-25 */
-    return 0;
+        dlog(3, "cmd_download: getcwd failed");
+        return 0;
     }
+    dlog(7, "cmd_download: cwd=[%s] file=[%s]", cwd, fname);
 
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGNAL_NEW_TEXT);
@@ -4716,40 +5080,74 @@ cmd_download(char *args)
     signal(SIGNAL_NEW_MSG, SIG_IGN);
     set_avail(Uid, 1);
     snprintf(filed, sizeof(filed), "%s/%d", FILE_DB, Current_conf);
+    dlog(6, "cmd_download: file dir=[%s]", filed);
     if (chdir(filed) == -1) {
-    perror("chdir"); /* Keeps grumpy compiler happy on Linux PL 2025-07-25 */
-    return 0;
+        dlog(3, "cmd_download: chdir failed to %s", filed);
+        sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
+        return 0;
     }
-    if (!fork()) {
-        sig_reset();        
- /* fprintf(stderr, "Executing: %s %s\n\n\n", DOWNLOADPRGM, DLOPT1, DLOPT2, DLOPT3); */ 	/* debugging */
- /* execl(DOWNLOADPRGM, DOWNLOADPRGM, DLOPT1, DLOPT2, DLOPT3, cmdline, NULL); */ 		/* DID NOT WORK IN 2025 */      
- /* fprintf(stderr, "EUID: %d\n", getuid()); */                         			/* Debug: Check the effective user ID */      
- /* Build argument list dynamically, omitting empty args */ 	/* 2025-07-24 PL */
-    char *args_exec[10];					/* 2025-07-24 PL */
-    int i = 0;							/* 2025-07-24 PL */
-    args_exec[i++] = DOWNLOADPRGM;				/* 2025-07-24 PL */
-    if (DLOPT1[0]) args_exec[i++] = DLOPT1;			/* 2025-07-24 PL */
-    if (DLOPT2[0]) args_exec[i++] = DLOPT2;			/* 2025-07-24 PL */
-    if (DLOPT3[0]) args_exec[i++] = DLOPT3;			/* 2025-07-24 PL */
-    args_exec[i++] = fname;					/* 2025-07-24 PL */
-    args_exec[i]   = NULL;					/* 2025-07-24 PL */
-    execvp(DOWNLOADPRGM, args_exec); /* execl() replacement. PL 2025-07-24 */
-    exit(1);  // if exec fails  
- } else {
-        wait(NULL);
+    dlog(7, "cmd_download: chdir -> %s", filed);
+
+    pid_t pid = fork();
+	if (pid < 0) {
+    dlog_with("files", 2, "cmd_download: fork failed");
+    if (chdir(cwd) == -1) {
+        dlog_errno_with("files", 3, "cmd_download: chdir back to cwd after fork failure");
     }
+    sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
+    return -1;
+	}
+
+    if (pid == 0) {
+        /* child */
+        sig_reset();
+
+        /* Build argument list dynamically, omitting empty args */
+        char *args_exec[10];
+        int i = 0;
+        args_exec[i++] = (char*)DOWNLOADPRGM;
+        if (DLOPT1[0]) args_exec[i++] = (char*)DLOPT1;
+        if (DLOPT2[0]) args_exec[i++] = (char*)DLOPT2;
+        if (DLOPT3[0]) args_exec[i++] = (char*)DLOPT3;
+        args_exec[i++] = fname;
+        args_exec[i]   = NULL;
+
+        dlog(6, "cmd_download: execvp %s (euid=%d) with file=[%s]",
+             DOWNLOADPRGM, (int)geteuid(), fname);
+#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
+        /* If we later want to redirect stderr, we can exec /bin/sh -c here */
+#endif
+
+        execvp(DOWNLOADPRGM, args_exec);
+        dlog(2, "cmd_download: execvp failed for %s", DOWNLOADPRGM);
+        _exit(127);
+    } else {
+        int status = 0;
+        dlog(6, "cmd_download: parent waiting pid=%d", (int)pid);
+        waitpid(pid, &status, 0);
+#ifdef WIFEXITED
+        if (WIFEXITED(status))
+            dlog(7, "cmd_download: child exit=%d", WEXITSTATUS(status));
+        if (WIFSIGNALED(status))
+            dlog(3, "cmd_download: child signaled sig=%d", WTERMSIG(status));
+#endif
+    }
+
     tty_raw();
     signal(SIGNAL_NEW_TEXT, baffo);
     signal(SIGNAL_NEW_MSG, newmsg);
     sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
-    if (chdir(cwd) == -1) {
-    perror("chdir"); /* Keeps grumpy compiler happy on Linux PL 2025-07-25 */
+
+ 	  if (chdir(cwd) == -1) {
+    dlog(3, "cmd_download: chdir back failed to %s", cwd);
     return 0;
-    }
+	}
+    dlog(7, "cmd_download: chdir back -> %s", cwd);
+
     tty_raw();
     output("\n");
     set_avail(Uid, 0);
+    dlog(6, "cmd_download: leave OK");
     return 0;
 }
 
@@ -4768,46 +5166,87 @@ cmd_list_files(char *args)
     struct stat fs;
     int fd;
 
+    dlog(6, "cmd_list_files: enter args=[%s]", (args && *args) ? args : "(empty)");
+
     if (!Current_conf) {
+        dlog(4, "cmd_list_files: not in mailbox -> MSG_NOTINMBOX");
         output("\n%s\n\n", MSG_NOTINMBOX);
         return 0;
     }
+
      /* New code 2025-07-26 to help sklaffkom find the .index file */
-	snprintf(fn, sizeof(fn), "%s/%d/.index", FILE_DB, Current_conf);	/* Better way to ensure we have the correct path */
-     /* fprintf(stderr, "[DEBUG] Checking .index file at path: %s\n", fn);*/ 	/* Directory debugging */
+    snprintf(fn, sizeof(fn), "%s/%d/.index", FILE_DB, Current_conf);
+    dlog(7, "cmd_list_files: index path=[%s]", fn);
+
     if ((fd = open_file(fn, OPEN_QUIET)) == -1) {
+        dlog(5, "cmd_list_files: no .index -> MSG_NOFILES");
         output("\n%s\n\n", MSG_NOFILES);
         return 0;
     }
+
     if ((buf = read_file(fd)) == NULL) {
+        dlog(3, "cmd_list_files: read_file .index failed");
         return -1;
     }
     oldbuf = buf;
-
     close_file(fd);
 
-    if (strlen(buf) < 2) {
-        output("\n%s\n\n", MSG_NOFILES);
-        return 0;
+if (strlen(buf) < 2) {
+    dlog(6, "cmd_list_files: .index empty -> MSG_NOFILES");
+    output("\n%s\n\n", MSG_NOFILES);
+    free(oldbuf);
+    return 0;
+}
+
+/* We now have to compute length of filename column to avoid misalignment */
+size_t namew = 0;
+{
+    char *scan = oldbuf;          /* do NOT use buf here */
+    struct FILE_ENTRY tfe;
+    while (scan) {
+        scan = get_file_entry(scan, &tfe);
+        if (scan) {
+            size_t l = strlen(tfe.name);
+            if (l > namew) namew = l;
+        }
     }
-    output("\n%s\n%s\n", MSG_FILEHEAD, MSG_LINEROW);
+    if (namew < 12) namew = 12;   /* min */
+    if (namew > 32) namew = 32;   /* max to keep table reasonable */
+}
+
+/* header + separator */
+output("\n%-*s  %8s  %s\n", (int)namew, "filnamn", "storlek", "beskrivning");
+{
+    int sep_len = (int)namew + 2 + 8 + 2 + 12;  /* name + 2sp + size + 2sp + some for desc */
+    if (sep_len > 120) sep_len = 120;
+    char sep[121];
+    memset(sep, '-', sep_len);
+    sep[sep_len] = '\0';
+    output("%s\n", sep);
+}
+
 
     while (buf != NULL) {
         buf = get_file_entry(buf, &fe);
         if (buf) {
             snprintf(fn, sizeof(fn), "%s/%d/%s", FILE_DB, Current_conf, fe.name);
             if (stat(fn, &fs) == -1) {
+                dlog(5, "cmd_list_files: missing file on disk: %s (index says present)", fn);
                 fs.st_size = 0;
             }
-            if (output("%-20s  %7d  %s\n", fe.name, (int)fs.st_size, safe_str(fe.desc)) == -1)
-	       break;
+			char sz[16];
+			human_size(fs.st_size, sz, sizeof(sz));
+			if (output_ansi_fmt(BR_YELLOW"%-*s"DOT"  "CYAN"%8s"DOT"  "WHITE"%s\n"DOT, "%-*s  %8s  %s\n", (int)namew, fe.name, sz, safe_str(fe.desc)) == -1) {
+    		dlog(3, "cmd_list_files: output interrupted");
+    		break;
+			}
         }
     }
 
     free(oldbuf);
     output("\n");
+    dlog(6, "cmd_list_files: leave OK");
     return 0;
-
 }
 
 /*
@@ -4821,11 +5260,14 @@ cmd_describe(char *args)
 {
     LINE fname;
     char fn[512];
-    int fd, i;
-    char *buf, *oldbuf, *nbuf, *ptr;
+    int fd;
+    char *buf, *oldbuf, *nbuf;
     struct FILE_ENTRY fe;
 
+    dlog(6, "cmd_describe: enter args=[%s]", (args && *args) ? args : "(empty)");
+
     if (!Current_conf) {
+        dlog(4, "cmd_describe: not in mailbox -> MSG_NOTINMBOX");
         output("\n%s\n\n", MSG_NOTINMBOX);
         return 0;
     }
@@ -4835,87 +5277,132 @@ cmd_describe(char *args)
         output(MSG_FILENAME);
         input("", fname, LINE_LEN, 0, 0, 0);
         output("\n");
-    } else
+    } else {
         strcpy(fname, args);
+    }
 
     if (*fname == '\0') {
+        dlog(5, "cmd_describe: empty filename -> cancel");
         return 0;
     }
+
     if (strchr(fname, '/') || strchr(fname, '*') || strchr(fname, '[')
         || strchr(fname, ']') || strchr(fname, '?')) {
+        dlog(5, "cmd_describe: bad filename rejected: [%s]", fname);
         output("%s\n\n", MSG_BADFNAME);
         return 0;
     }
     snprintf(fn, sizeof(fn), "%s/%d/%s", FILE_DB, Current_conf, fname);
+	dlog(7, "cmd_describe: target file path=[%.*s]",  (int)sizeof(fn)-1, fn);
+
+
     if (file_exists(fn) == -1) {
+        dlog(5, "cmd_describe: file not found -> MSG_BADFILE");
         output("%s\n\n", MSG_BADFILE);
         return 0;
     }
     snprintf(fn, sizeof(fn), "%s/%d%s", FILE_DB, Current_conf, INDEX_FILE);
+	dlog(7, "cmd_describe: index path=[%.*s]",        (int)sizeof(fn)-1, fn);
+
     if ((fd = open_file(fn, 0)) == -1) {
+        dlog(3, "cmd_describe: open_file index failed");
         return -1;
     }
     if ((buf = read_file(fd)) == NULL) {
+        dlog(3, "cmd_describe: read_file index failed");
         return -1;
     }
     oldbuf = buf;
-
     close_file(fd);
 
+    /* Walk .index entries to find our file */
     while (buf != 0) {
         buf = get_file_entry(buf, &fe);
-        if (buf) {
-            if (!strcmp(fname, fe.name)) {
-                break;
-            }
+        if (buf && !strcmp(fname, fe.name)) {
+            dlog(7, "cmd_describe: matched entry name=[%s] old_desc=[%s]",
+                 fe.name, fe.desc);
+            break;
         }
     }
 
-    if (!buf) {                 /* Should never happen! */
+    if (!buf) { /* Should never happen */
+        dlog(4, "cmd_describe: entry for %s not found in index", fname);
         output("%s\n\n", MSG_BADFILE);
         free(oldbuf);
         return 0;
     }
+    /* We make a safe working copy of the old description before freeing oldbuf */
+    char newdesc[LINE_LEN];
+    strncpy(newdesc, fe.desc, sizeof(newdesc) - 1);
+    newdesc[sizeof(newdesc) - 1] = '\0';
     free(oldbuf);
-
     output("%s", MSG_DESCRIBE);
-    input(fe.desc, fe.desc, 47, 0, 0, 0);
+    input(newdesc, newdesc, 47, 0, 0, 0);
     output("\n");
-    if (!strlen(fe.desc)) {
+    if (!strlen(newdesc)) {
+        dlog(6, "cmd_describe: empty description -> cancel");
         return 0;
     }
-    strcat(fname, ":");
+	dlog(7, "cmd_describe: new desc for [%s]=[%s]", fname, newdesc);
 
     if ((fd = open_file(fn, 0)) == -1) {
+        dlog(3, "cmd_describe: reopen index failed");
         return -1;
     }
     if ((buf = read_file(fd)) == NULL) {
+        dlog(3, "cmd_describe: reread index failed");
         return -1;
     }
     oldbuf = buf;
+    /* Safe splice: do not mutate oldbuf; rebuild prefix + new line + tail */
+    {
+        char name_with_colon[LINE_LEN + 2];
+        snprintf(name_with_colon, sizeof(name_with_colon), "%s:", fname);
 
-    i = strlen(oldbuf) + LINE_LEN;
-    if ((nbuf = malloc(i)) == NULL) {
-        sys_error("cmd_describe", 1, "malloc");
-        return -1;
+        char *line_start = strstr(oldbuf, name_with_colon);
+        if (!line_start) {
+            /* should not happen; keep original failure mode */
+            free(oldbuf);
+            return -1;
+        }
+        char *line_end = strchr(line_start, '\n');           /* may be NULL if last line */
+        const char *tail = line_end ? (line_end + 1) : "";
+
+        size_t prefix_len = (size_t)(line_start - oldbuf);
+        char   new_line[1024];
+        int    nw = snprintf(new_line, sizeof(new_line), "%s%s\n", name_with_colon, newdesc);
+
+        if (nw < 0 || (size_t)nw >= sizeof(new_line)) {
+            free(oldbuf);
+            return -1;
+        }
+        size_t new_line_len = (size_t)nw;
+        size_t tail_len     = strlen(tail);
+
+        size_t new_len = prefix_len + new_line_len + tail_len + 1;
+        nbuf = (char *)malloc(new_len);
+        if (!nbuf) {
+            sys_error("cmd_describe", 1, "malloc");
+            free(oldbuf);
+            return -1;
+        }
+        /* build nbuf = prefix + new_line + tail */
+        memcpy(nbuf, oldbuf, prefix_len);
+        memcpy(nbuf + prefix_len, new_line, new_line_len);
+        memcpy(nbuf + prefix_len + new_line_len, tail, tail_len);
+        nbuf[new_len - 1] = '\0';
     }
-    memset(nbuf, 0, i);
+    //memset(nbuf, 0, i);
 
-    ptr = strstr(buf, fname);
-    buf = ptr;
-    *ptr = 0;
-    strcpy(nbuf, oldbuf);
-    snprintf(fn, sizeof(fn), "%s%s\n", fname, fe.desc);
-    strcat(nbuf, fn);
-    buf++;
-    ptr = strchr(buf, '\n');
-    ptr++;
-    strcat(nbuf, ptr);
-    if (write_file(fd, nbuf) == -1) {
+		if (write_file(fd, nbuf) == -1) {
+        dlog(3, "cmd_describe: write_file failed");
+        close_file(fd);
+        free(oldbuf);
         return -1;
     }
     close_file(fd);
     free(oldbuf);
+    dlog(6, "cmd_describe: leave OK");
     return 0;
 }
 
@@ -4923,7 +5410,7 @@ cmd_describe(char *args)
  * cmd_unlink - unlinks a file from current conference
  * args: user arguments (args)
  * ret: ok (0) or error (-1)
- */
+*/
 
 int
 cmd_unlink(char *args)
@@ -4931,7 +5418,10 @@ cmd_unlink(char *args)
     LINE fname;
     char fn[512];
 
+    dlog(6, "cmd_unlink: enter args=[%s]", (args && *args) ? args : "(empty)");
+
     if (!Current_conf) {
+        dlog(4, "cmd_unlink: not in mailbox -> MSG_NOTINMBOX");
         output("\n%s\n\n", MSG_NOTINMBOX);
         return 0;
     }
@@ -4941,29 +5431,53 @@ cmd_unlink(char *args)
         output(MSG_FILENAME);
         input("", fname, LINE_LEN, 0, 0, 0);
         output("\n");
-    } else
+    } else {
         strcpy(fname, args);
+    }
 
     if (*fname == '\0') {
+        dlog(5, "cmd_unlink: empty filename -> cancel");
         output("\n");
         return 0;
     }
     if (strchr(fname, '/') || strchr(fname, '*') || strchr(fname, '[')
         || strchr(fname, ']') || strchr(fname, '?')) {
+        dlog(5, "cmd_unlink: bad filename rejected: [%s]", fname);
         output("%s\n\n", MSG_BADFNAME);
         return 0;
     }
     snprintf(fn, sizeof(fn), "%s/%d/%s", FILE_DB, Current_conf, fname);
-    if (file_exists(fn) == -1) {
-        output("%s\n\n", MSG_BADFILE);
-        return 0;
-    }
-    unlink(fn);
-    rebuild_index_file();
-    output("%s %s\n\n", fname, MSG_DELETED);
-    return 0;
-}
+    dlog(7, "cmd_unlink: target file path=[%s]", fn);
+    dlog(6, "cmd_unlink: user=%d conf=%d file=[%s]", Uid, Current_conf, fname);
 
+	int deleted_ok = 0;
+
+	/* TOCTOU-safe unlink (delete) 2025-08-28 PL */
+	if (unlink(fn) == -1) {
+    if (errno == ENOENT) {
+        output("%s\n\n", MSG_BADFILE);   /* consistent with previous behavior */
+    }
+    dlog_errno(3, "cmd_unlink: unlink failed");
+	} else {
+    dlog(6, "cmd_unlink: unlink OK");
+    deleted_ok = 1;
+	}
+
+	dlog(6, "cmd_unlink: rebuild_index_file()");
+	if (rebuild_index_file() == -1) {
+    dlog(3, "cmd_unlink: rebuild_index_file FAILED");
+	}
+		/* Only tell the user it's deleted if it actually was */
+	if (deleted_ok) {
+    output("%s %s\n\n", fname, MSG_DELETED);
+	}
+
+	dlog(6, "cmd_unlink: leave (deleted_ok=%d)", deleted_ok);
+	return 0;
+	}
+
+#undef LOGTAG
+#define LOGTAG "commands"
 /*
  * cmd_prio - puts conference first in conference list
  * args: user arguments (args)
@@ -6364,9 +6878,22 @@ int cmd_bbslink(char *args)
     } bbslink_aliases[] = {
         { "usurper", "usrp" },
         { "lord",    "lord" },
-        { NULL,      NULL }
+        { "lord2",   "lord" }, 
+        { "tw",		 "tw"   },
+        { "ooii",    "ooii" },
+		{ "mzkl"	"mzkl"  },
+		{ "teos"	"teos"  },
+		{ "gwar"	"gwar"  },
+		{ "bre"		"bre"	},
+		{ "falc"	"falc"	},
+		{ "fhon"	"fhon"	},		
+		{ NULL,      NULL   }
     };
 
+    /* broken games :
+       mzkl
+		
+    */
     const char *mapped = NULL;
 
     if (args && *args) {
@@ -6423,3 +6950,532 @@ int cmd_bbslink(char *args)
     }
 }
 
+/* 
+ * cmd_footnote - allows adding a "footnote" to a text
+ * args: textnumber (args)
+ * ret: 0 always
+ * added on 2025-10-14, PL
+ */
+int
+cmd_footnote(char *args)
+{
+    char fname[PATH_MAX], tmpfile[PATH_MAX], *buf, *oldbuf, *ptr;
+    long textnum;
+    struct TEXT_ENTRY te;
+    int fd;
+    struct TEXT_HEADER th;
+    //struct TEXT_BODY *tb;
+
+    dlog(6, "cmd_footnote: enter args=[%s]", (args && *args) ? args : "(empty)");
+
+    /* Do we have args or should we work with the last text read? : */
+    if (!args || *args == '\0') {
+        if (Last_conf == Current_conf)
+            textnum = Last_text;
+        else {
+            output("\n%s\n\n", MSG_NOTINCONF);
+            return 0;
+        }
+    } else {
+        textnum = parse_text(args);
+    }
+
+    if (textnum <= 0) {
+        output("\n"MSG_USEFOOT "\n\n");
+        return 0;
+    }
+
+    if (Current_conf <= 0) {
+        output("\n"MSG_NOTINMBOX "\n\n");
+        return 0;
+    }
+	struct CONF_ENTRY *ce = get_conf_struct(Current_conf);
+	if (ce && ce->type == NEWS_CONF) {
+    output("\n"MSG_FOOTINLOCAL "\n\n");
+    return 0;
+	}
+    snprintf(fname, sizeof(fname), "%s/%d/%ld", SKLAFF_DB, Current_conf, textnum);
+
+    if ((fd = open_file(fname, OPEN_QUIET)) == -1) {
+        output("\n"MSG_NOTEXT "\n\n");
+        return 0;
+    }
+
+    if ((buf = read_file(fd)) == NULL) {
+        close_file(fd);
+        output("\n"MSG_NOREADFILE "\n\n");
+        return 0;
+    }
+	/* CLOSE THE FD HERE on the success path */
+	if (close_file(fd) == -1) {
+    /* optional: log but continue; we already have the content in buf */
+    dlog(3, "cmd_footnote: close_file failed after read");
+	}
+	oldbuf = buf;
+
+/* Strip any F:-lines before parsing, so get_text_entry() never chokes */
+{
+    char *p = oldbuf;
+    size_t L = strlen(oldbuf);
+    char *san = malloc(L + 1);
+    char *w = san;
+    if (!san) { sys_error("cmd_fotnot", 1, "malloc"); free(oldbuf); return 0; }
+
+    while (*p) {
+        char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+        /* copy line if it doesn't start with "F:" */
+        if (!(len >= 2 && p[0] == 'F' && p[1] == ':')) {
+            memcpy(w, p, len);
+            w += len;
+            if (nl) *w++ = '\n';
+        }
+        if (!nl) break;
+        p = nl + 1;
+    }
+    *w = '\0';
+
+    buf = get_text_entry(san, &te);
+    free(san);
+    if (!buf) { /* parsing failed */
+        output("\n"MSG_NOPARSEFILE "\n\n");
+        free(oldbuf);
+        return 0;
+    }
+}
+
+    if (te.th.author != Uid) {
+        output("\n"MSG_FNERROR01 "\n\n");
+        free(oldbuf);
+        return 0;
+    }
+
+/* Kontrollera direkt i filen om F:-rader redan finns */
+FILE *checkfp = fopen(fname, "r");
+if (checkfp) {
+    char lnbuf[LINE_LEN];
+    int foundF = 0;
+    while (fgets(lnbuf, sizeof(lnbuf), checkfp)) {
+        if (strncmp(lnbuf, "F:", 2) == 0) {
+            foundF = 1;
+            break;
+        }
+    }
+    fclose(checkfp);
+    if (foundF) {
+        output("\n"MSG_FNERROR02 "\n\n");
+        free(oldbuf);
+        return 0;
+    }
+
+}
+
+    /* Skapa temporärfil för editorn */
+    user_dir(Uid, tmpfile);
+    strcat(tmpfile, TMP_FOOTNOTE);
+
+    if ((fd = create_file(tmpfile)) == -1) {
+        sys_error("cmd_fotnot", 3, "create_file");
+        free_text_entry(&te);
+        free(oldbuf);
+        return 0;
+    }
+    close_file(fd);
+
+    output("\n->" MSG_FOOTNOTE " %ld\n", textnum);
+    output(MSG_FOOTINPUT "\n\n");
+
+    /* Använd line_ed (samma som cmd_mod_note) */
+    if (line_ed(tmpfile, &th, 0, 1, 0, NULL, NULL) == 0) {
+        unlink(tmpfile);
+        output("\n"MSG_CANCELED" \n\n");
+        free_text_entry(&te);
+        free(oldbuf);
+        return 0;
+    }
+
+    /* Läs resultatet från editorn */
+    if ((fd = open_file(tmpfile, 0)) == -1) {
+        output("\n"MSG_NOOPENTMP "\n\n");
+        free_text_entry(&te);
+        free(oldbuf);
+        return 0;
+    }
+    if ((ptr = read_file(fd)) == NULL) {
+        output("\n"MSG_NOREADTMP "\n\n");
+        close_file(fd);
+        free_text_entry(&te);
+        free(oldbuf);
+        return 0;
+    }
+    close_file(fd);
+    unlink(tmpfile);
+
+    /* Lägg till fotnot till slutet av textfilen */
+FILE *fp = fopen(fname, "a");
+if (!fp) {
+    output("\n"MSG_NOWRITEFILE "\n\n");
+    free(ptr);
+    free_text_entry(&te);
+    free(oldbuf);
+    return 0;
+}
+
+/* ensure a blank line before the F: block */
+//fprintf(fp, "\n");
+
+///* Prefixa varje rad med F: */
+char *p = ptr;
+char linebuf[LINE_LEN];
+while (*p) {
+    char *nl = strchr(p, '\n');
+    size_t len = nl ? (size_t)(nl - p) : strlen(p);
+    if (len >= sizeof(linebuf))
+        len = sizeof(linebuf) - 1;
+    memcpy(linebuf, p, len);
+    linebuf[len] = '\0';
+
+    fprintf(fp, "F:%s\n", linebuf);
+
+    if (!nl)
+        break;
+    p = nl + 1;
+}
+fclose(fp);
+non_critical();   /* make sure no lock is held */
+
+/* Touch file so modification time updates and caches are refreshed */
+struct stat st;
+stat(fname, &st);
+
+    output("\n"MSG_FOOTED "\n\n");
+	/* Force Sklaffkom to forget cached text pointers */
+//	Last_text = 0;
+//	Current_text = 0;
+    free(ptr);
+    free_text_entry(&te);
+    free(oldbuf);
+/* Brute-force flush: free the global text parser state if any */
+//te.body = NULL;
+//te.cl = NULL;
+//te.th.num = 0;
+
+    return 0;
+}
+
+/*
+* cmd_like - adds a "like" ("hyllning") to an article
+* args: textnumber (args)
+* ret: 0 always
+* added on 2025-10-18, PL
+*/
+
+int
+cmd_like(char *args)
+{
+    char confxtra[PATH_MAX];
+    char *buf, *oldbuf;
+    char *p, *hiss_start, *hiss_end;
+    time_t now = time(NULL);
+    int fd;
+	struct TEXT_ENTRY te;
+	long textnum;
+
+    if (Current_conf <= 0) {
+        output("\n"MSG_NOTINMBOX "\n\n");
+        return 0;
+    }
+
+    struct CONF_ENTRY *ce = get_conf_struct(Current_conf);
+    if (!ce || ce->type == NEWS_CONF) {
+        output("\n"MSG_PRAISELOCAL "\n\n");
+        return 0;
+    }
+
+    if (*args == '\0') {
+        if (!Last_text) {
+            output("\n"MSG_NOTXTYET "\n\n");
+            return 0;
+        }
+        textnum = Last_text;
+    } else {
+        textnum = atol(args);
+        if (textnum <= 0) {
+            output("\n"MSG_NOTXTVALID "\n\n");
+            return 0;
+        }
+    }
+
+
+/* Läs in texten och kontrollera att den inte är din egen */
+{
+    char fname[PATH_MAX];
+    snprintf(fname, sizeof(fname), "%s/%d/%ld", SKLAFF_DB, Current_conf, textnum);
+
+    if ((fd = open_file(fname, OPEN_QUIET)) == -1) {
+        output("\n"MSG_NOTXT "\n\n");
+        return 0;
+    }
+
+    char *buf = read_file(fd);
+    close_file(fd);
+    if (!buf) {
+        output("\n"MSG_NOREADFILE "\n\n");
+        return 0;
+    }
+
+    char *ptr = get_text_entry(buf, &te);
+    if (!ptr) {
+        free(buf);
+        output("\n"MSG_NOPARSEFILE "\n\n");
+        return 0;
+    }
+
+    if (te.th.author == Uid) {
+        free(buf);
+        output("\n"MSG_PRAISEOWN "\n\n");
+        return 0;
+    }
+
+    free(buf);
+}
+
+
+
+    snprintf(confxtra, sizeof(confxtra), "%s/%d%s", SKLAFF_DB, Current_conf, CONFXTRA_FILE);
+
+    if ((fd = open_file(confxtra, OPEN_CREATE)) == -1) {
+        output("\nCould not open confxtra, this is bad, contact your SysOp!\n\n");
+        return 0;
+    }
+
+    if ((buf = read_file(fd)) == NULL) {
+        close_file(fd);
+        output("\nCould not read confxtra, this is bad, contact your SysOp!\n\n");
+        return 0;
+    }
+
+    oldbuf = buf;
+
+    // Check for existing ![hiss] block
+    hiss_start = strstr(buf, "![hiss]");
+    if (hiss_start) {
+        hiss_start += strlen("![hiss]");
+        while (*hiss_start == '\r' || *hiss_start == '\n') hiss_start++;
+        hiss_end = strstr(hiss_start, "![");  // Beginning of next block
+        if (!hiss_end) hiss_end = buf + strlen(buf);
+
+        // Check if this user already liked this text
+        char match[64];
+        snprintf(match, sizeof(match), "%d:%ld:", Uid, textnum);
+        p = hiss_start;
+        while (p < hiss_end) {
+            if (strncmp(p, match, strlen(match)) == 0) {
+                output("\n"MSG_1ISENOUGH "\n\n");
+                free(oldbuf);
+                close_file(fd);
+                return 0;
+            }
+            while (*p && *p != '\n' && p < hiss_end) p++;
+            if (*p == '\n') p++;
+        }
+
+        // Append new like to existing ![hiss] block
+        FILE *fp = fopen(confxtra, "a");
+        if (!fp) {
+            output("\nCould not write to confxtra, please let your Sysop know!\n\n");
+            free(oldbuf);
+            close_file(fd);
+            return 0;
+        }
+
+        fprintf(fp, "%d:%ld:%ld\n", Uid, textnum, (long)now);
+        fclose(fp);
+    } else {
+        // No ![hiss] block — create it and append entry
+        FILE *fp = fopen(confxtra, "a");
+        if (!fp) {
+            output("\nCould not write to confxtra, please let your Sysop know!\n\n");
+            free(oldbuf);
+            close_file(fd);
+            return 0;
+        }
+
+        fprintf(fp, "![hiss]\n%d:%ld:%ld\n", Uid, textnum, (long)now);
+        fclose(fp);
+    }
+
+	output("\n%s%ld%s\n\n", MSG_TEXT, textnum, MSG_PRAISED);
+    free(oldbuf);
+    close_file(fd);
+    return 0;
+}
+
+/*
+ * cmd_unlike - removes a user's like ("hyllning") from a text
+ * args: textnumber (args)
+ * ret: 0 always
+ * added on 2025-10-17, PL
+ */
+int
+cmd_unlike(char *args)
+{
+    char confxtra[PATH_MAX];
+    char *buf, *oldbuf, *p, *w;
+    char match[64];
+    long textnum;
+    int fd;
+
+    if (Current_conf <= 0) {
+        output("\n"MSG_NOTINMBOX"\n\n");
+        return 0;
+    }
+
+    struct CONF_ENTRY *ce = get_conf_struct(Current_conf);                      
+    if (!ce || ce->type == NEWS_CONF) {
+        output("\n"MSG_PRAISELOCAL"\n\n");
+        return 0;
+    }
+
+    if (*args == '\0') {
+        if (!Last_text) {
+            output("\n"MSG_NOTXTYET"\n\n");
+            return 0;
+        }
+        textnum = Last_text;
+    } else {
+        textnum = atol(args);
+        if (textnum <= 0) {
+            output("\n"MSG_NOTXTVALID"\n\n");
+            return 0;
+        }
+    }
+
+    snprintf(confxtra, sizeof(confxtra), "%s/%d%s", SKLAFF_DB, Current_conf, CONFXTRA_FILE);
+
+    if ((fd = open_file(confxtra, OPEN_CREATE)) == -1) {
+        output("\nCould not open confxtra, this is bad, contact your SysOp!\n\n");
+        return 0;
+    }
+
+    if ((buf = read_file(fd)) == NULL) {
+        close_file(fd);
+        output("\nCould not read confxtra, this is bad, contact your SysOp!\n\n");
+        return 0;
+    }
+    close_file(fd);
+    oldbuf = buf;
+
+    snprintf(match, sizeof(match), "%d:%ld:", Uid, textnum);
+
+    // Build new content without the matching line
+    size_t L = strlen(buf);
+    char *newbuf = malloc(L + 1);
+    if (!newbuf) {
+        free(oldbuf);
+        sys_error("cmd_unlike", 1, "malloc");
+        return 0;
+    }
+    w = newbuf;
+    p = buf;
+    int found = 0;
+    while (*p) {
+        char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+
+        if (!(len >= strlen(match) && strncmp(p, match, strlen(match)) == 0)) {
+            memcpy(w, p, len);
+            w += len;
+            if (nl) *w++ = '\n';
+        } else {
+            found = 1;
+        }
+        if (!nl) break;
+        p = nl + 1;
+    }
+    *w = '\0';
+
+    if (!found) {
+        output("\n"MSG_NOTPRAISED"\n\n");
+        free(oldbuf);
+        free(newbuf);
+        return 0;
+    }
+
+    // Write back updated confxtra
+    FILE *fp = fopen(confxtra, "w");
+    if (!fp) {
+            output("\nCould not write to confxtra, please let your Sysop know!\n\n");
+        free(oldbuf);
+        free(newbuf);
+        return 0;
+    }
+    fputs(newbuf, fp);
+    fclose(fp);
+
+output("\n%s%ld%s\n\n", MSG_YOURPRAISE, textnum, MSG_ISREMOVED);
+    free(oldbuf);
+    free(newbuf);
+    return 0;
+}
+
+/*
+ * cmd_change_cdesc - change or add a conference description
+ * args: user arguments (args)
+ * ret: ok (0) or error (-1)
+ */
+int
+cmd_change_cdesc(char *args)
+{
+    int c_num;
+    LINE confname, desc;
+    char *current_desc = NULL;
+
+    if ((args == NULL) || (!strlen(args))) {
+        c_num = Current_conf;
+        strcpy(args, conf_name(c_num, confname));
+    } else {
+        args = expand_name(args, CONF, 0, NULL);
+        c_num = conf_num(args);
+        if (c_num == -1) return 0;
+    }
+
+    if (!c_num) {
+        output("\n%s\n\n", MSG_NOCHMBOX);
+        return 0;
+    }
+
+    if (!is_conf_creator(Uid, c_num)) {
+        output("\n%s %s.\n\n", MSG_NOTCREATOR, args);
+        return 0;
+    }
+
+    current_desc = get_conf_description(c_num);
+    if (current_desc && *current_desc) {
+        output("\n%s\n%s\n", MSG_CURRDESC, current_desc);
+        free(current_desc);
+    } else {
+        output("\n%s\n", MSG_NODESCYET);
+    }
+
+    output("\n%s\n> ", MSG_GIVENEWDESC);
+    input("", desc, 80, 0, 0, 0);
+    rtrim(desc);
+
+    if (*desc == '\0') {
+        /* Ta bort beskrivning */
+        if (remove_confxtra_section(c_num, "desc") == 0) {
+            output("\n"MSG_DESCDEL"\n\n");
+        } else {
+            output("\n"MSG_DESCERROR01"\n\n");
+        }
+    } else {
+        if (write_confxtra_section(c_num, "desc", desc) == 0) {
+            output("\n"MSG_DESCCONFIRM"\n\n");
+        } else {
+            output("\n"MSG_DESCERROR02"\n\n");
+        }
+    }
+
+    return 0;
+}

@@ -7,9 +7,9 @@ SKLAFFBIN=/usr/local/bin
 SKLAFFDIR=/usr/local/sklaff
 
 # Define target system, one of: FREEBSD, SOLARIS, LINUX
-SKLAFFSYS = FREEBSD	# FreeBSD
+#SKLAFFSYS = FREEBSD	# FreeBSD
 #SKLAFFSYS = SOLARIS	# Solaris
-#SKLAFFSYS = LINUX	# Linux
+SKLAFFSYS = LINUX	# Linux
 
 CC=gcc
 SKLAFFFLAGS = -D$(SKLAFFSYS) -DSKLAFFDIR=\"$(SKLAFFDIR)\" -DSKLAFFBIN=\"$(SKLAFFBIN)\"
@@ -25,9 +25,9 @@ CFLAGS = $(SKLAFFFLAGS) -O2 -g -pipe -Wall -Werror
 #LIBS=-lsklaff -ltermcap -lelf -lm
 
 #uncomment for BSD
-LIBS=-lsklaff -lm
+#LIBS=-lsklaff -lm
 
-# uncomment for LINUX/SUNOS/ULTRIX
+# uncomment for LINUX/DEBIAN/SUNOS/ULTRIX
 # debian users : sudo apt install libbsd-dev
 LIBS=-lsklaff -lbsd -lm
 
@@ -53,12 +53,13 @@ OBJS = \
 	survey.o \
 	text.o \
 	user.o \
+	utf.o \
 	version.o
 KOMOBJ=sklaffkom.o
 ADMOBJ=sklaffadm.o
 WHOOBJ=sklaffwho.o
 ACCTOBJ=sklaffacct.o
-MTOSSOBJ=mailtoss.o
+MTOSSOBJ=mailtoss.o mailparse.o 
 NTOSSOBJ=newstoss.o
 SURVREPOBJ=survreport.o
 FTCOBJ=forwardtoconf.o

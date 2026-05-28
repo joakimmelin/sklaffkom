@@ -43,8 +43,8 @@
 
 /* Allow news postings in news-conferences */
 
-/* #undef POSTING_OK */
-/* #define POSTING_OK */
+//#undef POSTING_OK
+#define POSTING_OK
 
 /* Machine name for news postings */
 
@@ -110,9 +110,9 @@
 Please read item 18 for instructions here: 
 https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 
-#define UPLOADPRGM      "/usr/local/bin/lrz"
+#define UPLOADPRGM      "" /* recommended : "/usr/local/bin/lrz" */
 #define ULOPT1          "-Eq"
-#define DOWNLOADPRGM    "/usr/local/bin/lsz"
+#define DOWNLOADPRGM    "" /* recommended : "/usr/local/bin/lsz" */
 #define DLOPT1          "-Eq"
 #define DLOPT2          ""
 #define DLOPT3          ""
@@ -120,8 +120,8 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #define LSPRGM		"/bin/ls"
 #define LSOPT		"-1"    /* option to make one column */
 #define MVPRGM		"/bin/mv"
-#define MAILPRGM	"/usr/sbin/sendmail --"
-#define NEWSPRGM	"/usr/local/bin/inews -h" /*-h needed!  */
+#define MAILPRGM	"/usr/sbin/sendmail"
+#define NEWSPRGM	"/usr/local/bin/inews -h -S -P" /*-h needed!  */
 #define SURVREPORT 	SKLAFFBIN "/srep"
 
 /* SklaffKOM-files */
@@ -166,6 +166,7 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #endif
 
 #define CONFRC_FILE 	"/confrc"
+#define CONFXTRA_FILE	"/confxtra"						/* 2025-10-18 PL */
 
 #define INDEX_FILE	"/.index"
 #define NEWINDEX_FILE	"/.newindex"
@@ -177,29 +178,64 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #define EDIT_FILE 	"/text.sklaff"
 #define DEAD_FILE 	"/dead.sklaff"
 #define TMP_NOTE 	"/tmplapp"
+#define TMP_FOOTNOTE 	"/tmpfotnot"
 #define ACT_FILE        "/act"
 
-/* Log level (lower means less logs, 0 = no logs) */
-/*
-0 : No logs
-1–2: Errors only
-3–4: Warnings
-5–6: High-level actions (command start/stop)
-7–8: Inputs/outputs (sanitized), decisions taken
-9–10: Verbose (command lines, env, sizes, timing)
-12+: Very verbose (bodies/snippets, hexdumps) — opt-in only
+/* Log level
+*
+* 0 : No logs
+* 1–2: Errors only
+* 3–4: Warnings
+* 5–6: Most actions (command start/stop)
+* 7–8: Inputs/outputs (now sanitized), 
+* 9–10: Verbose (command lines, env., 
+* 12+: Very verbose (we probably don't even need this, we'll see :))
 */
 #define LOGLEVEL 6
+
+
+/* Macros */
+
+/* LOGGING Macros */
+#ifndef LOGTAG
+#define LOGTAG "core"
+#endif
+
+#ifndef DLOG_BUFSZ
+#define DLOG_BUFSZ 2048   /* was 512 */
+#endif
+
+/* Default-tag logger (uses LOGTAG at compile site) */
+#define dlog(level, fmt, ...) do { \
+    char __buf[DLOG_BUFSZ]; \
+    snprintf(__buf, sizeof(__buf), "[%s] " fmt, LOGTAG, ##__VA_ARGS__); \
+    debuglog(__buf, (level)); \
+} while (0)
+
+/* Per-call tag logger */
+#define dlog_with(tag, level, fmt, ...) do { \
+    char __buf[DLOG_BUFSZ]; \
+    snprintf(__buf, sizeof(__buf), "[%s] " fmt, (tag), ##__VA_ARGS__); \
+    debuglog(__buf, (level)); \
+} while (0)
+
+/* Errno helpers */
+#define dlog_errno(level, ctx) \
+    dlog((level), "%s: errno=%d (%s)", (ctx), errno, strerror(errno))
+
+#define dlog_errno_with(tag, level, ctx) \
+    dlog_with((tag), (level), "%s: errno=%d (%s)", (ctx), errno, strerror(errno))
+
+
+
+/* Misc macros */
+#define ansi_output(...) do { if (Ansi_output) output(__VA_ARGS__); } while (0) /* 2025-07-30 PL */
+#define output_ansi_fallback(ansi_str, plain_str) \
+        do { output(Ansi_output ? (ansi_str) : (plain_str)); } while (0)  	/* 2025-07-30 PL */
 
 /* Misc settings */
 #define PROMPT		"-> " /* one whitespace at the end is a good idea PL 2025-07-30*/
 #define ANSI_CLS    "\033[H\033[J"
-
-/* Macros */
-
-#define ansi_output(...) do { if (Ansi_output) output(__VA_ARGS__); } while (0) /* 2025-07-30 PL */
-#define output_ansi_fallback(ansi_str, plain_str) \
-        do { output(Ansi_output ? (ansi_str) : (plain_str)); } while (0)  	/* 2025-07-30 PL */
 
 /* ANSI colors */ 								/* 2025-07-30 PL */
 #define RED             "\e[31m"
@@ -377,7 +413,23 @@ void clear_screen(void);                                                        
 const char *month_name(int mon);                                                                /* "Se tiden"-stuff 2025-09.25 */
 void chomp(char *s);                                                                            /* "Se tiden"-stuff 2025-09.25 */
 void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
-
+void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
+long clamp_nonneg(long v);                                                          /* modified on 2025-10-02, PL */
+//void show_footnote_block(int conf, long num, LINE home, int has_comments);			/* 2025-10-15 helper to render the footnote (if there is one) */
+//void show_footnote_block(int conf, long num, LINE home, int has_comments);
+void show_footnote_block(int conf, long num, char *home, int has_comments);
+const char *time_string_static(time_t t);													/* 2025-10-24 PL */
+struct LikeEntry *get_user_likes(int uid);													/* 2025-10-24 PL */
+struct LikeEntry *get_conf_likes(int confnum);												/* 2025-10-25 PL */
+void free_like_list(struct LikeEntry *list);												/* 2025-10-25 PL */
+void show_likes_block(int conf, long num);												/* 2025-10-25 PL */
+void show_conf_likes(int conf);     													/* 2025-10-25 */
+int get_text_author(int conf, long num);  												/* 2025-10-25 PL */
+char *get_conf_description(int confnum);												/* 2025-10-25 PL */
+int write_confxtra_section(int confnum, const char *tag, const char *value);			/* 2025-10-25 PL */
+int remove_confxtra_section(int confnum, const char *tag);								/* 2025-10-25 PL */
+// enable the function below when ready and uncomment in conf.c
+//int has_file_area(int confnum);															/* 2025-11-11 PL */
 
 /* Debugging */
 /* void *my_malloc (size_t); */
@@ -473,6 +525,10 @@ int cmd_nethack(char *);
 int cmd_mod_numlines(char *args); /* 2025-08-10 PL */
 int cmd_zork(char *args); /* 2025-08-17 PL */
 int cmd_bbslink(char *args); /* 2025-09-24 PL */
+int cmd_footnote(char *args); /* 2025-10-14 PL */
+int cmd_like(char *args); /*2025-10-18 PL */
+int cmd_unlike(char *args); /*2025-10-24 PL */
+int cmd_change_cdesc(char *args); /*2025-10-25 PL */
 
 /* admin.c */
 
@@ -548,6 +604,14 @@ int rebuild_index_file(void);
 void set_flags(char *);
 int check_flag(char *, char *);
 int turn_flag(int, char *);
+
+/* mailparse.c */
+
+char *mail_extract_text_plain_dup(const char *msg);
+int mail_has_quoted_printable(const char *msg);
+char *mail_qp_decode_dup(const char *src);
+char *mail_base64_decode_dup(const char *src);
+int mail_has_base64(const char *msg);
 
 /* msg.c */
 
@@ -632,3 +696,7 @@ int mark_survey_as_taken(long, int);
 int check_if_survey_taken(long, int);
 time_t get_survey_time(time_t);
 int get_no_survey_questions(char *);
+
+/* utf.c */
+char *sf7_to_utf8_dup(const char *src);
+char *utf8_to_sf7_dup(const char *src);

@@ -29,6 +29,41 @@
 
 #include "sklaff.h"
 #include "ext_globals.h"
+#include <limits.h>
+
+
+
+/* ReadMap is private to conf.c – tracks user's read totals per conference */
+struct ReadMap {
+    int num;               /* 0 == mailbox */
+    long read_total;       /* sum of (to-from+1) from CONFS_FILE */
+    int is_member;         /* 1 if present in user's CONFS_FILE */
+    struct ReadMap *next;
+};
+
+/* Local helpers for ReadMap lookups */
+/* modified on 2025-10-02, PL */
+static long
+read_total_for(struct ReadMap *rmap, int num)
+{
+    while (rmap) {
+        if (rmap->num == num) return rmap->read_total;
+        rmap = rmap->next;
+    }
+    return 0;
+}
+
+static int
+is_member_for(struct ReadMap *rmap, int num)
+{
+    while (rmap) {
+        if (rmap->num == num) return rmap->is_member;
+        rmap = rmap->next;
+    }
+    return 0;
+}   
+
+
 
 void free_userlist(struct USER_LIST *);
 
@@ -497,186 +532,213 @@ set_first_conf(void)
     return conf;
 }
 
-/*
- * list_confs - list conferences for user
- * args: user (uid), list all (all)
- * ret:	ok (0) or error (-1)
- */
+/* Little helper to make list conf show correct number of articles in conferences */
+static long
+count_existing_texts(int confnum, int uid, long last_text)
+{
+    long ftext;
 
+    if (last_text <= 0)
+        return 0;
+
+    ftext = first_text(confnum, uid);
+
+    if (ftext <= 0 || ftext > last_text)
+        return 0;
+
+    return last_text - ftext + 1;
+}
 int
 list_confs(int uid, int all)
 {
-    int fd, rights, count, x, xit;
-    char *buf, *oldbuf, member, creator, filarea, *mbuf, *oldmbuf;
-    LINE mboxname, filelist, confsname;
-    LONG_LINE confname;
+    int fd;
+    char *buf, *oldbuf, *mbuf, *oldmbuf;
+    LINE confsname, mboxname;
     struct CONF_ENTRY ce;
     struct CONFS_ENTRY cse;
-    struct CEL *ce_list, *top;
-    struct CEN *topconf, *conflist;
-    long ftext, ntext;  /* we will now calculate the correct number of posts, as in sklaffadm 2025-08-11 PL */
 
+    /* per-user read/membership map from CONFS_FILE (already have helpers) */
+    struct ReadMap *rmap = NULL;
+
+    /* rows to print */
+    struct CEL {
+        char name[LINE_LEN];
+        long total;
+        long unreads;
+        int  num;
+        int  type;
+        int  is_member;
+        struct CEL *next;
+    } *local = NULL, *usenet = NULL, *tail = NULL;
+
+    /* -------- Build rmap from user's CONFS_FILE (once) -------- */
     user_dir(uid, confsname);
     strcat(confsname, CONFS_FILE);
-
-    if ((fd = open_file(confsname, 0)) == -1) {
-        return -1;
-    }
-    if ((mbuf = read_file(fd)) == NULL) {
-        return -1;
-    }
+    if ((fd = open_file(confsname, 0)) == -1) return -1;
+    if ((mbuf = read_file(fd)) == NULL) return -1;
     oldmbuf = mbuf;
+    if (close_file(fd) == -1) return -1;
 
-    if (close_file(fd) == -1) {
-        return -1;
+    while ((mbuf = get_confs_entry(mbuf, &cse))) {
+        struct ReadMap *n = (struct ReadMap *)malloc(sizeof(*n));
+        if (!n) { free_confs_entry(&cse); free(oldmbuf); return -1; }
+
+        long sum = 0;
+        for (struct INT_LIST *p = cse.il; p; p = p->next)
+            sum += (long)(p->to - p->from + 1);
+
+        n->num        = cse.num;        /* 0 == mailbox */
+        n->read_total = sum;
+        n->is_member  = 1;
+        n->next       = rmap;
+        rmap = n;
+
+        free_confs_entry(&cse);
     }
-    /*
-     *	Mailbox
-     */
 
-    mbox_dir(uid, mboxname);
-    strcat(mboxname, MAILBOX_FILE);
+    /* -------- Header -------- */
+    	output("\n");
+		output_ansi_fmt(
+        " Texter  Olästa  Mötesnamn\n"
+        " ------  ------  ------------------------------\n",
+        " Texter  Olästa  Mötesnamn\n"
+        " ------  ------  ------------------------------\n"
+    );
 
-    if ((fd = open_file(mboxname, 0)) == -1) {
-        sys_error("list_confs", 1, "open_file");
-        return -1;
-    }
-    if ((buf = read_file(fd)) == NULL) {
-        sys_error("list_confs", 2, "read_file");
-        return -1;
-    }
-    oldbuf = buf;
+ /* -------- Mailbox first -------- */
+mbox_dir(uid, mboxname);
+strcat(mboxname, MAILBOX_FILE);
+if ((fd = open_file(mboxname, 0)) == -1) { /* cleanup… */ return -1; }
+if ((buf = read_file(fd)) == NULL) { close_file(fd); /* cleanup… */ return -1; }
+oldbuf = buf;
 
-    if (close_file(fd) == -1) {
-        sys_error("list_confs", 3, "close_file");
-        return -1;
-    }
-    output("\n");
-    if ((buf = get_conf_entry(buf, &ce))) { 			/* Mailbox: show count instead of just the highest number 2025-08-11 PL */
-        ftext = first_text(ce.num, uid);
-        if (ftext <= 0 || ce.last_text <= 0 || ftext > ce.last_text)
-            ntext = 0;
-        else
-            ntext = ce.last_text - ftext + 1;
-        output("%6ld       %s\n", ntext, ce.name);
-    }
-    free(oldbuf);
+if ((buf = get_conf_entry(buf, &ce))) {
+    long total      = (long)ce.last_text;   /* Mailbox: avoid first_text(0, uid), which may call next_text #1. PL 2026-05-16 */
+    long read_total = read_total_for(rmap, 0);
+    long unreads    = clamp_nonneg((long)ce.last_text - read_total);
+    const char *mark = " ";                 /* keep column alignment */
 
-    /*
-     *	Conferences
-     */
+    if (unreads > total)
+        unreads = total;
 
-    ce_list = NULL;
-    count = 0;
-    top = NULL;
+    output_ansi_fmt(
+        CYAN"%6ld  %6ld"DOT"  %s" BR_RED "%s\n" DOT,
+        "%6ld  %6ld  %s%s\n",
+        total, unreads, mark, ce.name
+    );
+}free(oldbuf);
+(void)close_file(fd);
+
+    /* -------- Read global CONF_FILE and prepare rows -------- */
     if ((fd = open_file(CONF_FILE, 0)) == -1) {
-        sys_error("list_confs", 1, "open_file");
+        while (rmap) { struct ReadMap *t = rmap->next; free(rmap); rmap = t; }
+        free(oldmbuf);
         return -1;
     }
     if ((buf = read_file(fd)) == NULL) {
-        sys_error("list_confs", 2, "read_file");
+        close_file(fd);
+        while (rmap) { struct ReadMap *t = rmap->next; free(rmap); rmap = t; }
+        free(oldmbuf);
         return -1;
     }
     oldbuf = buf;
-
     if (close_file(fd) == -1) {
-        sys_error("list_confs", 3, "close_file");
+        while (rmap) { struct ReadMap *t = rmap->next; free(rmap); rmap = t; }
+        free(oldmbuf); free(oldbuf);
         return -1;
     }
-    while (buf) {
-        buf = get_conf_entry(buf, &ce);
-        if (ce.creator != -1) { /* Only list confs that aren't erased */
-            if (buf) {
-                if (ce_list) {
-                    ce_list->next = (struct CEL *) malloc
-                        (sizeof(struct CEL) + 1);
-                    if (ce_list->next == NULL) {
-                        sys_error("list_confs", 1, "malloc");
-                        return -1;
-                    }
-                    ce_list = ce_list->next;
-                    ce_list->next = NULL;
-                } else {
-                    ce_list = (struct CEL *) malloc
-                        (sizeof(struct CEL) + 1);
-                    if (ce_list == NULL) {
-                        sys_error("list_conf", 1, "malloc");
-                        return -1;
-                    }
-                    top = ce_list;
-                    ce_list->next = NULL;
-                }
-                count++;
-                strcpy(ce_list->name, ce.name);
-                ce_list->unreads = ce.last_text;
-		ftext = first_text(ce.num, uid); 			/* In conferences: store count of articles instead of highest number 2025-08-11 PL */
-                if (ftext <= 0 || ce.last_text <= 0 || ftext > ce.last_text)
-                    ntext = 0;
-                else
-                    ntext = ce.last_text - ftext + 1;
-                ce_list->unreads = ntext;                                
-                ce_list->creator = ce.creator;
-                ce_list->num = ce.num;
-                ce_list->type = ce.type;
+
+    while ((buf = get_conf_entry(buf, &ce))) {
+        if (ce.creator == -1) continue;   /* erased */
+        if (ce.num == 0)    continue;     /* mailbox already printed */
+
+        /* visibility like before */
+        int rights = ce.type;
+        if (rights == NEWS_CONF) rights = OPEN_CONF;
+        if (ce.creator == Uid) rights = 0;
+        else if (rights == SECRET_CONF &&
+                 !can_see_conf(Uid, ce.num, ce.type, ce.creator))
+            continue;
+
+        long total = count_existing_texts(ce.num, uid, (long)ce.last_text); /* Show actual number of existing texts, not highest text number. PL 2026-05-16 */
+        long rt    = read_total_for(rmap, ce.num);
+        long ur    = clamp_nonneg((long)ce.last_text - rt);
+
+        if (ur > total)
+            ur = total;
+
+        struct CEL *n = (struct CEL *)malloc(sizeof(*n));
+        if (!n) { free(oldbuf); free(oldmbuf);
+                  while (rmap){struct ReadMap *t=rmap->next; free(rmap); rmap=t;}
+                  return -1; }
+
+        strcpy(n->name, ce.name);
+        n->total     = total;
+        n->unreads   = ur;
+        n->num       = ce.num;
+        n->type      = ce.type;
+        n->is_member = is_member_for(rmap, ce.num);
+            if (!n->is_member) {
+            ur = 0;                 /* unread doesn't matter if not a member */
             }
+        n->unreads   = ur;
+        n->next      = NULL;
+
+        if (ce.type == NEWS_CONF) {
+            /* insert alphabetically */
+            if (!usenet || strcasecmp(n->name, usenet->name) < 0) {
+                n->next = usenet; usenet = n;
+            } else {
+                struct CEL *p = usenet;
+                while (p->next && strcasecmp(n->name, p->next->name) > 0) p = p->next;
+                n->next = p->next; p->next = n;
+            }
+        } else {
+            /* keep original order */
+            if (!local) { local = n; tail = n; }
+            else { tail->next = n; tail = n; }
         }
     }
     free(oldbuf);
-    conflist = sort_conf(top, count);
-    topconf = conflist;
-    for (x = 0; x < count; x++) {
-        rights = conflist->type;
-        if (rights == NEWS_CONF)
-            rights = OPEN_CONF;
-        if (conflist->creator == Uid) {
-            creator = MSG_CONFCREATOR;
-            rights = 0;
-        } else {
-            creator = ' ';
-            if ((rights == SECRET_CONF) &&
-                (can_see_conf(Uid, conflist->num, conflist->type,
-                        conflist->creator)))
-                rights = 0;
-        }
-
-        if (rights < 2) {
-            strcpy(confname, conflist->name);
-            if (conflist->type > 0) {
-                if (conflist->type == 1)
-                    strcat(confname, MSG_CLOSED);
-                else if (conflist->type == 2)
-                    strcat(confname, MSG_SECRET);
-                else
-                    strcat(confname, MSG_NEWS);
-            }
-            filarea = ' ';
-            sprintf(filelist, "%s/%d%s", FILE_DB, conflist->num, INDEX_FILE);
-            if (file_exists(filelist) != -1)
-                filarea = MSG_FILAREA;
-            xit = 0;
-            mbuf = oldmbuf;
-            while ((mbuf = get_confs_entry(mbuf, &cse)) != NULL) {
-                free_confs_entry(&cse);
-                if (cse.num == conflist->num) {
-                    xit = 1;
-                    break;
-                }
-            }
-            if (!xit) {
-                member = MSG_MEMBERMARK;
-            } else {
-                member = ' ';
-            }
-            if (output("%6ld  %c %c %c%s\n", conflist->unreads,
-                    creator, filarea, member, confname) == -1) {
-                break;
-            }
-        }
-        conflist++;
-    }
-    output("\n");
-    free(topconf);
     free(oldmbuf);
+
+    /* Only color '*' if ANSI output is enabled */
+    /* -------- Print locals then Usenet -------- */
+    for (struct CEL *c = local; c; c = c->next) {
+        const char *mark = c->is_member ? " " : (Ansi_output ? YELLOW "*" DOT : "*");
+        char filelist[PATH_MAX];
+        char *suffix = "";
+        snprintf(filelist, sizeof(filelist), "%s/%d%s", FILE_DB, c->num, INDEX_FILE);
+        if (file_exists(filelist) != -1)
+            suffix = " (F)";
+		// TODO cleanup
+		// const char *suffix = has_file_area(c->num) ? " (F)" : "";
+
+        output_ansi_fmt(
+        CYAN"%6ld  %6ld"DOT"  %s" BR_RED "%s"DOT"%s\n",
+        "%6ld  %6ld  %s%s%s\n",
+        c->total, c->unreads, mark, c->name, suffix
+        );
+    }
+    /* -------- Print Usenet (with colored "(Usenet)" suffix) -------- */
+    for (struct CEL *c = usenet; c; c = c->next) {
+        const char *mark = c->is_member ? " " : (Ansi_output ? YELLOW "*" DOT : "*");
+    /* Siffror: CYAN, namn: BR_RED, suffix: BLUE */
+        output_ansi_fmt(
+        CYAN"%6ld  %6ld"DOT"  %s" BR_RED "%s" BLUE" (Usenet)\n" DOT,
+        "%6ld  %6ld  %s%s (Usenet)\n",
+        c->total, c->unreads, mark, c->name
+    );
+    }
+
+    output("\n");
+
+    /* cleanup rmap */
+    while (rmap) { struct ReadMap *t = rmap->next; free(rmap); rmap = t; }
+    /* free CEL lists to keep valgrind happy */
+    while (local) { struct CEL *t = local->next; free(local); local = t; }
+    while (usenet){ struct CEL *t = usenet->next; free(usenet); usenet = t; }
+
     return 0;
 }
 

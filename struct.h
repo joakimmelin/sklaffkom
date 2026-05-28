@@ -204,3 +204,11 @@ struct SKLAFFRC {
     char login[4096];
     char paydate[80];
 };
+
+/* LikeEntry - one liked post 2025-10-24 PL */
+struct LikeEntry {
+    int confnum;                /* Conference number */
+    long textnum;               /* Text number */
+    time_t timestamp;           /* Unix timestamp of like */
+    struct LikeEntry *next;     /* Linked list */
+};
