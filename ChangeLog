@@ -41,6 +41,14 @@ It's been a while!
 * Mailtoss is now a lot more verbose. Needed it for my own trouble 
   shooting :D.
 
+2026-05-23: Added documentation: Inn NNTP server on Rocky Linux 10. 
+https://github.com/joakimmelin/sklaffkom/wiki/Sklaffkom-and-Usenet--(rocky-linux)
+
+2026-05-23: Added documentation : connecting a modem to Sklaffkom. 
+https://github.com/joakimmelin/sklaffkom/wiki/Connect-analogue-modem-to-Sklaffkom
+
+2026-05-13: Bugfix text body not displayed on terminals with light background
+
 v1.33 beta12 Tuseday 11 November 2025 PL
 Two important bug fixes :
 
@@ -91,7 +99,7 @@ v1.33 beta10 Saturday 27 September 2025 PL
 * Tweaks to cmd_unlink (delete <file>) - verbose logging and more robust 
   error checking with appropriate output.
 
-v1.33 beta9a Saturday 27 September 2025 PL
+V1.33 beta9a Saturday 27 September 2025 PL
 * This is the version we're shipping to github, after a day or so trying
   figure out why inews did not work on FreeBSD anymore :D. Should be fixed
   now, and I can move on to beta10 :).
