@@ -565,7 +565,7 @@ if (c == 0xC3) {
     		    if (c2 == MSG_YESANSWER) {
         		Lines = 1;
         		strcpy(ptr->line, "> ");
-        		strncat(ptr->line, qline, 71);
+				strlcat(ptr->line, qline, sizeof(ptr->line));
         		ptr->line[73] = '\0';
         		numlines++;
         		Size++;

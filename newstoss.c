@@ -315,46 +315,75 @@ send_news(int confid, char *mbuf, int ouid, int ogrp, long com)
     }
     /* swedish character conversion */
 
-    ptr = mbuf;
-    while (*ptr) {
-        if ((unsigned char) *ptr == 134)
-            *ptr = '}';
-        else if ((unsigned char) *ptr == 132)
-            *ptr = '{';
-        else if ((unsigned char) *ptr == 148)
-            *ptr = '|';
-        else if ((unsigned char) *ptr == 143)
-            *ptr = ']';
-        else if ((unsigned char) *ptr == 142)
-            *ptr = '[';
-        else if ((unsigned char) *ptr == 153)
-            *ptr = 0x05c;
-        if ((unsigned char) *ptr == 229)
-            *ptr = '}';
-        else if ((unsigned char) *ptr == 228)
-            *ptr = '{';
-        else if ((unsigned char) *ptr == 246)
-            *ptr = '|';
-        else if ((unsigned char) *ptr == 197)
-            *ptr = ']';
-        else if ((unsigned char) *ptr == 196)
-            *ptr = '[';
-        else if ((unsigned char) *ptr == 214)
-            *ptr = 0x05c;
-        if ((unsigned char) *ptr == 140)
-            *ptr = '}';
-        else if ((unsigned char) *ptr == 138)
-            *ptr = '{';
-        else if ((unsigned char) *ptr == 154)
-            *ptr = '|';
-        else if ((unsigned char) *ptr == 129)
-            *ptr = ']';
-        else if ((unsigned char) *ptr == 128)
-            *ptr = '[';
-        else if ((unsigned char) *ptr == 133)
-            *ptr = 0x05c;
-        ptr++;
+ {
+    unsigned char *src = (unsigned char *)mbuf;
+    unsigned char *dst = (unsigned char *)mbuf;
+
+    while (*src) {
+        /*
+         * UTF-8 first.
+         *
+         * Swedish chars:
+         *   å C3 A5 -> }
+         *   ä C3 A4 -> {
+         *   ö C3 B6 -> |
+         *   Å C3 85 -> ]
+         *   Ä C3 84 -> [
+         *   Ö C3 96 -> backslash
+         */
+        if (src[0] == 0xC3 && src[1] != '\0') {
+            if (src[1] == 0xA5) {          /* å */
+                *dst++ = '}';
+                src += 2;
+                continue;
+            } else if (src[1] == 0xA4) {   /* ä */
+                *dst++ = '{';
+                src += 2;
+                continue;
+            } else if (src[1] == 0xB6) {   /* ö */
+                *dst++ = '|';
+                src += 2;
+                continue;
+            } else if (src[1] == 0x85) {   /* Å */
+                *dst++ = ']';
+                src += 2;
+                continue;
+            } else if (src[1] == 0x84) {   /* Ä */
+                *dst++ = '[';
+                src += 2;
+                continue;
+            } else if (src[1] == 0x96) {   /* Ö */
+                *dst++ = '\\';
+                src += 2;
+                continue;
+            }
+        }
+
+        /*
+         * Old single-byte encodings, preserved from original code:
+         * CP437-ish / Latin-1 / Mac-ish mappings.
+         */
+        if (*src == 134 || *src == 229 || *src == 140) {
+            *dst++ = '}';
+        } else if (*src == 132 || *src == 228 || *src == 138) {
+            *dst++ = '{';
+        } else if (*src == 148 || *src == 246 || *src == 154) {
+            *dst++ = '|';
+        } else if (*src == 143 || *src == 197 || *src == 129) {
+            *dst++ = ']';
+        } else if (*src == 142 || *src == 196 || *src == 128) {
+            *dst++ = '[';
+        } else if (*src == 153 || *src == 214 || *src == 133) {
+            *dst++ = '\\';
+        } else {
+            *dst++ = *src;
+        }
+
+        src++;
     }
+
+    *dst = '\0';
+}
 
     fbuf = (char *) malloc(strlen(mbuf) + LONG_LINE_LEN);
     if (fbuf == NULL) {

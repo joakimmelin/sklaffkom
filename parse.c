@@ -46,8 +46,8 @@ cmd_func_t *
 parse(char *buf, char *args)
 {
     struct hitlist hl[MAX_COMMANDS];
-    int i, found, full_hit, arg_hit, part_hit, max_words, full_ind, arg_ind, part_ind;
-
+    int i, found, full_hit, arg_hit, part_hit, max_words;
+	int full_ind = -1, arg_ind = -1, part_ind = -1;
     if (atol(buf)) {
         sprintf(buf, "%s %ld", MSG_TEXTPROMPT2, atol(buf));
     }

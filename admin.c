@@ -110,7 +110,7 @@ display_welcome(void)
     make_activity_note();       /* Touches the activity file */
 
     snprintf(name, sizeof(name), "login initialized");
-    debuglog(name, 10);
+    debuglog(name, 4);
 
     if (user_name(Uid, name) == NULL) {
         if (setup_new_user() == -1) {
@@ -208,10 +208,10 @@ display_welcome(void)
         tty_reset();
         exit(1);
     }
-    display_news();
-
-    snprintf(name, sizeof(name), "display_welcome(): smta");
-    debuglog(name, 20);
+    dlog(6, "We try to display news-file");
+	display_news();   
+	snprintf(name, sizeof(name), "display_welcome(): smta");
+    debuglog(name, 6);
     send_msg_to_all(MSG_LOGIN, "");
 
     user_name(Uid, name);
@@ -427,10 +427,10 @@ exec_logout(int tmp)
     }
     if (tmp != 0) {
         snprintf(tmpdir, sizeof(tmpdir), "forced logout w/ sig %d begun", tmp);
-        debuglog(tmpdir, 5);
+        debuglog(tmpdir, 4);
     } else {
         snprintf(tmpdir, sizeof(tmpdir), "controlled logout begun");
-        debuglog(tmpdir, 10);
+        debuglog(tmpdir, 4);
     }
 
     sprintf(tmpdir, "/tmp/%d/%d.qwk", getpid(), getpid());
@@ -450,7 +450,7 @@ exec_logout(int tmp)
     }
 
     sprintf(tmpdir, "  checking active time");
-    debuglog(tmpdir, 20);
+    debuglog(tmpdir, 6);
 
     if (tmp != SIGHUP) {
         at = active_time(Uid);
@@ -475,17 +475,17 @@ exec_logout(int tmp)
     	}
     }
     sprintf(tmpdir, "  removing from active list");
-    debuglog(tmpdir, 20);
+    debuglog(tmpdir, 6);
     if (ActiveFD != -1)
         close_file(ActiveFD);
     remove_active();
 
     sprintf(tmpdir, "  issuing logout msg");
-    debuglog(tmpdir, 20);
+    debuglog(tmpdir, 6);
     send_msg_to_all(MSG_LOGOUT, "");
 
     sprintf(tmpdir, "  updating user entry");
-    debuglog(tmpdir, 20);
+    debuglog(tmpdir, 6);
     if ((fd = open_file(USER_FILE, 0)) == -1) {
         sys_error("logout", 1, "open_file");
     }
@@ -535,18 +535,18 @@ exec_logout(int tmp)
     non_critical();
 
     sprintf(tmpdir, "  removing msg-file");
-    debuglog(tmpdir, 20);
+    debuglog(tmpdir, 6);
     strcpy(name, Home);
     strcat(name, MSG_FILE);
     unlink(name);
 
     sprintf(tmpdir, "  resetting tty");
-    debuglog(tmpdir, 20);
+    debuglog(tmpdir, 6);
     sig_reset();
     tty_reset();
 
-    sprintf(tmpdir, "logout sequence completed");
-    debuglog(tmpdir, 10);
+    sprintf(tmpdir, "logout sequence completed, bye bye!");
+    debuglog(tmpdir, 6);
 
     if (restart) {
         tcgetattr(0, &temp_mode);
@@ -611,7 +611,7 @@ timeout(int sig)
     else {
         Warning = 1;
         sprintf(name, "timeout(): sm");
-        debuglog(name, 7);
+        debuglog(name, 6);
         send_msg(Uid, MSG_SAY, MSG_WARNING, 0);
         signal(SIGALRM, timeout);
         alarm(60);
@@ -625,28 +625,36 @@ timeout(int sig)
 void
 debuglog(char *s, int level)
 {
-    time_t now;
-    FILE *fp;
-    char logname[255], entry[512], tstr[255];
+    if (level > LOGLEVEL)
+        return;
 
-    if (level < LOGLEVEL) {
-        sprintf(logname, "%s/%d.%d.log", LOGDIR, Uid, getpid());
+    time_t now = time(NULL);
+    struct tm tm;
+    char tstr[32];
+    char logname[256];
+    char entry[700];
 
-        now = time(0);
-        strcpy(tstr, ctime(&now));
-        tstr[strlen(tstr) - 1] = 0;
-        sprintf(entry, "%s : %d : %d : %s", tstr, Uid, getpid(), s);
+    
+    localtime_r(&now, &tm); /* Safer localtime + formatted timestamp PL 2025-09-27 */
+    strftime(tstr, sizeof(tstr), "%Y-%m-%d %H:%M:%S", &tm);
 
-        fp = fopen(logname, "a");
-        if (!fp) {
-            // modified on 2025-09-24, PL
-            // Prevent crash if log can't be written (e.g. permission denied)
-            return;
-        }
+    
+    char msg[512]; /* Sanitize message to one line PL 2025-09-27 */
+    size_t n = 0;
+    for (const char *p = s; *p && n + 1 < sizeof(msg); ++p)
+        msg[n++] = (*p == '\n' || *p == '\r') ? ' ' : *p;
+    msg[n] = '\0';
 
-        fprintf(fp, "%s\n", entry);
-        fclose(fp);
-    }
+
+    snprintf(logname, sizeof(logname), "%s/%d.%d.log", LOGDIR, Uid, getpid()); /* snprintf instead of sprintf for safety */
+    snprintf(entry, sizeof(entry), "%s : %d : %d : %s", tstr, Uid, getpid(), msg);
+
+    FILE *fp = fopen(logname, "a");
+    if (!fp) return;  /* Make sure we don't crash if logging doesn't work for any reason */
+
+    fputs(entry, fp);
+    fputc('\n', fp);
+    fclose(fp);
 }
 
 
@@ -805,7 +813,21 @@ show_status(int num, int flag, int st_type)
                 }
             }
             free(rc);
-            if (st_type == STATUS_EXTERNAL)
+            
+			if (st_type == STATUS_INTERNAL) {
+    struct LikeEntry *likes = get_user_likes(u_num);
+    if (likes) {
+        output("\nHyllade texter:\n");
+        for (struct LikeEntry *l = likes; l; l = l->next) {
+            output("  Möte %d, Text %ld (%s)\n",
+                   l->confnum, l->textnum,
+                   time_string_static(l->timestamp));  /* We will format this nicer soonish */
+        }
+        output("\n");
+		free_like_list(likes);
+    }
+}
+if (st_type == STATUS_EXTERNAL)
                 return 0;
 
 /* if (u_num != Uid) return 0;*/
@@ -860,7 +882,12 @@ show_status(int num, int flag, int st_type)
         ce = get_conf_struct(c_num);
         if (ce != NULL) {
             output("\n%s          %s\n", MSG_NAMECOL, c_name);
-            output(MSG_CONFTYPE);
+            char *desc = get_conf_description(c_num);
+			if (desc && *desc) {
+    		output("Beskrivning:   %s", desc);
+			}
+			free(desc);
+			output(MSG_CONFTYPE);
             switch (ce->type) {
             case OPEN_CONF:
                 output("%s\n", MSG_CONFDEFAULT);
@@ -884,6 +911,12 @@ show_status(int num, int flag, int st_type)
             output("%s\n", tmp);
             output("%s %d\n", MSG_NUMTEXT, last_text(c_num, Uid));
             output("\n");
+			//char *desc = get_conf_description(c_num);
+			//if (desc && *desc) {
+    		//	output("MSG_DESCRIBE "%s\n", desc);
+			//	}
+			//	free(desc);
+			show_conf_likes(num);   /* 2025-10-25 PL */
         }
     } else if (c_num == 0) {
         output("\n%s\n\n", MSG_NOMBOXSTAT);

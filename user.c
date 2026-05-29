@@ -1468,7 +1468,8 @@ write_sklaffrc(int uid, struct SKLAFFRC *kaffer)
  * Failures are logged and non-fatal. 2025-08-10 PL
  */
 {
-    struct passwd *p = getpwuid(Uid);
+   /* struct passwd *p = getpwuid(Uid); */
+    struct passwd *p = getpwuid(uid); /* Minor typo since ages ago 2025-05-18 PL */
     if (!p || !p->pw_dir || !*p->pw_dir) {
         debuglog("Skipping .plan: getpwuid() failed or empty home", 20);
     } else {

@@ -1,3 +1,46 @@
+v1.33 beta13 Wednesday 28 May 2026 PL
+It's been a while!
+
+* Sanity checks before upload + better logging.
+
+* Sysop can now disable filetransfer entirely by leaving the defines for
+  UPLOADPRGM and DOWNLOADPRGM empty.
+
+* UTF8 in outgoing mail and to usenet - big milestone! Incoming e-mail should
+  look decent now also.
+
+* Usenet signature delimiter fixed ("-- " instead of "--")
+
+* Newstoss is better at importing utf8 but still not perfect (how to handle 
+  {}| etc I don't know yet)
+
+* You can now browse command history using arrow keys up and down
+
+* Extra check implemented in cmd_post_text and cmd_comment to make sure each 
+  post has an empty line at the end (inews likes that better)
+
+* "Ändra plan" was just weird so I aliased that to "Ändra signatur" but kept 
+  "Ändra plan" for historical reasons of course. But take note that 
+  "Ändra plan" does not change your .plan-file. Something else does 
+  (can't remember what exactly haha).
+
+* I screwed up and we lost the ability to show actual number of posts in 
+  conferences. Sorry! It's fixed now
+
+* New sklaffadm command "forcepurge" deletes text regardless of "age". 
+  Useful when tossing large number of usenet articles.
+
+* Extensive logging and debugging around inews and in other places I can't 
+  recall right now :O.
+
+* Fixed lang.h where I accidently used utf8 instead of sf7 (stooopid me!!)
+
+* Hard coded text strings in previous release is now defined in lang.h 
+  instead and translated to English
+
+* Mailtoss is now a lot more verbose. Needed it for my own trouble 
+  shooting :D.
+
 2026-05-23: Added documentation: Inn NNTP server on Rocky Linux 10. 
 https://github.com/joakimmelin/sklaffkom/wiki/Sklaffkom-and-Usenet--(rocky-linux)
 
@@ -5,6 +48,56 @@ https://github.com/joakimmelin/sklaffkom/wiki/Sklaffkom-and-Usenet--(rocky-linux
 https://github.com/joakimmelin/sklaffkom/wiki/Connect-analogue-modem-to-Sklaffkom
 
 2026-05-13: Bugfix text body not displayed on terminals with light background
+
+v1.33 beta12 Tuseday 11 November 2025 PL
+Two important bug fixes :
+
+* The UTF-8 conversion did not work right when the first character of a
+  line was ÅÄÖ or åäö. Very strange bug that took a while to figure out.
+  Now fixed = UTF-8 conversion should now be fully completed :D.
+* List conferences with ansi off is now truly with ansi off.
+* Conferences with files now displays the suffix (F).
+ 
+v1.33 beta11 Wednesday 15 October 2025 PL
+* I think we're running out of bugs for the moment, so here are some new
+  features (let's hope they don't introduce too many new bugs) :
+
+  * Completely re-designed "List conferences"-command with colors and 
+    cleaner output. We now show the number of unread posts of each 
+    conference, and for now I skipped the "S" and "F" columns because a 
+    normal user probably don't know what they stood for anyways? 
+    We need a new discrete way to indicate that the conference has files 
+    though.
+  * New command "Fotnot / Footnote" let's you add a footnote to your own 
+    posts in local conferences, for corrections and such, this is much 
+    cleaner than having to add comments on your own posts.
+  * New commands "Hylla / Praise" let's caller like a post. Command status
+    <user> shows all liked posts by the user, status <conference> shows 
+    a list of all liked posts. Also added the commands "Avhylla / 
+    Unpraise". This took some effort as I had to figure out the structure 
+    of Sklaffkom's database and some AI-help was needed (again) for the 
+    deep technical stuff. Got plans for some kind of "Karma"-system and 
+    these two new commands will be a big part of that.
+   * New command "Ändra mötesbeskrivning" lets you add, change or remove 
+    the description of a conference.
+
+v1.33 beta10 Saturday 27 September 2025 PL
+* Small tweaks in debuglog function for safety and cleaner output
+* New macro dlog for easier injection of logging all over the place ;).
+* Making posts and follow-ups now have very extensive logging in place.
+* Also most file operations (upload / download / list files / describe)
+  are extensively logged now.
+* lib/raw.io disabled logging for now as it created log files on every
+  (I think) newstoss run. We probably don't need this and if we do we
+  can enable it again.
+* It turned out "fputs("\004", pipe);" (^D) for news posts was redudant, 
+  it seems, so it's commented out for now. We'll keep an eye on it.
+* cmd_describe partly rewritten to avoid memory corruption. This took a 
+  while to figure out, but should be super safe now across all POSIX-
+  systems.
+* Humanized, nicely aligned file sizes in cmd_list_files.
+* Tweaks to cmd_unlink (delete <file>) - verbose logging and more robust 
+  error checking with appropriate output.
 
 V1.33 beta9a Saturday 27 September 2025 PL
 * This is the version we're shipping to github, after a day or so trying

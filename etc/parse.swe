@@ -7,16 +7,18 @@ Addera r{ttigheter:cmd_add_rights:Addera r{ttigheter f|r en anv{ndare i aktuellt
 (Definera) alias:cmd_alias:Definierar ett alias f|r ett kommando
 (L{sa) alla (texter):cmd_readall:Visar alla dina ol{sta texter
 Antal rader:cmd_mod_numlines: [ndra din sk{rml{ngd
+Avhylla (text):cmd_unlike: ]ngrar en texthyllning du har gjort
 Beskriv (fil):cmd_describe:Beskriv en fil i m|tets filarea
 Avprioritera (m|te):cmd_deprio:Avprioritera m|te
 (Skriv) brev:cmd_mail:Skicka brev till anv{ndare
 Backa:cmd_back_text:Backar ett antal texter
 B|rja om:cmd_restart:B|rjar om med en ny inloggning
-BBSLink:cmd_bbslink:Spelar massa onlinespel!
+BBSLink:cmd_bbslink:Anropar spel via BBSLink
 Clear:cmd_cls:Rensa sk{rmen
 Cls:cmd_cls:Synonym till Clear (rensar sk{rmen)
 Endast:cmd_only:V{lj hur m}nga texter i aktuellt m|te som skall vara nya
 Fr}n:cmd_from:Visa var du {r ifr}n
+Fotnot:cmd_footnote:G|r ett till{gg till befintlig text
 Globals|k:cmd_global_grep:S|ka efter en str{ng i alla m|tens texter
 Grep:cmd_grep:S|ka efter en str{ng i m|tet
 G} (till m|te):cmd_change_conf:G} till ett annat m|te {n det nuvarande
@@ -26,6 +28,7 @@ Hoppa (|ver kommentars-) tr{d:cmd_jump_tree:Hoppa |ver alla texter i tr{det
 Hoppa anv{ndare:cmd_jumpuser:Hoppa |ver alla texter skrivan av en anv{ndare
 Hoppa {rende:cmd_jumpsub:Hoppa |ver alla texter med ett visst {rende
 Hoppa |ver (alla kommentarer):cmd_jump_over:Hoppa |ver alla ol{sta kommentarer
+Hylla (text):cmd_like:Hyllar en text
 H{mta:cmd_sendbatch:Skickar dina ol{sta texter i QWK-format
 (L{sa texten) igen:cmd_display_last:]terse den senast l{sta texten
 (Visa) information:cmd_info:Visa information om systemet, etc
@@ -73,6 +76,7 @@ Skapa enk{t:cmd_post_survey:Skapa en enk{t i aktuellt m|te
 Skapa (nytt) m|te:cmd_create_conf:Skapa ett nytt m|te
 Skrik:cmd_yell:Synonymt med 'Ropa'
 Skriv (inl{gg):cmd_post_text:Synonymt med '(Skriv) inl{gg'
+Spela (onlinespel):cmd_bbslink:Anropar spel via den InterBBS-liknande tj{nsten BBSLink
 S|k:cmd_grep:Synonymt med 'grep'
 Sluta:cmd_end_session:Synonymt med 'Logout'
 Sl} av (flagga):cmd_off_flag:Sl} av en flagga
@@ -95,15 +99,17 @@ Visa ol{sta (texter):cmd_reclaim_unread:Ol{smarkerar dina ol{sta texter direkt.
 ]terse s{gmeddelanden:cmd_list_says:Listar mottagna s{gmeddelanden
 [ndra lapp:cmd_mod_note:[ndra din "lapp p} d|rren"
 [ndra l|senord:cmd_change_passwd:[ndra ditt l|senord
+[ndra m|tesbeskrivning:cmd_change_cdesc:[ndra beskrivning f|r ett m|te
 [ndra m|tesnamn:cmd_change_cname:[ndra namn p} ett m|te
 [ndra kommentarsm|te:cmd_change_comc:[ndra kommentarsm|te till ett m|te
 [ndra personuppgifter:cmd_mod_pinfo:[ndra dina personuppgifter
 [ndra plan:cmd_mod_sig:[ndra din plan-fil
+[ndra signatur:cmd_mod_sig:[ndrar din signatur
 [ndra sk{rml{ngd:cmd_mod_numlines:[ndra din sk{rml{ngd
 [ndra timeout:cmd_mod_timeout:[ndra tid f|r inaktivitetsutloggning
 [ndra uppstartskommandon:cmd_mod_login:[ndra vilka kommandon som k|rs vid login
 Nethack:cmd_nethack:Spela nethack
-Zork:cmd_zork: Spela Zork 1, 2 eller 3
+Zork:cmd_zork:Spela Zork 1, 2 eller 3
 
 ?:cmd_help:Synonymt med 'Lista kommandon'
 +:cmd_next_conf:Synonymt med '(G} till) n{sta m|te'

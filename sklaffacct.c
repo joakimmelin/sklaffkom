@@ -43,17 +43,18 @@ main(int argc, char *argv[])
     struct passwd *pw;
 
     tty_raw();
-    
+//  output("Trying to open: %s\n\n", ACCT_FILE);        /* debug */                     
+
     if ((fd = open_file(ACCT_FILE, OPEN_QUIET)) == -1) {
-	printf("[DEBUG] - Cannot open acct-file, inform Sysop!");
+	printf("[DEBUG] - Cannot open acct-file, inform Sysop!\n\n");
         goto cont;
     }
     if ((buf = read_file(fd)) == NULL) {
-        printf("[DEBUG] - Cannot read acct-file, inform Sysop!");
+        printf("[DEBUG] - Cannot read acct-file, inform Sysop!\n\n");
         goto cont;
     }
     
- /* output("Closing file: %s\n", ACCT_FILE); */		/* debug */
+//  output("Closing file: %s\n", ACCT_FILE);		/* debug */
  
     close_file(fd);
     output("\n%s\n", buf);
