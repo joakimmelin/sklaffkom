@@ -381,27 +381,30 @@ char *real_string(char *);
 char *reorder_name(char *, char *);
 char *prog_name(char *);
 char *mbox_dir(int, char *);
+
+/* lib/ui.c */
+
 int  output_ansi_fmt(const char *ansi_fmt, const char *plain_fmt, ...); 				/* 2025-07-30 PL */
-int  detect_terminal_lines(void);														/* 2025-08-10 PL */
 void clear_prompt(int num); 															/* Little helper to avoid extra '(') 2025-08-26 PL */
 void clear_prompt_cols(int cols);														/* 2025-08-30 PL */
+void clear_screen(void);                                                                     /* More sophisticated cls to use outside of commands.c */
+int output_body_line(const char *line, const char *col);                                    /* ANSI support fort text body in articles 2025-09-24 PL */
+
+
+/* various */
+int  detect_terminal_lines(void);														/* 2025-08-10 PL */
 int quote_depth(const char *s);  														/* Usenet quotes in colors 2025-08-31 PL */
 void normalize_label(const char *raw, char *norm, size_t nlen);                              /* Normalize a label to ensure exactly one trailing ": " */
-void get_wallclock_localtime(const time_t *t, struct tm *out);                          /* 2025-08-16 PL little helper used by (Se) tiden > */
 int b64v(int c);                                                                        /* Base64 table */
-int output_body_line(const char *line, const char *col);                                    /* ANSI support fort text body in articles 2025-09-24 PL */
-int run_external_cmd_args(const char *argv[], int use_fallback);                            /* Better support for external commands 2025-09-24 PL */
 void display_langfile(const char *base, const char *base_eng, const char *base_swe);        /* Support for multilingual display of files (news etc) 2025-09-24 PL */
 void display_news(void);
 void display_logout(void);
-void clear_screen(void);                                                                     /* More sophisticated cls to use outside of commands.c */
-const char *month_name(int mon);                                                                /* "Se tiden"-stuff 2025-09.25 */
-void chomp(char *s);                                                                            /* "Se tiden"-stuff 2025-09.25 */
 void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
 void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
 long clamp_nonneg(long v);                                                          /* modified on 2025-10-02, PL */
 const char *time_string_static(time_t t);													/* 2025-10-24 PL */
 int get_text_author(int conf, long num);  												/* 2025-10-25 PL */
+
 // enable the function below when ready and uncomment in conf.c
 //int has_file_area(int confnum);															/* 2025-11-11 PL */
 
@@ -566,6 +569,11 @@ char *get_conf_description(int confnum);												/* 2025-10-25 PL */
 int write_confxtra_section(int confnum, const char *tag, const char *value);			/* 2025-10-25 PL */
 int remove_confxtra_section(int confnum, const char *tag);								/* 2025-10-25 PL */
 
+/* displaytime.c */
+void get_wallclock_localtime(const time_t *t, struct tm *out);                          /* 2025-08-16 PL little helper used by (Se) tiden > */
+const char *month_name(int mon);                                                                /* "Se tiden"-stuff 2025-09.25 */
+void chomp(char *s);                                                                            /* "Se tiden"-stuff 2025-09.25 */
+
 /* edit.c */
 
 void abort_edit(int);
@@ -573,6 +581,9 @@ int resume_aborted_edit(void);
 struct TEXT_HEADER *
 line_ed(char *, struct TEXT_HEADER *, int, int,
     int, int *, char *);
+
+/* external.c */
+int run_external_cmd_args(const char *argv[], int use_fallback);                            /* Better support for external commands 2025-09-24 PL */
 
 /* file.c */
 

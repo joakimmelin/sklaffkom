@@ -197,21 +197,4 @@ outputex(char *fmt,...)
     /* No use to add Iso8859 support. Eight bit is stripped anyway when sent
      * over network. */
 }
-/*
-* Needed for ansi outputs with lot's of args
-* PL 2025-07-31
-*/
-int
-output_ansi_fmt(const char *ansi_fmt, const char *plain_fmt, ...)
-{
-    va_list args;
-    char buf[HUGE_LINE_LEN];
-    const char *fmt = Ansi_output ? ansi_fmt : plain_fmt;
-
-    va_start(args, plain_fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-
-    return output("%s", buf);   /* returns -1 on error */
-}
 

@@ -41,30 +41,6 @@
 #include "ext_globals.h"
 
 
-
-
-
-/* Two Little helpers to avoid extra '(') 2025-08-26 PL */
-void clear_prompt(int num) 
-{
-    int x;
-    output("\r");
-    for (x = 0; x < num; x++)
-        output(" ");
-    output("\r");
-}
-
-void clear_prompt_cols(int cols)
-{
-    output_ansi_fmt("\r\033[0K", "\r");
-        if (!Ansi_output) {
-        int i;
-        for (i = 0; i < cols; i++)
-            output(" ");
-        output("\r");
-    }
-}
-
 /* Count quote depth: skip leading spaces, then count '>' allowing optional single
  * space after each '>' so it matches ">>", "> >", "> > >", etc.
  */
@@ -92,144 +68,7 @@ void normalize_label(const char *raw, char *norm, size_t nlen)
     snprintf(norm, nlen, "%s%s", raw ? raw : "", ends_with_colon ? " " : ": ");
 }
 
-/*
- * get_wallclock_localtime - little helper to show correct time at all times (2025-08-16 PL)
- */
 
-void get_wallclock_localtime(const time_t *t, struct tm *out)
-{
-    char *saved = NULL;
-    const char *tz = getenv("TZ");
-    if (tz && tz[0]) {
-        saved = strdup(tz);            
-    }
-
-    unsetenv("TZ");                    
-    tzset();
-
-    {
-        struct tm *tmp = localtime(t); 
-        if (tmp) *out = *tmp;
-    }
-
-    if (saved) {
-        setenv("TZ", saved, 1);       
-        free(saved);
-    } else {
-        unsetenv("TZ");                
-    }
-    tzset();
-}
-
-int b64v(int c)  /* Base64 table */
-{
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    return -1;
-}
-
-
-
-
-
-
-
-
-
-/* output_body_line - outputs a body line with ANSI color if enabled
- * 2025-09-24, PL
- */
-
-int output_body_line(const char *line, const char *col)
-{
-    if (Ansi_output) {
-        return output_ansi_fmt("%s%s\x1b[0m\n", "%s\n", col, line);
-    } else {
-        //if (output((char *)line) == -1 || output("\n") == -1)
-		if (output("%s", line) == -1 || output("\n") == -1)        
-    return -1;
-    }
-    return 0;
-}
-
-/*
- * run_external_cmd_args - runs an external program with argument list
- * argv[0] = command to run, argv[1..n] = arguments, NULL-terminated
- * use_fallback: whether to run 'which' on argv[0] if not found
- * 2025-09-17, PL
- */
-int run_external_cmd_args(const char *argv[], int use_fallback)
-{
-    sigset_t sigmask, oldsigmask;
-    char exe_path[256];
-    FILE *which_fp;
-    char which_buf[256];
-
-    if (!argv || !argv[0])
-        return 1;
-
-    strlcpy(exe_path, argv[0], sizeof(exe_path));
-
-    if (access(exe_path, X_OK) != 0 && use_fallback) {
-        const char *base = strrchr(argv[0], '/');
-        if (base)
-            snprintf(which_buf, sizeof(which_buf), "which %s", base + 1);
-        else
-            snprintf(which_buf, sizeof(which_buf), "which %s", argv[0]);
-
-        which_fp = popen(which_buf, "r");
-        if (which_fp && fgets(which_buf, sizeof(which_buf), which_fp)) {
-            which_buf[strcspn(which_buf, "\n")] = '\0';
-            if (access(which_buf, X_OK) == 0)
-                strlcpy(exe_path, which_buf, sizeof(exe_path));
-        }
-        if (which_fp)
-            pclose(which_fp);
-    }
-
-  if (access(exe_path, X_OK) != 0) {
-    output("\nFel: Kan inte starta spelet eller scriptet - meddela Sysop!\n");
-    output("  Försökte köra: %s\n", exe_path);
-
-    if (access(exe_path, F_OK) != 0) {
-        output("  Filen finns inte (ENOENT).\n");
-    } else {
-        output("  Filen finns, men är inte körbar (EACCES eller liknande).\n");
-    }
-
-    return 1;
-    }
-
-    sigemptyset(&sigmask);
-    sigaddset(&sigmask, SIGNAL_NEW_TEXT);
-    sigaddset(&sigmask, SIGNAL_NEW_MSG);
-    sigprocmask(SIG_BLOCK, &sigmask, &oldsigmask);
-    signal(SIGNAL_NEW_TEXT, SIG_IGN);
-    signal(SIGNAL_NEW_MSG, SIG_IGN);
-    set_avail(Uid, 1);
-
-    if (!fork()) {
-        sig_reset();
-        tty_reset();
-        execvp(exe_path, (char *const *)argv);
-        perror("execvp");
-        _exit(1);
-    } else {
-        wait(NULL);
-    }
-
-    signal(SIGNAL_NEW_TEXT, baffo);
-    signal(SIGNAL_NEW_MSG, newmsg);
-    sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
-    tty_raw();
-    output("\n");
-    set_avail(Uid, 0);
-
-    return 0;
-}
 /*
  * display_langfile - display language-aware file
  * Updated 2025-09-15 by PL
@@ -279,12 +118,7 @@ output("DEBUG: language = ");
 }
 
 
-void clear_screen(void)
-{
-    output(ANSI_CLS);  /* or printf(ANSI_CLS); */
-    fflush(stdout);
-    Lines = 1;
-}
+
 
 void display_news(void)
 {
@@ -296,26 +130,6 @@ void display_logout(void)
     display_langfile(LOGOUT_FILE, LOGOUT_FILE_ENG, LOGOUT_FILE_SWE);
 }
 
-const char *
-month_name(int mon)
-{
-    static const char *months[] = {
-        "januari", "februari", "mars", "april", "maj", "juni",
-        "juli", "augusti", "september", "oktober", "november", "december"
-    };
-    if (mon >= 0 && mon <= 11)
-        return months[mon];
-    return "okänd";
-}
-
-
-void
-chomp(char *s)
-{
-    int len = strlen(s);
-    while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r'))
-        s[--len] = '\0';
-}
 /*
  * display_header - displays textheader
  * args: pointer to TEXT_HEADER (th), allow editing of subject (edit_subject),
@@ -569,23 +383,6 @@ clamp_nonneg(long v)
 {
     return (v < 0) ? 0 : v;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * Converts unix-time to human-time format

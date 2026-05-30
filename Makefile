@@ -46,7 +46,9 @@ OBJS = \
 	command_list.o \
 	conf.o \
 	confxtra.o \
+	displaytime.o \
 	edit.o \
+	external.o \
 	file.o \
 	footnote.o \
 	flag.o \
