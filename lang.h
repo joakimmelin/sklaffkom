@@ -297,9 +297,13 @@
 #define MSG_NO_ZORK	"No z3-file found, sorry"  					/*Zork */
 #define MSG_BADARG      "\nF|ljande infocom-spel finns f|r n{rvarande :\n\nZork 1\nZork 2\nZork 3\n\nF|r att spela, ge kommandot Zork <nr>.\n\n"	/* Zork */
 #define MSG_SUCCESSUL   "Tackar f|r det! \nBeskriv nu g{rna filen genom att ge kommandot 'Beskriv <filnamn>'."
-#define MSG_FILE_DB_ER	"SysOp har inte konfigurerat filarkivet korrekt {n. Påminn denne."
-#define MSG_ULPRGMERROR "Uploadprogrammet saknas eller kan inte k|ras. Kontakta SysOp"
+#define MSG_NETHACKER01	"Fel: Kan inte starta Nethack - har SysOp glömt att installera den?"
+#define MSG_FILE_DB_ER	"Strul med filkatalogen. Meddela SysOp."
+#define MSG_ULPRGMERROR "Uploadprogrammet saknas eller kan inte k|ras. Kontakta SysOp."
 #define MSG_FILES_OFF 	"Filöverföringar är inte konfigurerade på detta system."
+#define MSG_OPEN_C_E	"Fel : kunde inte |ppna confxtra. Meddela SysOp!"
+#define MSG_READ_C_E	"Fel : kunde inte l{sa confxtra. Meddela SysOp!"
+#define MSG_WRITE_C_E	"Fel : kunde inte skriva till confxtra. Meddela SysOp!"
 
 /* Nytt (Se) tiden-kommando */
 #define MSG_DISPTIME    "Klockan {r nu"
@@ -996,9 +1000,14 @@
 #define MSG_NO_ZORK     "No z3-file found, sorry"       /*Zork */
 #define MSG_BADARG      "Oops bad input! Type Zork 1, or 2, or 3.\n\n"   /* Zork */
 #define MSG_SUCCESSUL   "Thanks! Please describe the file now by giving the command 'Describe <filename>'."
-#define MSG_FILES_OFF 	"File transfers are not configured on this system."
+#define MSG_NETHACKER01	"Failed to launch Nethack - advise your SysOp to install it!"
 #define MSG_FILE_DB_ER	"File DB configuration error, speak with your SysOp!"
 #define MSG_ULPRGMERROR "Upload program missing or can't be run. Contact your SysOp!"
+#define MSG_FILES_OFF 	"File transfers are not configured on this system."
+#define MSG_FILES_OFF 	"Filöverföringar är inte konfigurerade på detta system."
+#define MSG_OPEN_C_E	"Error : failed to open confxtra. Contact your SysOp."
+#define MSG_READ_C_E	"Error : failed to read confxtra. Contact your SysOp."
+#define MSG_WRITE_C_E	"Error : failed to write confxtra. Contact your SysOp."
 
 /* New time */
 #define MSG_DISPTIME    "Current time is"

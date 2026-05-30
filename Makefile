@@ -49,7 +49,9 @@ OBJS = \
 	file.o \
 	flag.o \
 	msg.o \
+	newsparse.o \
 	parse.o\
+	praise.o\
 	survey.o \
 	text.o \
 	user.o \
