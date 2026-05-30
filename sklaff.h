@@ -390,20 +390,23 @@ void clear_prompt_cols(int cols);														/* 2025-08-30 PL */
 void clear_screen(void);                                                                     /* More sophisticated cls to use outside of commands.c */
 int output_body_line(const char *line, const char *col);                                    /* ANSI support fort text body in articles 2025-09-24 PL */
 
+/* lib/display_header.c */
+
+void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
+
+/* lib/display_langfile.c */
+void display_langfile(const char *base, const char *base_eng, const char *base_swe);        /* Support for multilingual display of files (news etc) 2025-09-24 PL */
+void display_news(void);
+void display_logout(void);
 
 /* various */
 int  detect_terminal_lines(void);														/* 2025-08-10 PL */
 int quote_depth(const char *s);  														/* Usenet quotes in colors 2025-08-31 PL */
 void normalize_label(const char *raw, char *norm, size_t nlen);                              /* Normalize a label to ensure exactly one trailing ": " */
 int b64v(int c);                                                                        /* Base64 table */
-void display_langfile(const char *base, const char *base_eng, const char *base_swe);        /* Support for multilingual display of files (news etc) 2025-09-24 PL */
-void display_news(void);
-void display_logout(void);
-void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
 void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
 long clamp_nonneg(long v);                                                          /* modified on 2025-10-02, PL */
 const char *time_string_static(time_t t);													/* 2025-10-24 PL */
-int get_text_author(int conf, long num);  												/* 2025-10-25 PL */
 
 // enable the function below when ready and uncomment in conf.c
 //int has_file_area(int confnum);															/* 2025-11-11 PL */

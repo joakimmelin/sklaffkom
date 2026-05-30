@@ -157,6 +157,39 @@ static int compare_textnum(const void *a, const void *b)
 }
 
 /*
+ * get text author (small hack 2025-10-25 PL)
+*/
+
+static int 
+get_text_author(int conf, long num)
+{
+    char fname[PATH_MAX];
+    int fd;
+    char *buf;
+    struct TEXT_ENTRY te;
+    int author = 0;
+
+    snprintf(fname, sizeof(fname), "%s/%d/%ld", SKLAFF_DB, conf, num);
+
+    if ((fd = open_file(fname, OPEN_QUIET)) == -1)
+        return 0;
+    if ((buf = read_file(fd)) == NULL) {
+        close_file(fd);
+        return 0;
+    }
+    close_file(fd);
+
+    char *p = get_text_entry(buf, &te);
+    free(buf);
+    if (!p)
+        return 0;
+
+    author = te.th.author;
+    free_text_entry(&te);
+    return author;
+}
+
+/*
  * show_conf_likes - display praised texts in a conference
  *
  * Collects all praise entries for the conference, summarizes them per
