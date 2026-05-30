@@ -68,8 +68,6 @@ void normalize_label(const char *raw, char *norm, size_t nlen)
     snprintf(norm, nlen, "%s%s", raw ? raw : "", ends_with_colon ? " " : ": ");
 }
 
-
-
 /* clamp_nonneg() — return v clamped to >= 0 */
 /* Used in the improved "list_confs" function */
 /* added 2025-10-02, PL */
@@ -89,8 +87,6 @@ time_string_static(time_t t)
     time_string(t, buf, 0);
     return buf;
 }
-
-
 
 /*                                                                              
 * has_file_area - checks if conference has files               
