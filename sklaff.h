@@ -400,12 +400,8 @@ void chomp(char *s);                                                            
 void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
 void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
 long clamp_nonneg(long v);                                                          /* modified on 2025-10-02, PL */
-void show_footnote_block(int conf, long num, char *home, int has_comments);					/* 2025-10-15 helper to render the footnote (if there is one) */
 const char *time_string_static(time_t t);													/* 2025-10-24 PL */
 int get_text_author(int conf, long num);  												/* 2025-10-25 PL */
-char *get_conf_description(int confnum);												/* 2025-10-25 PL */
-int write_confxtra_section(int confnum, const char *tag, const char *value);			/* 2025-10-25 PL */
-int remove_confxtra_section(int confnum, const char *tag);								/* 2025-10-25 PL */
 // enable the function below when ready and uncomment in conf.c
 //int has_file_area(int confnum);															/* 2025-11-11 PL */
 
@@ -565,6 +561,11 @@ struct CEN *sort_conf(struct CEL *, int);
 int list_news(int);
 struct CONF_ENTRY *get_all_confs(void);
 
+/* confxtra.c */
+char *get_conf_description(int confnum);												/* 2025-10-25 PL */
+int write_confxtra_section(int confnum, const char *tag, const char *value);			/* 2025-10-25 PL */
+int remove_confxtra_section(int confnum, const char *tag);								/* 2025-10-25 PL */
+
 /* edit.c */
 
 void abort_edit(int);
@@ -582,6 +583,10 @@ int rebuild_index_file(void);
 void set_flags(char *);
 int check_flag(char *, char *);
 int turn_flag(int, char *);
+
+/* footnote.c */
+
+void show_footnote_block(int conf, long num, char *home, int has_comments);					/* 2025-10-15 helper to render the footnote (if there is one) */
 
 /* mailparse.c */
 

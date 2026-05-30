@@ -45,8 +45,10 @@ OBJS = \
 	commands.o \
 	command_list.o \
 	conf.o \
+	confxtra.o \
 	edit.o \
 	file.o \
+	footnote.o \
 	flag.o \
 	msg.o \
 	newsparse.o \
