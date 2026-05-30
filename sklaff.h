@@ -407,7 +407,6 @@ int b64v(int c);                                                                
 void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
 long clamp_nonneg(long v);                                                          /* modified on 2025-10-02, PL */
 const char *time_string_static(time_t t);													/* 2025-10-24 PL */
-
 // enable the function below when ready and uncomment in conf.c
 //int has_file_area(int confnum);															/* 2025-11-11 PL */
 
@@ -526,6 +525,10 @@ int strip_string(char *, char *);
 int show_status(int, int, int);
 int list_who(int);
 
+/* bbslink.c */
+
+int  find_bbslink_game(const char *wanted, char *out, size_t outsz);
+void show_bbslink_games(void);
 /* buf.c */
 
 

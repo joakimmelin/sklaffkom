@@ -108,6 +108,13 @@
 #define MSG_ONEMIN	"en minut."
 #define MSG_WARNING	"Om en minut blir jag utloggad pga inaktivitet!"
 
+/* bbslink.c */
+
+#define MSG_BBSLINK01 "1"
+#define MSG_BBSLINK02 "2"
+#define MSG_BBSLINK03 "3"
+#define MSG_BBSLINK_OFF "Sysop har inte konfigurerat BBSLink på detta system"
+
 /* commands.c */
 
 #define MSG_BUSY	"{r upptagen."

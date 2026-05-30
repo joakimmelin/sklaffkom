@@ -41,6 +41,7 @@ LIBS=-lsklaff -lbsd -lm
 
 OBJS = \
 	admin.o \
+	bbslink.o \
 	buf.o \
 	commands.o \
 	command_list.o \

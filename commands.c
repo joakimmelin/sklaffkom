@@ -6863,86 +6863,69 @@ cmd_zork(char *args)
     return 1;
 }
 
-int cmd_bbslink(char *args)
+/*
+ * cmd_bbslink - show available BBSLink games or start a game
+ * args: game code (optional)
+ * ret: ok (0) or error (-1)
+ *
+ * Without arguments, displays information about BBSLink and all
+ * configured games found in BBSLINK_INTRO.
+ *
+ * With a game code argument, verifies that the game exists in
+ * BBSLINK_INTRO and launches DEFAULT_BBSLINK_PATH/bbslink.py.
+ *
+ * If DEFAULT_BBSLINK_PATH is empty, BBSLink is considered disabled.
+ *
+ * 2026-05-30 PL
+ */
+int
+cmd_bbslink(char *args)
 {
+    char uid_buf[16];
+    char game_code[64];
+    char script_path[256];
+
     Change_msg = 1;
     Change_prompt = 1;
 
-    static char uid_buf[16];
-    snprintf(uid_buf, sizeof(uid_buf), "%d", Uid);
-
-    /* Define lookup table for command → script arg mapping */
-    static const struct {
-        const char *input;
-        const char *mapped;
-    } bbslink_aliases[] = {
-        { "usurper", "usrp" },
-        { "lord",    "lord" },
-        { "lord2",   "lord" }, 
-        { "tw",		 "tw"   },
-        { "ooii",    "ooii" },
-		{ "mzkl"	"mzkl"  },
-		{ "teos"	"teos"  },
-		{ "gwar"	"gwar"  },
-		{ "bre"		"bre"	},
-		{ "falc"	"falc"	},
-		{ "fhon"	"fhon"	},		
-		{ NULL,      NULL   }
-    };
-
-    /* broken games :
-       mzkl
-		
-    */
-    const char *mapped = NULL;
-
-    if (args && *args) {
-        while (*args == ' ')
-            args++;
-
-        for (int i = 0; bbslink_aliases[i].input != NULL; i++) {
-            if (strcasecmp(args, bbslink_aliases[i].input) == 0) {
-                mapped = bbslink_aliases[i].mapped;
-                break;
-            }
-        }
-
-        if (!mapped) {
-            output("\nOkänt BBSLink-spel: %s\n", args);
-            return 0;
-        }
-    }
-
-    if (!mapped) {
-        FILE *fp = fopen(BBSLINK_INTRO, "r");
-        if (!fp) {
-            output("\nKunde inte läsa introduktionstexten (%s)\n", BBSLINK_INTRO);
-            return 0;
-        }
-
-        char line[256];
-        while (fgets(line, sizeof(line), fp)) {
-            output("%s", line);
-        }
-
-        fclose(fp);
+    if (DEFAULT_BBSLINK_PATH[0] == '\0') {
+        output("\n" MSG_BBSLINK_OFF "\n\n");
         return 0;
     }
 
-    /* Build command */
+    snprintf(uid_buf, sizeof(uid_buf), "%d", Uid);
+
+    if (!args)
+        args = "";
+
+    while (*args == ' ')
+        args++;
+
+    if (*args == '\0') {
+        show_bbslink_games();
+        return 0;
+    }
+
+    if (!find_bbslink_game(args, game_code, sizeof(game_code))) {
+        output("\nOkänt BBSLink-spel: %s\n\n", args);
+        return 0;
+    }
+
+    snprintf(script_path, sizeof(script_path), "%s/bbslink.py", DEFAULT_BBSLINK_PATH);
+
     if (Utf8) {
         const char *cmd[] = {
             CP437_WRAPPER,
-            "/doors/bbslink/bbslink.py",
-            mapped,
+            script_path,
+            game_code,
             uid_buf,
             NULL
         };
         return run_external_cmd_args(cmd, 0);
     } else {
         const char *cmd[] = {
-            "/doors/bbslink/bbslink.py",
-            mapped,
+            script_path,
+            game_code,
             uid_buf,
             NULL
         };
