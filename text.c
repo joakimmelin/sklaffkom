@@ -867,7 +867,7 @@ display_text(int conf, long num, int stack, int dtype)
 {
     LINE username, home, emau, aname;
     char fname[128];  /* increased from LINE to avoid overflow, modified on 2025-07-12, PL */
-    int fd, uid, type, endwritten, bypass, rot;
+    int fd, uid = 0, type, endwritten, bypass, rot;
     int survey_flag = 0;  /* initialized to avoid maybe-uninitialized warning, modified on 2025-07-12, PL */
     int survey_valid, quest;
     char *buf, *oldbuf;
@@ -910,10 +910,38 @@ display_text(int conf, long num, int stack, int dtype)
 
     if (close_file(fd) == -1) {
         return -1;
+}
+
+/* Strip F:-lines before parsing to keep the legacy parser happy */
+{
+    char *p = oldbuf;
+    size_t L = strlen(oldbuf);
+    char *san = malloc(L + 1);
+    char *w = san;
+    if (!san) { sys_error("display_text", 1, "malloc"); free(oldbuf); return -1; }
+
+    while (*p) {
+        char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+        if (!(len >= 2 && p[0] == 'F' && p[1] == ':')) {
+            memcpy(w, p, len);
+            w += len;
+            if (nl) *w++ = '\n';
+        }
+        if (!nl) break;
+        p = nl + 1;
     }
-    buf = get_text_entry(buf, &te);
-    free(oldbuf);
-    output("\n");
+    *w = '\0';
+
+    buf = get_text_entry(san, &te);
+    free(san);
+    if (!buf) { free(oldbuf); output("\n%s\n\n", MSG_NOTEXT); return -1; }
+}
+
+free(oldbuf);
+output("\n");
+
+
 
     th = &te.th;
 
@@ -1034,8 +1062,8 @@ if (!ptr || strlen(ptr) == 0) {
                 }
            } else {
     		int qd = quote_depth(tb->line);
-		const char *col =
-            (qd == 0) ? "" :   /* bugfix, now displays on light terminals (used to be 97: bright white body) 2026-05-13 PL */
+			const char *col =
+        	(qd == 0) ? "" :   /* bugfix, now displays on light terminals (used to be 97: bright white body) 2026-05-13 PL */
 	    	(qd == 1) ? "\x1b[33m" :   /* yellow (level 1)    */
 	    	(qd == 2) ? "\x1b[32m" :   /* green (level 2)   */
         	(qd == 3) ? "\x1b[94m" :   /* bright blue level 3 */
@@ -1051,6 +1079,7 @@ if (!ptr || strlen(ptr) == 0) {
         tb = tb->next;
     }
 
+    output(RESET);
     Rot13 = 0;
     endwritten = 0;
     cl = te.cl;
@@ -1066,7 +1095,8 @@ if (!ptr || strlen(ptr) == 0) {
         if (cl->comment_num) {
             if (!endwritten) {
                 if ((th->size >= (Numlines - 6)) || Author) {
-                    if (th->author)
+                    //output("If Author flag is on BOF");
+					if (th->author)
                         user_name(th->author, aname);
                     
                     /* 2025-08-10, PL: cleanup footer author: trim CR/LF/space and strip quotes before '<' */
@@ -1088,13 +1118,20 @@ if (!ptr || strlen(ptr) == 0) {
             rfc2047_decode(aname, adec, sizeof(adec));
             snprintf(aname, sizeof(aname), "%.*s", (int)sizeof(aname)-1, adec);
         }
- output_ansi_fmt("\n%s " CYAN "%ld "DOT "%s " BR_YELLOW "%s\n" DOT, "\n%s %ld %s %s\n",
+ 		output_ansi_fmt("\n%s " CYAN "%ld "DOT "%s " BR_YELLOW "%s\n" DOT, "\n%s %ld %s %s\n",
                         (th->type == TYPE_TEXT) ? MSG_EOT : MSG_EOSURVEY,
-                        th->num, MSG_BY, aname);
-                } else
+                         th->num, MSG_BY, aname);
+  						//output("Above first footnote block with flag on");
+						//show_footnote_block(conf, num, home, te.cl != NULL);
+						//show_likes_block(conf, num);
+
+                } else 
                     output("\n-------\n");
-                endwritten = 1;
-            }
+                	//show_footnote_block(conf, num, home, te.cl != NULL);
+					//show_likes_block(conf, num);
+				endwritten = 1;
+            
+			}
             if (!cl->comment_author) {
                 sprintf(fname, "%s/%d/%ld", SKLAFF_DB, conf,
                     cl->comment_num);
@@ -1136,7 +1173,9 @@ if (!ptr || strlen(ptr) == 0) {
     }
 
     if (!endwritten && ((th->size >= (Numlines - 6)) || Author)) {
-        if (th->author)
+//        output("Author flag OFF BOF");
+
+		if (th->author)
             user_name(th->author, aname);
 	else
             //snprintf(aname, sizeof(aname), "%s", MSG_UNKNOWNU); /* fallback because why not PL 2025-08-10 */
@@ -1159,9 +1198,15 @@ if (!ptr || strlen(ptr) == 0) {
         output_ansi_fmt("\n%s " CYAN "%ld "DOT "%s " BR_YELLOW "%s\n" DOT, "\n%s %ld %s %s\n",
             (th->type == TYPE_TEXT) ? MSG_EOT : MSG_EOSURVEY,
             th->num, MSG_BY, aname);
-    }
-    output("\n");
+			//output("FLAG ON FOOT STARTS HERE");
+		//	show_footnote_block(conf, num, home, te.cl != NULL);
+		//	show_likes_block(conf, num);
 
+    }
+//    output("FLAG OFF");
+	show_footnote_block(conf, num, home, te.cl != NULL);
+	show_likes_block(conf, num);
+	output("\n");
     if (te.cl) {
         cl = te.cl;
         while (cl) {

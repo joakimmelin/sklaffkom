@@ -33,14 +33,14 @@
 #include <time.h>
 #include <unistd.h>
 #include <signal.h>
+#include <limits.h>
+#include <dirent.h>
 #include <sys/wait.h>
 #ifdef LINUX
 #include <bsd/string.h>  /* for strlcat on Linux */
 #endif
 #include "sklaff.h"
 #include "ext_globals.h"
-
-
 
 
 /* format a UTC epoch into Swedish time using your existing time_string() */
@@ -547,8 +547,9 @@ int output_body_line(const char *line, const char *col)
     if (Ansi_output) {
         return output_ansi_fmt("%s%s\x1b[0m\n", "%s\n", col, line);
     } else {
-        if (output((char *)line) == -1 || output("\n") == -1)
-            return -1;
+        //if (output((char *)line) == -1 || output("\n") == -1)
+		if (output("%s", line) == -1 || output("\n") == -1)        
+    return -1;
     }
     return 0;
 }
@@ -714,12 +715,6 @@ chomp(char *s)
     while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r'))
         s[--len] = '\0';
 }
-/*
- * display_header - displays textheader
- * args: pointer to TEXT_HEADER (th), allow editing of subject (edit_subject),
- *       conf/uid (type), absolute date? (dtype)
- */
-
 /*
  * display_header - displays textheader
  * args: pointer to TEXT_HEADER (th), allow editing of subject (edit_subject),
@@ -901,7 +896,7 @@ output_ansi_fmt("%s " BR_YELLOW "%s" DOT, "%s %s", MSG_BY, username); /* 2025-08
 		if (th->comment_conf) {
                     conf_name(nc, username);
         	    sprintf(fname, "  showing MSG_IN");
-                    debuglog(fname, 20);
+                    debuglog(fname, 6);
                     output(" %s %s\n", MSG_IN, username);
                 } else
                     output("\n");
@@ -946,10 +941,459 @@ output_ansi_fmt("%s " BR_YELLOW "%s" DOT, "%s %s", MSG_BY, username); /* 2025-08
 	subj_line[0] = '\0';
 	strlcpy(subj_line, label_norm, sizeof(subj_line));        /* fixed on 2025-09-15, PL */
 	strlcat(subj_line, subj_dec, sizeof(subj_line));          /* fixed on 2025-09-15, PL */
-
-
-
 print_underlined_line(subj_line);  /* prints line + perfectly matching dashes (soon ;)) */
     }
 }
 
+/* humanized file sizes in cmd_list_files 2025-09-28 PL */
+void human_size(off_t bytes, char *out, size_t outsz)
+{
+    const double b = (double)bytes;
+    if (bytes < 1024) {
+        snprintf(out, outsz, "%lldB", (long long)bytes);
+    } else if (bytes < (1LL<<20)) {           // < 1 MiB
+        snprintf(out, outsz, "%.1fK", b / 1024.0);
+    } else if (bytes < (1LL<<30)) {           // < 1 GiB
+        snprintf(out, outsz, "%.1fM", b / 1048576.0);
+    } else {
+        snprintf(out, outsz, "%.1fG", b / 1073741824.0);
+    }
+}
+
+/* clamp_nonneg() — return v clamped to >= 0 */
+/* Used in the improved "list_confs" function */
+/* added 2025-10-02, PL */
+long
+clamp_nonneg(long v)
+{
+    return (v < 0) ? 0 : v;
+}
+
+
+/* Render the footnote (if any)
+ * 2025-10-15 PL
+*/
+void
+show_footnote_block(int conf, long num, char *home, int has_comments)
+{
+    char fname[PATH_MAX], linebuf[LINE_LEN];
+    FILE *fp;
+
+    if (conf > 0)
+        snprintf(fname, sizeof(fname), "%s/%d/%ld", SKLAFF_DB, conf, num);
+    else
+        snprintf(fname, sizeof(fname), "%s/%ld", home, num);
+
+    if ((fp = fopen(fname, "r")) == NULL)
+        return;
+
+    int found = 0;
+    int ends_with_newline = 1;
+
+    while (fgets(linebuf, sizeof(linebuf), fp)) {
+        if (strncmp(linebuf, "F:", 2) == 0) {
+            if (!found) {
+                output_ansi_fmt(BR_RED"\n%s:\n"DOT, "\n%s:\n", MSG_FOOTNOTE);  // Fotnot:
+                found = 1;
+            }
+
+            char *foot = linebuf + 2;
+
+            output_ansi_fmt(WHITE"%s"DOT, "%s", foot);
+
+            size_t L = strlen(foot);
+            if (L > 0 && foot[L - 1] != '\n')
+                ends_with_newline = 0;
+            else
+                ends_with_newline = 1;
+        }
+    }
+    fclose(fp);
+
+    if (found && !ends_with_newline) {
+        output("\n");  // Ensure clean separation to next block (like likes)
+    }
+}
+
+
+
+/* used internally by show_conf_likes() to summarize per-text likes */
+struct ConfLikeSummary {
+    long textnum;
+    int count;
+    int author;
+};
+
+/*
+ * show_likes_block - display number of likes for a text
+ * added on 2025-10-24, PL
+ */
+void
+show_likes_block(int conf, long num)
+{
+    if (conf <= 0)
+        return;
+
+    struct LikeEntry *likes = get_conf_likes(conf);
+    int likecount = 0;
+
+    for (struct LikeEntry *l = likes; l; l = l->next) {
+        if (l->textnum == num)
+            likecount++;
+    }
+
+    if (likecount > 0) {
+         output_ansi_fmt("\n%s " CYAN "%d" DOT " %s\n",
+                    "\n%s %d %s\n",
+                    MSG_PRAISEDBY,
+                    likecount,
+                    (likecount == 1) ? MSG_PERSON : MSG_PERSONS);
+    }
+
+    free_like_list(likes);
+}
+
+
+/*
+ * get_user_likes - return list of liked posts by a specific user (in any conf)
+ * Returns a malloc'd string with newline-separated entries: conf:text:timestamp
+ */
+struct LikeEntry *get_user_likes(int uid)
+{
+    DIR *d;
+    struct dirent *de;
+    struct LikeEntry *head = NULL, *tail = NULL;
+
+    d = opendir(SKLAFF_DB);
+    if (!d) return NULL;
+
+    while ((de = readdir(d))) {
+        if (!isdigit(de->d_name[0])) continue;
+
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "%s/%s%s", SKLAFF_DB, de->d_name, CONFXTRA_FILE);
+
+        FILE *fp = fopen(path, "r");
+        if (!fp) continue;
+
+        char line[256];
+        while (fgets(line, sizeof(line), fp)) {
+            if (strncmp(line, "![hiss]", 7) == 0) continue;
+            int u; long tnum; long ts;
+            if (sscanf(line, "%d:%ld:%ld", &u, &tnum, &ts) == 3 && u == uid) {
+                struct LikeEntry *le = malloc(sizeof(struct LikeEntry));
+                if (!le) break;
+                le->confnum = atoi(de->d_name);
+                le->textnum = tnum;
+                le->timestamp = ts;
+                le->next = NULL;
+                if (!head) head = le;
+                else tail->next = le;
+                tail = le;
+            }
+        }
+        fclose(fp);
+    }
+    closedir(d);
+    return head;
+}
+
+void free_like_list(struct LikeEntry *list)
+{
+    while (list) {
+        struct LikeEntry *n = list->next;
+        free(list);
+        list = n;
+    }
+}
+
+
+/*
+ * get_conf_likes - return list of all likes in a given conf
+ * Returns malloc'd string with entries: uid:text:timestamp\n
+ */
+struct LikeEntry *get_conf_likes(int confnum)
+{
+    FILE *fp;
+    char path[PATH_MAX];
+    char line[256];
+    struct LikeEntry *head = NULL, *tail = NULL;
+
+    snprintf(path, sizeof(path), "%s/%d%s", SKLAFF_DB, confnum, CONFXTRA_FILE);
+
+    fp = fopen(path, "r");
+    if (!fp) return NULL;
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strncmp(line, "![hiss]", 7) == 0) continue;
+
+        int u;
+        long tnum, ts;
+        if (sscanf(line, "%d:%ld:%ld", &u, &tnum, &ts) == 3) {
+            struct LikeEntry *le = malloc(sizeof(struct LikeEntry));
+            if (!le) break;
+            le->confnum = confnum;
+            le->textnum = tnum;
+            le->timestamp = ts;
+            le->next = NULL;
+            if (!head)
+                head = le;
+            else
+                tail->next = le;
+            tail = le;
+        }
+    }
+
+    fclose(fp);
+    return head;
+}
+
+/*
+ * Helper for the show_conf_likes-helper ;)
+*/
+static int compare_textnum(const void *a, const void *b)
+{
+    const struct ConfLikeSummary *x = (const struct ConfLikeSummary *)a;
+    const struct ConfLikeSummary *y = (const struct ConfLikeSummary *)b;
+
+    if (x->textnum < y->textnum) return -1;
+    if (x->textnum > y->textnum) return 1;
+    return 0;
+}
+/*
+ * show_conf_likes - show all liked texts in a conference
+ * added on 2025-10-25, PL
+ */
+void show_conf_likes(int confnum)
+{
+    struct LikeEntry *likes = get_conf_likes(confnum);
+    if (!likes) return;
+
+    struct ConfLikeSummary {
+        long textnum;
+        int count;
+        int author;
+    } *summaries = NULL;
+
+    int cap = 10, len = 0;
+    summaries = malloc(cap * sizeof(*summaries));
+    if (!summaries) return;
+
+    for (struct LikeEntry *l = likes; l; l = l->next) {
+        int found = 0;
+        for (int i = 0; i < len; ++i) {
+            if (summaries[i].textnum == l->textnum) {
+                summaries[i].count++;
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            if (len == cap) {
+                cap *= 2;
+                summaries = realloc(summaries, cap * sizeof(*summaries));
+                if (!summaries) return;
+            }
+            summaries[len].textnum = l->textnum;
+            summaries[len].count = 1;
+            summaries[len].author = get_text_author(confnum, l->textnum);
+            len++;
+        }
+    }
+
+    qsort(summaries, len, sizeof(*summaries), compare_textnum);
+
+    output(MSG_CONFPRAISES"\n\n");
+
+    LINE tmpstr;
+    for (int i = 0; i < len; ++i) {
+        user_name(summaries[i].author, tmpstr);
+        output("Text %ld av %s — %d %s\n",
+               summaries[i].textnum,
+               tmpstr,
+               summaries[i].count,
+               summaries[i].count == 1 ? MSG_PRAISE : MSG_PRAISES);
+    }
+	output("\n");
+    free(summaries);
+    free_like_list(likes);
+}
+
+
+/*
+ * Converts unix-time to human-time format
+*/
+const char *
+time_string_static(time_t t)
+{
+    static char buf[64];
+    time_string(t, buf, 0);
+    return buf;
+}
+
+/*
+ * get text author (small hack 2025-10-25 PL)
+*/
+
+int get_text_author(int conf, long num)
+{
+    char fname[PATH_MAX];
+    int fd;
+    char *buf;
+    struct TEXT_ENTRY te;
+    int author = 0;
+
+    snprintf(fname, sizeof(fname), "%s/%d/%ld", SKLAFF_DB, conf, num);
+
+    if ((fd = open_file(fname, OPEN_QUIET)) == -1)
+        return 0;
+    if ((buf = read_file(fd)) == NULL) {
+        close_file(fd);
+        return 0;
+    }
+    close_file(fd);
+
+    char *p = get_text_entry(buf, &te);
+    free(buf);
+    if (!p)
+        return 0;
+
+    author = te.th.author;
+    free_text_entry(&te);
+    return author;
+}
+
+/*
+ * get_conf_description - return description string from confxtra
+ * Returns malloc'd string (caller must free), or NULL if none found
+ */
+char *
+get_conf_description(int confnum)
+{
+    char path[PATH_MAX];
+    FILE *fp;
+    char line[256];
+
+    snprintf(path, sizeof(path), "%s/%d%s", SKLAFF_DB, confnum, CONFXTRA_FILE);
+
+    fp = fopen(path, "r");
+    if (!fp)
+        return NULL;
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strncmp(line, "![desc]", 7) == 0) {
+            if (fgets(line, sizeof(line), fp)) {
+                rtrim(line);
+                fclose(fp);
+                return strdup(line);
+            }
+        }
+    }
+
+    fclose(fp);
+    return NULL;
+}
+
+
+/*
+ * write_confxtra_section - write a header + content to confxtra
+ */
+int
+write_confxtra_section(int confnum, const char *tag, const char *value)
+{
+    char path[PATH_MAX];
+    char tmp[PATH_MAX + 5];  /* +5 for ".tmp\0" safety margin */
+    FILE *in = NULL, *out = NULL;
+    char line[256];
+    int found = 0;
+
+    snprintf(path, sizeof(path), "%s/%d%s", SKLAFF_DB, confnum, CONFXTRA_FILE);
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+
+    in = fopen(path, "r");
+    out = fopen(tmp, "w");
+    if (!out) {
+        if (in) fclose(in);
+        return -1;
+    }
+
+    if (in) {
+        while (fgets(line, sizeof(line), in)) {
+            if (!found && strncmp(line, "![desc]", 7) == 0) {
+                /* Skip old value safely */
+                if (fgets(line, sizeof(line), in) == NULL) {
+                    /* ignore EOF */
+                }
+                found = 1;
+                fprintf(out, "![desc]\n%s\n", value);
+            } else {
+                fputs(line, out);
+            }
+        }
+        fclose(in);
+    }
+
+    if (!found)
+        fprintf(out, "![%s]\n%s\n", tag, value);
+
+    fclose(out);
+    if (rename(tmp, path) != 0)
+        return -1;
+
+    return 0;
+}
+
+/*
+ * remove_confxtra_section - remove a header section like ![desc]
+ */
+int
+remove_confxtra_section(int confnum, const char *tag)
+{
+    char path[PATH_MAX];
+    char tmp[PATH_MAX + 5];  /* extra margin for .tmp */
+    FILE *in = NULL, *out = NULL;
+    char line[256];
+    int skip = 0, removed = 0;
+
+    snprintf(path, sizeof(path), "%s/%d%s", SKLAFF_DB, confnum, CONFXTRA_FILE);
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+
+    in = fopen(path, "r");
+    out = fopen(tmp, "w");
+    if (!in || !out) {
+        if (in) fclose(in);
+        if (out) fclose(out);
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), in)) {
+        if (!skip && strncmp(line, "![", 2) == 0 && strstr(line, tag)) {
+            skip = 2;  /* skip header + next line */
+            removed = 1;
+            continue;
+        }
+        if (skip) {
+            skip--;
+            continue;
+        }
+        fputs(line, out);
+    }
+
+    fclose(in);
+    fclose(out);
+
+    if (rename(tmp, path) != 0)
+        return -1;
+
+    return removed ? 0 : -1;
+}
+
+/*                                                                              
+* has_file_area - checks if conference has files               
+*/ 
+int 
+has_file_area(int confnum) {
+    char path[PATH_MAX];
+    snprintf(path, sizeof(path), "%s/%d%s", FILE_DB, confnum, INDEX_FILE);
+    return file_exists(path) != -1;
+}

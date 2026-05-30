@@ -261,17 +261,19 @@ main(int argc, char *argv[])
                                 buf = read_file(fd);
                                 oldbuf = buf;
                                 close_file(fd);
-                                buf = get_text_entry(buf, &te);
-                                free(oldbuf);
-                                free_text_entry(&te);
-                                if ((te.th.time + (ce2->life * 86400)) <
-                                    time(0)) {
+                                buf = get_text_entry(buf, &te); /* We change the order of things here to prevent unexpected behaviours PL 2026-05-15 */
+                                free(oldbuf);                             
+                                if ((te.th.time + (ce2->life * 86400)) < time(0)) {
                                     if (te.th.type == TYPE_TEXT) {      /* Don't delete surveys */
-                                        ttext++;
-                                        unlink(fname);
-                                    }
-                                } else
-                                    break;
+                                    ttext++;
+                                    unlink(fname);
+                                }
+                            } else {
+                                free_text_entry(&te);
+                                break;
+                            }
+                            
+                            free_text_entry(&te);
                             }
                         }
                         output("\n%ld %s\n\n", ttext, MSG_DELTEXTS);
@@ -300,17 +302,18 @@ main(int argc, char *argv[])
                                         buf2 = read_file(fd2);
                                         oldbuf2 = buf2;
                                         close_file(fd2);
-                                        buf2 = get_text_entry(buf2, &te);
-                                        free(oldbuf2);
-                                        free_text_entry(&te);
-                                        if ((te.th.time + (ce.life * 86400)) <
-                                            time(0)) {
+                                        buf2 = get_text_entry(buf2, &te); /* We change the order here to avoid using te after free_text_entry(). PL 2026-05-15 */
+                                        free(oldbuf2);                                       
+                                        if ((te.th.time + (ce.life * 86400)) < time(0)) {
                                             if (te.th.type == TYPE_TEXT) {
                                                 ttext++;
                                                 unlink(fname);
                                             }
-                                        } else
-                                            break;
+                                        } else {
+                                           free_text_entry(&te);
+                                           break;
+                                        }
+                                        free_text_entry(&te);                                            
                                     }
                                 }
                             }
@@ -322,7 +325,56 @@ main(int argc, char *argv[])
             } else {
                 output("\n%s\n\n", MSG_ARGERR);
             }
+    }
+    } else if ((argc > 1) && !strcmp(argv[1], "forcepurge")) {
+        if (argc < 4) {
+        output("\n%s\n\n", MSG_CTERR);
+        } else {
+        conf = atoi(argv[2]);
+        ntext = atol(argv[3]);
+
+        if ((ntext >= 0) && conf) {
+            if (conf > 0) {
+                if (conf_name(conf, cname) == NULL) {
+                    output("\n%s\n\n", MSG_WRONGCONF);
+                } else {
+                    snprintf(dirname, sizeof(dirname), "%s/%d/", SKLAFF_DB, conf); /* modified on 2025-07-12, PL  */
+                    ftext = first_text(conf, Uid);
+                    ltext = last_text(conf, Uid);
+                    ltext = ltext - ntext + 1;
+                    ttext = 0;
+
+                    while (ftext < ltext) {
+                        snprintf(fname, sizeof(fname), "%.244s%ld", dirname, ftext); /* modified on 2025-07-12, PL  */
+                        ftext++;
+
+                        if (file_exists(fname) != -1) {
+                            fd = open_file(fname, 0);
+                            buf = read_file(fd);
+                            oldbuf = buf;
+                            close_file(fd);
+
+                            buf = get_text_entry(buf, &te);
+                            free(oldbuf);
+
+                            if (te.th.type == TYPE_TEXT) {      /* Don't delete surveys */
+                                ttext++;
+                                unlink(fname);
+                            }
+
+                            free_text_entry(&te);
+                        }
+                    }
+
+                    output("\n%ld %s\n\n", ttext, MSG_DELTEXTS);
+                }
+            } else {
+                output("\n%s\n\n", MSG_WRONGCONF);
+            }
+        } else {
+            output("\n%s\n\n", MSG_ARGERR);
         }
+    }        
     } else if ((argc > 1) && !strcmp(argv[1], "mailpurge")) {
         if (argc < 4) {
             output("\n%s\n\n", MSG_CTERR);
@@ -348,22 +400,25 @@ main(int argc, char *argv[])
                         ltext = ltext - ntext + 1;
                         ttext = 0;
                         while ((ftext < ltext) && ce.life) {
-                            snprintf(fname, sizeof(fname), "%.244ss/%ld", dirname, ftext); /* modified on 2025-07-12, PL  */
+                            snprintf(fname, sizeof(fname), "%.244s/%ld", dirname, ftext); /* modified on 2025-07-12, PL  */
                             ftext++;
                             if (file_exists(fname) != -1) {
                                 fd2 = open_file(fname, 0);
                                 buf2 = read_file(fd2);
                                 oldbuf2 = buf2;
                                 close_file(fd2);
-                                buf2 = get_text_entry(buf2, &te);
+                                buf2 = get_text_entry(buf2, &te); /* We change the order here to avoid using te after free_text_entry(). PL 2026-05-15 */
                                 free(oldbuf2);
-                                free_text_entry(&te);
-                                if ((te.th.time + (ce.life * 86400)) <
-                                    time(0)) {
+
+                                if ((te.th.time + (ce.life * 86400)) < time(0)) {
                                     ttext++;
                                     unlink(fname);
-                                } else
+                                } else {
+                                    free_text_entry(&te);
                                     break;
+                                }
+
+                                free_text_entry(&te);
                             }
                         }
                         output("\n%ld %s\n\n", ttext, MSG_DELTEXTS);
@@ -400,15 +455,18 @@ main(int argc, char *argv[])
                                         buf2 = read_file(fd2);
                                         oldbuf2 = buf2;
                                         close_file(fd2);
-                                        buf2 = get_text_entry(buf2, &te);
+                                        buf2 = get_text_entry(buf2, &te); /* We change the order here to avoid using te after free_text_entry(). PL 2026-05-15 */
                                         free(oldbuf2);
-                                        free_text_entry(&te);
-                                        if ((te.th.time + (ce.life * 86400)) <
-                                            time(0)) {
+
+                                        if ((te.th.time + (ce.life * 86400)) < time(0)) {
                                             ttext++;
                                             unlink(fname);
-                                        } else
+                                        } else {
+                                            free_text_entry(&te);
                                             break;
+                                        }
+
+                                        free_text_entry(&te);
                                     }
                                 }
                             }
@@ -527,6 +585,8 @@ main(int argc, char *argv[])
         output(MSG_ADMHELP12);
         output(MSG_ADMHELP13);
         output(MSG_ADMHELP14);
+        output(MSG_ADMHELP18);
+        output(MSG_ADMHELP19);
         output(MSG_ADMHELP15);
         output(MSG_ADMHELP16);
         output(MSG_ADMHELP17);

@@ -132,7 +132,20 @@ input(char *in_str, char *out_str, int max_len, int noecho, int wrap, int hist)
             c = getc(stdin);
         while (c == 255);
         /* if (Strip) c &= 0x7f; Obsolete 18/2 2000, OR */
-        alarm(0);
+
+        /* added on 2025-09-25 by PL - unix like history scroll with arrow keys*/
+	if (c == 27) { // ESC
+	    int c1 = getc(stdin);
+    	    int c2 = getc(stdin);
+    	    if (c1 == '[') {
+                if (c2 == 'A') {
+                    c = 16;  // ↑
+            } else if (c2 == 'B') {
+                c = 14;  // ↓
+            }
+        }
+    }
+	alarm(0);
         Warning = 0;
         signal(SIGNAL_NEW_TEXT, baffo);
         signal(SIGNAL_NEW_MSG, newmsg);
