@@ -599,9 +599,9 @@ list_confs(int uid, int all)
     /* -------- Header -------- */
     	output("\n");
 		output_ansi_fmt(
-        " Texter  Olästa  Mötesnamn\n"
+        " Texter  Ol{sta  M|tesnamn\n"
         " ------  ------  ------------------------------\n",
-        " Texter  Olästa  Mötesnamn\n"
+        " Texter  Ol{sta  M|tesnamn\n"
         " ------  ------  ------------------------------\n"
     );
 

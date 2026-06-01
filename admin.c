@@ -689,22 +689,26 @@ show_status(int num, int flag, int st_type)
                 output("\n%s    %s (%s)\n", MSG_NAMECOL, u_name, pw->pw_name);
             if (st_type == STATUS_EXTERNAL)
                 outputex("\n%s    %s (%s)\n", MSG_NAMECOL, u_name, pw->pw_name);
-            if (STATUS_INTERNAL == st_type) {
-                if (strlen(rc->user.adress) || strlen(rc->user.postnr) ||
-                    strlen(rc->user.ort)) {
-                    output(MSG_ADDRCOL);
-                    first = 0;
-                    if (strlen(rc->user.adress)) {
-                        first = 1;
-                        output("%s\n", rc->user.adress);
-                    }
-                    if (strlen(rc->user.adress)) {
-                        if (first)
-                            output("         ");
-                        first = 1;
-                        output("%s  %s\n", rc->user.postnr, up_string(rc->user.ort));
-                    }
-                }
+			if (STATUS_INTERNAL == st_type) {
+              	if (strlen(rc->user.adress) || strlen(rc->user.postnr) ||
+    strlen(rc->user.ort)) {
+    output(MSG_CITYCOL);
+    first = 0;
+
+    if (strlen(rc->user.adress)) {
+        first = 1;
+        output("%s\n", rc->user.adress);
+    }
+
+    if (strlen(rc->user.postnr) || strlen(rc->user.ort)) {
+        if (first)
+            output("         ");
+        output("%s%s%s\n",
+            rc->user.postnr,
+            (strlen(rc->user.postnr) && strlen(rc->user.ort)) ? "  " : "",
+            up_string(rc->user.ort));
+    }
+}
                 if (strlen(rc->user.tele1) || strlen(rc->user.tele2) ||
                     strlen(rc->user.tele3)) {
                     output(MSG_TELECOL);

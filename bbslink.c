@@ -87,8 +87,8 @@ show_bbslink_games(void)
     FILE *fp;
     char line[256];
 
-    output("\n" MSG_BBSLINK01 "\n");
-    output(MSG_BBSLINK02 "\n");
+    output("\n" MSG_BBSLINK01 "\n\n");
+    output(MSG_BBSLINK02 "\n\n");
     output(MSG_BBSLINK03 "\n\n");
 
     fp = fopen(BBSLINK_INTRO, "r");

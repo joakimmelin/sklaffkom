@@ -48,7 +48,7 @@
 
 /* Machine name for news postings */
 
-#define MACHINE_NAME	"skom.se"
+#define MACHINE_NAME	"twilightnode.org"
 
 /* User to mail for new accounts */
 
@@ -102,7 +102,7 @@
 #define FROTZ_ZORK3     "zork3.z3"
 
 /* OTHER NEW (2025) external commands */
-#define CP437_WRAPPER "/usr/local/bin/cp437"
+#define CP437_WRAPPER 			"/usr/local/bin/cp437"
 #define DEFAULT_BBSLINK_PATH    "/doors/bbslink"
 #define BBSLINK_INTRO           SKLAFFDIR "/etc/bbslink"
 
@@ -110,9 +110,9 @@
 Please read item 18 for instructions here: 
 https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 
-#define UPLOADPRGM      "" /* recommended : "/usr/local/bin/lrz" */
+#define UPLOADPRGM      "/usr/local/bin/lrz" /* recommended : "/usr/local/bin/lrz" */
 #define ULOPT1          "-Eq"
-#define DOWNLOADPRGM    "" /* recommended : "/usr/local/bin/lsz" */
+#define DOWNLOADPRGM    "/usr/local/bin/lsz" /* recommended : "/usr/local/bin/lsz" */
 #define DLOPT1          "-Eq"
 #define DLOPT2          ""
 #define DLOPT3          ""
@@ -128,7 +128,7 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 
 #define SKLAFF_DB 	SKLAFFDIR "/db"
 #define USER_DB		SKLAFFDIR "/user"
-#define FILE_DB		SKLAFFDIR "/files"
+#define FILE_DB		"/srv/sklaff/files"
 #define MBOX_DB		SKLAFFDIR "/mbox"
 #define LOGDIR   	SKLAFFDIR "/log"
 #define DOORDIR		"/doors"

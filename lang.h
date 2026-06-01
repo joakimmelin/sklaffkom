@@ -110,9 +110,9 @@
 
 /* bbslink.c */
 
-#define MSG_BBSLINK01 "1"
-#define MSG_BBSLINK02 "2"
-#define MSG_BBSLINK03 "3"
+#define MSG_BBSLINK01 "BBSLink {r en slags 'door server' dit ett hundratal BBS'er {r anslutna."
+#define MSG_BBSLINK02 "Varje spel har en unik 'spelkod' som man anger f|r att spela."
+#define MSG_BBSLINK03 "Exempel : 'spela usrp' starar spelet Usurper."
 #define MSG_BBSLINK_OFF "Sysop har inte konfigurerat BBSLink på detta system"
 
 /* commands.c */
@@ -192,11 +192,12 @@
 #define MSG_NOSURVEYMBOX "Du kan inte g\xf6ra enk{ter i din brevl}da."
 #define MSG_NOQUESTFOUND "Inga enk{tfr}gor funna. Konverterar till vanlig text."
 #define MSG_NOREPPTR	"Kan inte spara kommentarspekaren."
-#define MSG_NAMECOL	"Namn:"
-#define MSG_ADDRCOL	"Adress:  "
-#define MSG_TELECOL	"Telefon: "
+#define MSG_NAMECOL		"Namn:"
+#define MSG_ADDRCOL		"Adress:  "
+#define MSG_TELECOL		"Telefon: "
 #define MSG_EMAILCOL	"Email:   "
 #define MSG_URLCOL      "URL:     "
+#define MSG_CITYCOL		"Stad:    "
 #define MSG_ORGCOL	"Org:"
 #define MSG_INACT	"Timeout: "
 #define MSG_PDATE	"Betalt:  "
@@ -818,6 +819,12 @@
 #define MSG_ONEMIN	"one minute."
 #define MSG_WARNING	"Inactivity logout in one minute!"
 
+/* bbslink.c */                                                                 
+                                                                                
+#define MSG_BBSLINK01 "BBSLink is a door server with nearly 150 BBS'es connected."
+#define MSG_BBSLINK02 "Each game has its own unique 'game code'."
+#define MSG_BBSLINK03 "Example command : 'play  usrp' will launch Usurper."           
+#define MSG_BBSLINK_OFF "SysOp did not configure bbslink gaming yet." 
 /* commands.c */
 
 #define MSG_BUSY	"is busy."
@@ -895,11 +902,12 @@
 #define MSG_NOSURVEYMBOX	"You cannot make surveys in your mailbox."
 #define MSG_NOQUESTFOUND "No survey questions found. Converting to ordinary text."
 #define MSG_NOREPPTR	"Cannot save reply pointer."
-#define MSG_NAMECOL	"Name:"
-#define MSG_ADDRCOL	"Address: "
-#define MSG_TELECOL	"Phone:   "
+#define MSG_NAMECOL		"Name:"
+#define MSG_ADDRCOL		"Address: "
+#define MSG_TELECOL		"Phone:   "
 #define MSG_EMAILCOL	"Email:   "
 #define MSG_URLCOL      "URL:     "
+#define MSG_CITYCOL 	"City:    "                                                    
 #define MSG_ORGCOL	"Org:"
 #define MSG_INACT	"Timeout: "
 #define MSG_PDATE	"Paid to: "
