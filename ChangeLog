@@ -1,3 +1,12 @@
+v1.33-rc1 June 2026 PL
+* The BBSLink integration got some polish today. SysOp can disable BBSLink
+  entirely by leaving the DEFAULT_BBSLINK_PATH define empty in sklaff.h. We
+  now configure the games available in etc/bbslink instead of hard coded
+  arrays. Please note that all games does not work perfectly and that's out
+  of my control. We will have to remove the games that does not work well.
+
+* Status <user> now hides "address"-field correctly.
+
 v1.33 beta13 Wednesday 28 May 2026 PL
 It's been a while!
 

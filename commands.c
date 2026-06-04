@@ -4868,7 +4868,7 @@ cmd_upload(char *args)
 
     if (access(FILE_DB, W_OK | X_OK) == -1) {
         dlog(3, "cmd_upload: FILE_DB not writable/searchable: %s", FILE_DB);
-        output("\nKunde inte skriva till filkatalogen. Meddela SysOp.\n\n");
+        output("\n"MSG_FILE_DB_ER"\n\n");
 
         signal(SIGNAL_NEW_TEXT, baffo);
         signal(SIGNAL_NEW_MSG, newmsg);
@@ -4880,7 +4880,7 @@ cmd_upload(char *args)
      */
     if (UPLOADPRGM == NULL || *UPLOADPRGM == '\0') {
         dlog(3, "cmd_upload: UPLOADPRGM is empty");
-        output("\nUpload är inte konfigurerat på detta system.\n\n");
+        output("\n"MSG_FILES_OFF"\n\n");
 
         signal(SIGNAL_NEW_TEXT, baffo);
         signal(SIGNAL_NEW_MSG, newmsg);
@@ -4953,7 +4953,7 @@ cmd_upload(char *args)
             dlog(7, "cmd_upload: child exit=%d", WEXITSTATUS(status));
 
             if (WEXITSTATUS(status) == 127) {
-                output("\nUploadprogrammet kunde inte startas.\n\n");
+                output("\n"MSG_ULPRGMERROR"\n\n");
 
                 if (chdir(cwd) == -1) {
                     dlog(3, "cmd_upload: chdir back to cwd failed after exec failure: %s", cwd);
@@ -5848,7 +5848,7 @@ cmd_nethack(char *args)
 
     /* If still not found */
     if (access(nethack_path, X_OK) != 0) {
-        output("\nFel: Kan inte starta Nethack - har SysOp glömt att installera den?\n");
+        output("\n"MSG_NETHACKER01"\n");
         return 0;
     }
 
@@ -6863,86 +6863,69 @@ cmd_zork(char *args)
     return 1;
 }
 
-int cmd_bbslink(char *args)
+/*
+ * cmd_bbslink - show available BBSLink games or start a game
+ * args: game code (optional)
+ * ret: ok (0) or error (-1)
+ *
+ * Without arguments, displays information about BBSLink and all
+ * configured games found in BBSLINK_INTRO.
+ *
+ * With a game code argument, verifies that the game exists in
+ * BBSLINK_INTRO and launches DEFAULT_BBSLINK_PATH/bbslink.py.
+ *
+ * If DEFAULT_BBSLINK_PATH is empty, BBSLink is considered disabled.
+ *
+ * 2026-05-30 PL
+ */
+int
+cmd_bbslink(char *args)
 {
+    char uid_buf[16];
+    char game_code[64];
+    char script_path[256];
+
     Change_msg = 1;
     Change_prompt = 1;
 
-    static char uid_buf[16];
-    snprintf(uid_buf, sizeof(uid_buf), "%d", Uid);
-
-    /* Define lookup table for command → script arg mapping */
-    static const struct {
-        const char *input;
-        const char *mapped;
-    } bbslink_aliases[] = {
-        { "usurper", "usrp" },
-        { "lord",    "lord" },
-        { "lord2",   "lord" }, 
-        { "tw",		 "tw"   },
-        { "ooii",    "ooii" },
-		{ "mzkl"	"mzkl"  },
-		{ "teos"	"teos"  },
-		{ "gwar"	"gwar"  },
-		{ "bre"		"bre"	},
-		{ "falc"	"falc"	},
-		{ "fhon"	"fhon"	},		
-		{ NULL,      NULL   }
-    };
-
-    /* broken games :
-       mzkl
-		
-    */
-    const char *mapped = NULL;
-
-    if (args && *args) {
-        while (*args == ' ')
-            args++;
-
-        for (int i = 0; bbslink_aliases[i].input != NULL; i++) {
-            if (strcasecmp(args, bbslink_aliases[i].input) == 0) {
-                mapped = bbslink_aliases[i].mapped;
-                break;
-            }
-        }
-
-        if (!mapped) {
-            output("\nOkänt BBSLink-spel: %s\n", args);
-            return 0;
-        }
-    }
-
-    if (!mapped) {
-        FILE *fp = fopen(BBSLINK_INTRO, "r");
-        if (!fp) {
-            output("\nKunde inte läsa introduktionstexten (%s)\n", BBSLINK_INTRO);
-            return 0;
-        }
-
-        char line[256];
-        while (fgets(line, sizeof(line), fp)) {
-            output("%s", line);
-        }
-
-        fclose(fp);
+    if (DEFAULT_BBSLINK_PATH[0] == '\0') {
+        output("\n" MSG_BBSLINK_OFF "\n\n");
         return 0;
     }
 
-    /* Build command */
+    snprintf(uid_buf, sizeof(uid_buf), "%d", Uid);
+
+    if (!args)
+        args = "";
+
+    while (*args == ' ')
+        args++;
+
+    if (*args == '\0') {
+        show_bbslink_games();
+        return 0;
+    }
+
+    if (!find_bbslink_game(args, game_code, sizeof(game_code))) {
+        output("\nOkänt BBSLink-spel: %s\n\n", args);
+        return 0;
+    }
+
+    snprintf(script_path, sizeof(script_path), "%s/bbslink.py", DEFAULT_BBSLINK_PATH);
+
     if (Utf8) {
         const char *cmd[] = {
             CP437_WRAPPER,
-            "/doors/bbslink/bbslink.py",
-            mapped,
+            script_path,
+            game_code,
             uid_buf,
             NULL
         };
         return run_external_cmd_args(cmd, 0);
     } else {
         const char *cmd[] = {
-            "/doors/bbslink/bbslink.py",
-            mapped,
+            script_path,
+            game_code,
             uid_buf,
             NULL
         };
@@ -7245,13 +7228,13 @@ cmd_like(char *args)
     snprintf(confxtra, sizeof(confxtra), "%s/%d%s", SKLAFF_DB, Current_conf, CONFXTRA_FILE);
 
     if ((fd = open_file(confxtra, OPEN_CREATE)) == -1) {
-        output("\nCould not open confxtra, this is bad, contact your SysOp!\n\n");
+        output("\n"MSG_OPEN_C_E"\n\n");
         return 0;
     }
 
     if ((buf = read_file(fd)) == NULL) {
         close_file(fd);
-        output("\nCould not read confxtra, this is bad, contact your SysOp!\n\n");
+        output("\n"MSG_READ_C_E"\n\n");
         return 0;
     }
 
@@ -7283,7 +7266,7 @@ cmd_like(char *args)
         // Append new like to existing ![hiss] block
         FILE *fp = fopen(confxtra, "a");
         if (!fp) {
-            output("\nCould not write to confxtra, please let your Sysop know!\n\n");
+            output("\n"MSG_OPEN_C_E"\n\n");
             free(oldbuf);
             close_file(fd);
             return 0;
@@ -7295,7 +7278,7 @@ cmd_like(char *args)
         // No ![hiss] block — create it and append entry
         FILE *fp = fopen(confxtra, "a");
         if (!fp) {
-            output("\nCould not write to confxtra, please let your Sysop know!\n\n");
+            output("\n"MSG_READ_C_E"\n\n");
             free(oldbuf);
             close_file(fd);
             return 0;

@@ -41,15 +41,22 @@ LIBS=-lsklaff -lbsd -lm
 
 OBJS = \
 	admin.o \
+	bbslink.o \
 	buf.o \
 	commands.o \
 	command_list.o \
 	conf.o \
+	confxtra.o \
+	displaytime.o \
 	edit.o \
+	external.o \
 	file.o \
+	footnote.o \
 	flag.o \
 	msg.o \
+	newsparse.o \
 	parse.o\
+	praise.o\
 	survey.o \
 	text.o \
 	user.o \

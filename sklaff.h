@@ -48,7 +48,7 @@
 
 /* Machine name for news postings */
 
-#define MACHINE_NAME	"skom.se"
+#define MACHINE_NAME	"twilightnode.org"
 
 /* User to mail for new accounts */
 
@@ -102,7 +102,7 @@
 #define FROTZ_ZORK3     "zork3.z3"
 
 /* OTHER NEW (2025) external commands */
-#define CP437_WRAPPER "/usr/local/bin/cp437"
+#define CP437_WRAPPER 			"/usr/local/bin/cp437"
 #define DEFAULT_BBSLINK_PATH    "/doors/bbslink"
 #define BBSLINK_INTRO           SKLAFFDIR "/etc/bbslink"
 
@@ -110,9 +110,9 @@
 Please read item 18 for instructions here: 
 https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 
-#define UPLOADPRGM      "" /* recommended : "/usr/local/bin/lrz" */
+#define UPLOADPRGM      "/usr/local/bin/lrz" /* recommended : "/usr/local/bin/lrz" */
 #define ULOPT1          "-Eq"
-#define DOWNLOADPRGM    "" /* recommended : "/usr/local/bin/lsz" */
+#define DOWNLOADPRGM    "/usr/local/bin/lsz" /* recommended : "/usr/local/bin/lsz" */
 #define DLOPT1          "-Eq"
 #define DLOPT2          ""
 #define DLOPT3          ""
@@ -128,7 +128,7 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 
 #define SKLAFF_DB 	SKLAFFDIR "/db"
 #define USER_DB		SKLAFFDIR "/user"
-#define FILE_DB		SKLAFFDIR "/files"
+#define FILE_DB		"/srv/sklaff/files"
 #define MBOX_DB		SKLAFFDIR "/mbox"
 #define LOGDIR   	SKLAFFDIR "/log"
 #define DOORDIR		"/doors"
@@ -381,53 +381,32 @@ char *real_string(char *);
 char *reorder_name(char *, char *);
 char *prog_name(char *);
 char *mbox_dir(int, char *);
+
+/* lib/ui.c */
+
 int  output_ansi_fmt(const char *ansi_fmt, const char *plain_fmt, ...); 				/* 2025-07-30 PL */
-int  detect_terminal_lines(void);														/* 2025-08-10 PL */
-void se_time_string(time_t utc, LINE out, int flags);  									/* 2025-08-30 PL */
-int  parse_usenet_date_utc(const char *date_line, time_t *out_utc);						/* 2025-08-30 PL */
-int  parse_tz_token(const char *p, int *out_sec);										/* 2025-08-30 PL */
-int  month3_to_num(const char *m);														/* 2025-08-30 PL */
-time_t timegm_compat(struct tm *t); 													/* 2025-08-30 PL */
 void clear_prompt(int num); 															/* Little helper to avoid extra '(') 2025-08-26 PL */
 void clear_prompt_cols(int cols);														/* 2025-08-30 PL */
-int quote_depth(const char *s);  														/* Usenet quotes in colors 2025-08-31 PL */
-void get_wallclock_localtime(const time_t *t, struct tm *out);                          /* 2025-08-16 PL little helper used by (Se) tiden > */
-void extract_display_name(const char *from, char *out, size_t outlen);                  /* Humanizing usenet posts */
-int is_blank_line(const char *line);                                                    /* Blank line detection for usenet posts */
-size_t utf8_disp_len(const char *s);                                                    /* UTF8 related PL */
-void utf8_trunc_cols(const char *in, size_t max_cols, char *out, size_t outlen);        /* 2025-08-10, PL: truncate by display columns (UTF-8 safe, 1 col/codepoint) */
-void print_underlined_line(const char *line);                                           /* Build underline matching a printed line */
-int b64v(int c);                                                                        /* Base64 table */
-size_t qp_decode_bytes(const char *in, size_t inlen, unsigned char *out, size_t outlen);    /* Decode a single encoded-word's bytes with quoted-printable (Q) */
-size_t b64_decode_bytes(const char *in, size_t inlen, unsigned char *out, size_t outlen);   /* Decode a single encoded-word's bytes with base64 (B) */
-size_t latin1_to_utf8(const unsigned char *in, size_t inlen, char *out, size_t outlen);     /* Minimal charset -> UTF-8: utf-8 (pass), us-ascii (pass), iso-8859-1 (map) */
-size_t bytes_to_utf8(const char *charset, const unsigned char *in, size_t inlen, char *out, size_t outlen); /* Counting bytes when converting char tables (?) */
-void rfc2047_decode(const char *in, char *out, size_t outlen);                              /* RFC 2047 decoder: decodes any number of encoded-words in a header field */
-void normalize_label(const char *raw, char *norm, size_t nlen);                              /* Normalize a label to ensure exactly one trailing ": " */
+void clear_screen(void);                                                                     /* More sophisticated cls to use outside of commands.c */
 int output_body_line(const char *line, const char *col);                                    /* ANSI support fort text body in articles 2025-09-24 PL */
-int run_external_cmd_args(const char *argv[], int use_fallback);                            /* Better support for external commands 2025-09-24 PL */
+
+/* lib/display_header.c */
+
+void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
+
+/* lib/display_langfile.c */
 void display_langfile(const char *base, const char *base_eng, const char *base_swe);        /* Support for multilingual display of files (news etc) 2025-09-24 PL */
 void display_news(void);
 void display_logout(void);
-void clear_screen(void);                                                                     /* More sophisticated cls to use outside of commands.c */
-const char *month_name(int mon);                                                                /* "Se tiden"-stuff 2025-09.25 */
-void chomp(char *s);                                                                            /* "Se tiden"-stuff 2025-09.25 */
-void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
+
+/* various */
+int  detect_terminal_lines(void);														/* 2025-08-10 PL */
+int quote_depth(const char *s);  														/* Usenet quotes in colors 2025-08-31 PL */
+void normalize_label(const char *raw, char *norm, size_t nlen);                              /* Normalize a label to ensure exactly one trailing ": " */
+int b64v(int c);                                                                        /* Base64 table */
 void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
 long clamp_nonneg(long v);                                                          /* modified on 2025-10-02, PL */
-//void show_footnote_block(int conf, long num, LINE home, int has_comments);			/* 2025-10-15 helper to render the footnote (if there is one) */
-//void show_footnote_block(int conf, long num, LINE home, int has_comments);
-void show_footnote_block(int conf, long num, char *home, int has_comments);
 const char *time_string_static(time_t t);													/* 2025-10-24 PL */
-struct LikeEntry *get_user_likes(int uid);													/* 2025-10-24 PL */
-struct LikeEntry *get_conf_likes(int confnum);												/* 2025-10-25 PL */
-void free_like_list(struct LikeEntry *list);												/* 2025-10-25 PL */
-void show_likes_block(int conf, long num);												/* 2025-10-25 PL */
-void show_conf_likes(int conf);     													/* 2025-10-25 */
-int get_text_author(int conf, long num);  												/* 2025-10-25 PL */
-char *get_conf_description(int confnum);												/* 2025-10-25 PL */
-int write_confxtra_section(int confnum, const char *tag, const char *value);			/* 2025-10-25 PL */
-int remove_confxtra_section(int confnum, const char *tag);								/* 2025-10-25 PL */
 // enable the function below when ready and uncomment in conf.c
 //int has_file_area(int confnum);															/* 2025-11-11 PL */
 
@@ -546,6 +525,10 @@ int strip_string(char *, char *);
 int show_status(int, int, int);
 int list_who(int);
 
+/* bbslink.c */
+
+int  find_bbslink_game(const char *wanted, char *out, size_t outsz);
+void show_bbslink_games(void);
 /* buf.c */
 
 
@@ -587,6 +570,16 @@ struct CEN *sort_conf(struct CEL *, int);
 int list_news(int);
 struct CONF_ENTRY *get_all_confs(void);
 
+/* confxtra.c */
+char *get_conf_description(int confnum);												/* 2025-10-25 PL */
+int write_confxtra_section(int confnum, const char *tag, const char *value);			/* 2025-10-25 PL */
+int remove_confxtra_section(int confnum, const char *tag);								/* 2025-10-25 PL */
+
+/* displaytime.c */
+void get_wallclock_localtime(const time_t *t, struct tm *out);                          /* 2025-08-16 PL little helper used by (Se) tiden > */
+const char *month_name(int mon);                                                                /* "Se tiden"-stuff 2025-09.25 */
+void chomp(char *s);                                                                            /* "Se tiden"-stuff 2025-09.25 */
+
 /* edit.c */
 
 void abort_edit(int);
@@ -594,6 +587,9 @@ int resume_aborted_edit(void);
 struct TEXT_HEADER *
 line_ed(char *, struct TEXT_HEADER *, int, int,
     int, int *, char *);
+
+/* external.c */
+int run_external_cmd_args(const char *argv[], int use_fallback);                            /* Better support for external commands 2025-09-24 PL */
 
 /* file.c */
 
@@ -604,6 +600,10 @@ int rebuild_index_file(void);
 void set_flags(char *);
 int check_flag(char *, char *);
 int turn_flag(int, char *);
+
+/* footnote.c */
+
+void show_footnote_block(int conf, long num, char *home, int has_comments);					/* 2025-10-15 helper to render the footnote (if there is one) */
 
 /* mailparse.c */
 
@@ -624,12 +624,38 @@ int send_msg_to_all(int, char *);
 void notify_all_processes(int);
 void notify_user(int, int);
 
+/* newsparse.c */
+void se_time_string(time_t utc, LINE out, int flags);  									/* 2025-08-30 PL */
+int  parse_tz_token(const char *p, int *out_sec);										/* 2025-08-30 PL */
+int  parse_usenet_date_utc(const char *date_line, time_t *out_utc);						/* 2025-08-30 PL */
+int  month3_to_num(const char *m);														/* 2025-08-30 PL */
+time_t timegm_compat(struct tm *t); 													/* 2025-08-30 PL */
+void rfc2047_decode(const char *in, char *out, size_t outlen);                              /* RFC 2047 decoder: decodes any number of encoded-words in a header field */
+size_t qp_decode_bytes(const char *in, size_t inlen, unsigned char *out, size_t outlen);    /* Decode a single encoded-word's bytes with quoted-printable (Q) */
+size_t b64_decode_bytes(const char *in, size_t inlen, unsigned char *out, size_t outlen);   /* Decode a single encoded-word's bytes with base64 (B) */
+size_t bytes_to_utf8(const char *charset, const unsigned char *in, size_t inlen, char *out, size_t outlen); /* Counting bytes when converting char tables (?) */
+void extract_display_name(const char *from, char *out, size_t outlen);                  /* Humanizing usenet posts */
+int is_blank_line(const char *line);                                                    /* Blank line detection for usenet posts */
+size_t utf8_disp_len(const char *s);                                                    /* UTF8 related PL */
+void utf8_trunc_cols(const char *in, size_t max_cols, char *out, size_t outlen);        /* 2025-08-10, PL: truncate by display columns (UTF-8 safe, 1 col/codepoint) */
+void print_underlined_line(const char *line);                                           /* Build underline matching a printed line */
+size_t latin1_to_utf8(const unsigned char *in, size_t inlen, char *out, size_t outlen);     /* Minimal charset -> UTF-8: utf-8 (pass), us-ascii (pass), iso-8859-1 (map) */
+
+
 /* parse.c */
 
 int (*parse(char *, char *)) ();
 void buggy_sunOS_fix(int);
 int parse_init(char *);
 char *expand_name(char *, int, int, int *);
+
+/* praise.c */
+
+struct LikeEntry *get_user_likes(int uid);													/* 2025-10-24 PL */
+void free_like_list(struct LikeEntry *list);												/* 2025-10-25 PL */
+struct LikeEntry *get_conf_likes(int confnum);												/* 2025-10-25 PL */
+void show_conf_likes(int conf);     														/* 2025-10-25 */
+void show_likes_block(int conf, long num);													/* 2025-10-25 PL */
 
 /* text.c */
 

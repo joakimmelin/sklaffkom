@@ -108,6 +108,13 @@
 #define MSG_ONEMIN	"en minut."
 #define MSG_WARNING	"Om en minut blir jag utloggad pga inaktivitet!"
 
+/* bbslink.c */
+
+#define MSG_BBSLINK01 "BBSLink {r en slags 'door server' dit ett hundratal BBS'er {r anslutna."
+#define MSG_BBSLINK02 "Varje spel har en unik 'spelkod' som man anger f|r att spela."
+#define MSG_BBSLINK03 "Exempel : 'spela usrp' starar spelet Usurper."
+#define MSG_BBSLINK_OFF "Sysop har inte konfigurerat BBSLink på detta system"
+
 /* commands.c */
 
 #define MSG_BUSY	"{r upptagen."
@@ -185,11 +192,12 @@
 #define MSG_NOSURVEYMBOX "Du kan inte g\xf6ra enk{ter i din brevl}da."
 #define MSG_NOQUESTFOUND "Inga enk{tfr}gor funna. Konverterar till vanlig text."
 #define MSG_NOREPPTR	"Kan inte spara kommentarspekaren."
-#define MSG_NAMECOL	"Namn:"
-#define MSG_ADDRCOL	"Adress:  "
-#define MSG_TELECOL	"Telefon: "
+#define MSG_NAMECOL		"Namn:"
+#define MSG_ADDRCOL		"Adress:  "
+#define MSG_TELECOL		"Telefon: "
 #define MSG_EMAILCOL	"Email:   "
 #define MSG_URLCOL      "URL:     "
+#define MSG_CITYCOL		"Stad:    "
 #define MSG_ORGCOL	"Org:"
 #define MSG_INACT	"Timeout: "
 #define MSG_PDATE	"Betalt:  "
@@ -297,9 +305,13 @@
 #define MSG_NO_ZORK	"No z3-file found, sorry"  					/*Zork */
 #define MSG_BADARG      "\nF|ljande infocom-spel finns f|r n{rvarande :\n\nZork 1\nZork 2\nZork 3\n\nF|r att spela, ge kommandot Zork <nr>.\n\n"	/* Zork */
 #define MSG_SUCCESSUL   "Tackar f|r det! \nBeskriv nu g{rna filen genom att ge kommandot 'Beskriv <filnamn>'."
-#define MSG_FILE_DB_ER	"SysOp har inte konfigurerat filarkivet korrekt {n. Påminn denne."
-#define MSG_ULPRGMERROR "Uploadprogrammet saknas eller kan inte k|ras. Kontakta SysOp"
+#define MSG_NETHACKER01	"Fel: Kan inte starta Nethack - har SysOp glömt att installera den?"
+#define MSG_FILE_DB_ER	"Strul med filkatalogen. Meddela SysOp."
+#define MSG_ULPRGMERROR "Uploadprogrammet saknas eller kan inte k|ras. Kontakta SysOp."
 #define MSG_FILES_OFF 	"Filöverföringar är inte konfigurerade på detta system."
+#define MSG_OPEN_C_E	"Fel : kunde inte |ppna confxtra. Meddela SysOp!"
+#define MSG_READ_C_E	"Fel : kunde inte l{sa confxtra. Meddela SysOp!"
+#define MSG_WRITE_C_E	"Fel : kunde inte skriva till confxtra. Meddela SysOp!"
 
 /* Nytt (Se) tiden-kommando */
 #define MSG_DISPTIME    "Klockan {r nu"
@@ -807,6 +819,12 @@
 #define MSG_ONEMIN	"one minute."
 #define MSG_WARNING	"Inactivity logout in one minute!"
 
+/* bbslink.c */                                                                 
+                                                                                
+#define MSG_BBSLINK01 "BBSLink is a door server with nearly 150 BBS'es connected."
+#define MSG_BBSLINK02 "Each game has its own unique 'game code'."
+#define MSG_BBSLINK03 "Example command : 'play  usrp' will launch Usurper."           
+#define MSG_BBSLINK_OFF "SysOp did not configure bbslink gaming yet." 
 /* commands.c */
 
 #define MSG_BUSY	"is busy."
@@ -884,11 +902,12 @@
 #define MSG_NOSURVEYMBOX	"You cannot make surveys in your mailbox."
 #define MSG_NOQUESTFOUND "No survey questions found. Converting to ordinary text."
 #define MSG_NOREPPTR	"Cannot save reply pointer."
-#define MSG_NAMECOL	"Name:"
-#define MSG_ADDRCOL	"Address: "
-#define MSG_TELECOL	"Phone:   "
+#define MSG_NAMECOL		"Name:"
+#define MSG_ADDRCOL		"Address: "
+#define MSG_TELECOL		"Phone:   "
 #define MSG_EMAILCOL	"Email:   "
 #define MSG_URLCOL      "URL:     "
+#define MSG_CITYCOL 	"City:    "                                                    
 #define MSG_ORGCOL	"Org:"
 #define MSG_INACT	"Timeout: "
 #define MSG_PDATE	"Paid to: "
@@ -996,9 +1015,14 @@
 #define MSG_NO_ZORK     "No z3-file found, sorry"       /*Zork */
 #define MSG_BADARG      "Oops bad input! Type Zork 1, or 2, or 3.\n\n"   /* Zork */
 #define MSG_SUCCESSUL   "Thanks! Please describe the file now by giving the command 'Describe <filename>'."
-#define MSG_FILES_OFF 	"File transfers are not configured on this system."
+#define MSG_NETHACKER01	"Failed to launch Nethack - advise your SysOp to install it!"
 #define MSG_FILE_DB_ER	"File DB configuration error, speak with your SysOp!"
 #define MSG_ULPRGMERROR "Upload program missing or can't be run. Contact your SysOp!"
+#define MSG_FILES_OFF 	"File transfers are not configured on this system."
+#define MSG_FILES_OFF 	"Filöverföringar är inte konfigurerade på detta system."
+#define MSG_OPEN_C_E	"Error : failed to open confxtra. Contact your SysOp."
+#define MSG_READ_C_E	"Error : failed to read confxtra. Contact your SysOp."
+#define MSG_WRITE_C_E	"Error : failed to write confxtra. Contact your SysOp."
 
 /* New time */
 #define MSG_DISPTIME    "Current time is"
