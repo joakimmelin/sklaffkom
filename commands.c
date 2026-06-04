@@ -35,6 +35,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/utsname.h> /* 2025-06-02 PL , used in new "Version" command */
 #include <math.h>   /* for floor() in Swatch Internet Time  2025-09-10 PL */
 #include <ctype.h>  /* isspace */
 /* a bunch of new includes below for zork  2025-08-xx PL*/
@@ -7460,5 +7461,63 @@ cmd_change_cdesc(char *args)
         }
     }
 
+    return 0;
+}
+
+static const char *
+swedish_month(const char *mon)
+{
+    if (!strcmp(mon, "Jan")) return "januari";
+    if (!strcmp(mon, "Feb")) return "februari";
+    if (!strcmp(mon, "Mar")) return "mars";
+    if (!strcmp(mon, "Apr")) return "april";
+    if (!strcmp(mon, "May")) return "maj";
+    if (!strcmp(mon, "Jun")) return "juni";
+    if (!strcmp(mon, "Jul")) return "juli";
+    if (!strcmp(mon, "Aug")) return "augusti";
+    if (!strcmp(mon, "Sep")) return "september";
+    if (!strcmp(mon, "Oct")) return "oktober";
+    if (!strcmp(mon, "Nov")) return "november";
+    if (!strcmp(mon, "Dec")) return "december";
+
+    return mon;
+}
+
+int
+cmd_version(char *args)
+{
+	char mon[4];
+	int day, year;
+    struct utsname uts;
+
+
+    output("\nSklaffKOM v%s\n\n", sklaff_version);
+
+    if (sscanf(sklaff_build_date, "%3s %d %d", mon, &day, &year) == 3) {
+    output("Kompilerad: %d %s %d %s\n",
+        day, swedish_month(mon), year, sklaff_build_time);
+	} else {
+    output("Kompilerad: %s %s\n",
+        sklaff_build_date, sklaff_build_time);
+	}
+
+#ifdef SWEDISH
+    output("Språk: Svenska\n");
+#else
+    output("Språk: Engelska\n");
+#endif
+
+    if (uname(&uts) == 0)
+        output("Plattform: %s %s\n", uts.sysname, uts.machine);
+    else
+        output("Plattform: okänd\n");
+
+    output("Sysop: %s\n", SKLAFF_SYSOP);
+
+    /*
+	if (args && (!strcmp(args, "extern") || !strcmp(args, "-v")))
+        show_external_versions();
+	*/
+    output("\n");
     return 0;
 }

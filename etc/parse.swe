@@ -89,6 +89,7 @@ S{g:cmd_say:Skicka meddelande till en inloggad anv{ndare
 (Se) tiden:cmd_display_time:Se aktuell tid samt sessionens l{ngd
 Uttr{d (ur):cmd_unsubscribe:Uttr{d ur ett m|te
 Var (befinner jag mig):cmd_where:Visa aktuellt m|te
+Version:cmd_version:Visa aktuell SklaffKOM-version
 Vilka ({r inloggade):cmd_who:Se vilka som k|r SklaffKOM just nu
 Visa licens:cmd_licens:Visa licensfilen f|r SklaffKOM
 Visa ol{sta (texter):cmd_reclaim_unread:Ol{smarkerar dina ol{sta texter direkt.
