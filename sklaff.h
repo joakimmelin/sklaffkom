@@ -59,7 +59,7 @@
 #define SKLAFF_ID	"SKOM II"
 #define SKLAFF_LOC	"Stockholm, Sweden"
 #define SKLAFF_NUM	"+46-8-7021174"
-#define SKLAFF_SYSOP	"Carl Sundbom"
+#define SKLAFF_SYSOP	"Peter London"
 
 /* User ID of survey reporter account */
 
@@ -381,6 +381,7 @@ char *real_string(char *);
 char *reorder_name(char *, char *);
 char *prog_name(char *);
 char *mbox_dir(int, char *);
+int  detect_terminal_lines(void);														/* 2025-08-10 PL */
 
 /* lib/ui.c */
 
@@ -393,20 +394,20 @@ int output_body_line(const char *line, const char *col);                        
 /* lib/display_header.c */
 
 void display_header(struct TEXT_HEADER *th, int edit_subject, int type, int dtype, char *mailrec);
+void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
 
 /* lib/display_langfile.c */
 void display_langfile(const char *base, const char *base_eng, const char *base_swe);        /* Support for multilingual display of files (news etc) 2025-09-24 PL */
 void display_news(void);
 void display_logout(void);
 
-/* various */
-int  detect_terminal_lines(void);														/* 2025-08-10 PL */
-int quote_depth(const char *s);  														/* Usenet quotes in colors 2025-08-31 PL */
+/* lib/misc.c */
+int quote_depth(const char *s);                                                         /* Usenet quotes in colors 2025-08-31 PL */
 void normalize_label(const char *raw, char *norm, size_t nlen);                              /* Normalize a label to ensure exactly one trailing ": " */
-int b64v(int c);                                                                        /* Base64 table */
-void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based file sizes when listing files 2025-09-28 PL */
 long clamp_nonneg(long v);                                                          /* modified on 2025-10-02, PL */
-const char *time_string_static(time_t t);													/* 2025-10-24 PL */
+const char *time_string_static(time_t t);                                                   /* 2025-10-24 PL */
+const char *month_name_sv(const char *mon);												/* 2026-06-04 PL nicer output in new "version" command */
+
 // enable the function below when ready and uncomment in conf.c
 //int has_file_area(int confnum);															/* 2025-11-11 PL */
 
@@ -508,6 +509,7 @@ int cmd_footnote(char *args); /* 2025-10-14 PL */
 int cmd_like(char *args); /*2025-10-18 PL */
 int cmd_unlike(char *args); /*2025-10-24 PL */
 int cmd_change_cdesc(char *args); /*2025-10-25 PL */
+int cmd_version(char *args); /*2026-06-02 PL */
 
 /* admin.c */
 
@@ -529,6 +531,7 @@ int list_who(int);
 
 int  find_bbslink_game(const char *wanted, char *out, size_t outsz);
 void show_bbslink_games(void);
+
 /* buf.c */
 
 
@@ -640,7 +643,7 @@ size_t utf8_disp_len(const char *s);                                            
 void utf8_trunc_cols(const char *in, size_t max_cols, char *out, size_t outlen);        /* 2025-08-10, PL: truncate by display columns (UTF-8 safe, 1 col/codepoint) */
 void print_underlined_line(const char *line);                                           /* Build underline matching a printed line */
 size_t latin1_to_utf8(const unsigned char *in, size_t inlen, char *out, size_t outlen);     /* Minimal charset -> UTF-8: utf-8 (pass), us-ascii (pass), iso-8859-1 (map) */
-
+int b64v(int c);                                                                        /* Base64 table */
 
 /* parse.c */
 

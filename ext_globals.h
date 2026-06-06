@@ -64,6 +64,8 @@ extern struct MSG_LIST *mlist;  /* Last msg received    */
 extern int Interrupt_input;     /* Allow interrupts (talk, new_texts) */
 extern int Cont;                /* Cont. output         */
 extern char *sklaff_version;
+extern char *sklaff_build_date;
+extern char *sklaff_build_time;
 extern char Program_name[80];   /* The name of the program */
 extern LINE Prompt;             /* Last prompt written	   */
 extern LINE Overflow;           /* Overflow from last line */

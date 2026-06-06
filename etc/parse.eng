@@ -90,6 +90,7 @@ Unread subject:cmd_unreadsub:Unread all articles with a certain subject
 Unpraise:cmd_unlike:Unpraise a text you have praised
 Unsubscribe (to):cmd_unsubscribe:Unsubscribe to a conference
 Upload (file):cmd_upload:Upload a file to current conference
+Version:cmd_version:Show current SklaffKOM version
 Where (am I):cmd_where:Show current conference
 Who (is online):cmd_who:Show logged in users
 (Show) entire (text):cmd_whole_text:Show text with absolute date

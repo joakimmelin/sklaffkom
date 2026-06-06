@@ -55,6 +55,8 @@ struct MSG_LIST *mlist;         /* Last msg received    */
 int Interrupt_input = 0;        /* Allow interrupts (talk, new_texts) */
 int Cont;                       /* Cont. output         */
 extern char *sklaff_version;
+extern char *sklaff_build_date;	/* Attempting to make a new "Version" command inside SklaffKOM */
+extern char *sklaff_build_time; /* PL 2026-06-02 */
 char Program_name[80];          /* The name of the program file */
 LINE Prompt;                    /* Last prompt written		 */
 LINE Overflow;                  /* Overflow from last line	 */

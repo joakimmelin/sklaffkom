@@ -97,3 +97,22 @@ has_file_area(int confnum) {
     snprintf(path, sizeof(path), "%s/%d%s", FILE_DB, confnum, INDEX_FILE);
     return file_exists(path) != -1;
 }
+
+const char *
+swedish_month(const char *mon)
+{
+    if (!strcmp(mon, "Jan")) return "januari";
+    if (!strcmp(mon, "Feb")) return "februari";
+    if (!strcmp(mon, "Mar")) return "mars";
+    if (!strcmp(mon, "Apr")) return "april";
+    if (!strcmp(mon, "May")) return "maj";
+    if (!strcmp(mon, "Jun")) return "juni";
+    if (!strcmp(mon, "Jul")) return "juli";
+    if (!strcmp(mon, "Aug")) return "augusti";
+    if (!strcmp(mon, "Sep")) return "september";
+    if (!strcmp(mon, "Oct")) return "oktober";
+    if (!strcmp(mon, "Nov")) return "november";
+    if (!strcmp(mon, "Dec")) return "december";
+
+    return mon;
+}

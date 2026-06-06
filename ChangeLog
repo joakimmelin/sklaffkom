@@ -1,4 +1,5 @@
-v1.33-rc1 June 2026 PL
+v1.33-rc1 Thursday 02 June 2026 PL
+
 * The BBSLink integration got some polish today. SysOp can disable BBSLink
   entirely by leaving the DEFAULT_BBSLINK_PATH define empty in sklaff.h. We
   now configure the games available in etc/bbslink instead of hard coded
@@ -6,6 +7,10 @@ v1.33-rc1 June 2026 PL
   of my control. We will have to remove the games that does not work well.
 
 * Status <user> now hides "address"-field correctly.
+
+* Could not resist adding another feature, a small one though : a "Version"-
+  command ;). We now also print build date and time in version.c when
+  version.sh is run.
 
 v1.33 beta13 Wednesday 28 May 2026 PL
 It's been a while!
@@ -58,7 +63,7 @@ https://github.com/joakimmelin/sklaffkom/wiki/Connect-analogue-modem-to-Sklaffko
 
 2026-05-13: Bugfix text body not displayed on terminals with light background
 
-v1.33 beta12 Tuseday 11 November 2025 PL
+v1.33 beta12 Tuesday 11 November 2025 PL
 Two important bug fixes :
 
 * The UTF-8 conversion did not work right when the first character of a
