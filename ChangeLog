@@ -1,3 +1,8 @@
+v1.33-rc1 Saturday 06 June 2026 JM
+
+* Changed language for swedish names of days to avoid intercaps and to
+  comply with swedish language standards. 
+
 v1.33-rc1 Thursday 02 June 2026 PL
 
 * The BBSLink integration got some polish today. SysOp can disable BBSLink
