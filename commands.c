@@ -1405,7 +1405,7 @@ cmd_create_conf(char *args)
     struct CONF_ENTRY ce;
 
     conf_type = OPEN_CONF;
-    strcpy(confname, args);
+    strlcpy(confname, args, sizeof(confname)); /* modified on 2026-06-08, PL */
 
     output("\n");
     if (*confname == '\0') {
@@ -1425,15 +1425,18 @@ cmd_create_conf(char *args)
         down_string(interact);
         if (*interact) {
             if (*interact == MSG_CONFCLOSED)
-                conf_type = 1;
+                conf_type = CLOSED_CONF;
             else if (*interact == MSG_CONFSECRET)
-                conf_type = 2;
+                conf_type = SECRET_CONF;
             else if (*interact == MSG_CONFNEWS)
-                conf_type = 3;
+                conf_type = NEWS_CONF;
+            else if (*interact == MSG_CONFFTN)
+                conf_type = FTN_CONF;
             else
-                conf_type = 0;
-        } else
-            conf_type = 0;
+                conf_type = OPEN_CONF;
+        } else {
+            conf_type = OPEN_CONF;
+        }
 
         if ((fd = open_file(CONF_FILE, 0)) == -1) {
             return -1;
@@ -1451,8 +1454,10 @@ cmd_create_conf(char *args)
                 break;
         }
 
-        if (conf_type == 3)
+        if (conf_type == NEWS_CONF)
             ce.life = EXP_DEF_NEWS;
+        else if (conf_type == FTN_CONF)
+            ce.life = EXP_DEF_FTN;
         else
             ce.life = EXP_DEF;
         ce.num = confnum + 1;
@@ -1461,13 +1466,17 @@ cmd_create_conf(char *args)
         ce.type = conf_type;
         ce.time = time(0);
         ce.comconf = 0;
-        strcpy(ce.name, confname);
+        strlcpy(ce.name, confname, sizeof(ce.name)); /* modified on 2026-06-08, PL */
         tmp = stringify_conf_struct(&ce, tmpbuf);
 
         i = strlen(oldbuf) + strlen(tmp) + 1;
         nbuf = (char *) malloc(i);
+        if (nbuf == NULL) {
+            free(oldbuf);
+            close_file(fd);
+            return -1;
+        }
         memset(nbuf, 0, i);
-
         strcpy(nbuf, oldbuf);
         strcat(nbuf, tmp);
 
@@ -1482,9 +1491,7 @@ cmd_create_conf(char *args)
         mkdir(newname, NEW_DIR_MODE);
         snprintf(newname, sizeof(newname), "%s/%d", FILE_DB, ce.num);
         mkdir(newname, NEW_DIR_MODE);
-        snprintf(newname, sizeof(newname), "%s/%d", SKLAFF_DB, ce.num);
-        strcat(newname, CONFRC_FILE);
-
+        snprintf(newname, sizeof(newname), "%s/%d%s", SKLAFF_DB, ce.num, CONFRC_FILE); /* modified on 2026-06-08, PL */
         if ((fd2 = open_file(newname, OPEN_CREATE | OPEN_QUIET)) == -1) {
             return -1;
         }
