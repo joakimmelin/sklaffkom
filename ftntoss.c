@@ -97,6 +97,12 @@ static int build_import_plan(struct msgitem *items, struct skref *skrefs,
     long first_textnum, struct planref **out_plans, long *out_planned,
     long *out_next_textnum, long *out_top_level, long *out_reply_existing,
     long *out_reply_planned, long *out_orphan);
+static void print_visible_ctrl(const char *s);
+static long count_body_lines(const char *s);
+static int dump_import_text(const char *area, const struct ftn_conf_info *ce,
+    const char *filename, struct msgitem *items, struct planref *plans);
+static int dump_one_import(const char *area, const struct ftn_conf_info *ce,
+    const char *filename);
 
 static int
 parse_conf_line(const char *line, struct ftn_conf_info *ce)
@@ -664,6 +670,219 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
     return 0;
 }
 
+
+static void
+print_visible_ctrl(const char *s)
+{
+    if (s == NULL)
+        return;
+
+    while (*s) {
+        if ((unsigned char)*s == '\001')
+            fputs("^A", stdout);
+        else
+            putchar((unsigned char)*s);
+        s++;
+    }
+}
+
+static long
+count_body_lines(const char *s)
+{
+    long lines = 0;
+
+    if (s == NULL || *s == '\0')
+        return 0;
+
+    while (*s) {
+        if (*s == '\n')
+            lines++;
+        s++;
+    }
+
+    return lines + 1;
+}
+
+static int
+dump_import_text(const char *area, const struct ftn_conf_info *ce,
+    const char *filename, struct msgitem *items, struct planref *plans)
+{
+    struct msgitem *m;
+    struct fido_msg msg;
+    const struct planref *plan;
+    long com = 0;
+    long size;
+
+    if (area == NULL || ce == NULL || filename == NULL || items == NULL || plans == NULL)
+        return -1;
+
+    for (m = items; m != NULL; m = m->next) {
+        if (strcmp(m->filename, filename) == 0)
+            break;
+    }
+
+    if (m == NULL) {
+        fprintf(stderr, "[ERROR] No such .MSG file in spool plan: %s\n", filename);
+        return -1;
+    }
+
+    plan = find_planref_by_filename(plans, filename);
+    if (plan == NULL) {
+        fprintf(stderr, "[ERROR] No import plan found for %s\n", filename);
+        return -1;
+    }
+
+    if (read_fido_msg(m->path, &msg) != 0) {
+        fprintf(stderr, "[ERROR] Could not parse .MSG file: %s\n", m->path);
+        return -1;
+    }
+
+    com = plan->parent_textnum;
+
+    /* Approximation for dry-run: subject + FTN metadata + blank line + raw body. */
+    size = 7 + count_body_lines(msg.raw_body);
+    if (msg.chrs[0] != '\0')
+        size++;
+    if (msg.msgid[0] != '\0')
+        size++;
+    if (msg.reply[0] != '\0')
+        size++;
+
+    printf("\n");
+    printf("FTN import dump\n");
+    printf("---------------\n");
+    printf("Area:          %s\n", area);
+    printf("Conference:    %s (%d)\n", ce->name, ce->num);
+    printf("Source file:   %s\n", filename);
+    printf("Source path:   %s\n", m->path);
+    printf("Planned text:  %ld\n", plan->planned_textnum);
+    printf("Comment to:    %ld", com);
+    if (plan->orphan)
+        printf(" (orphan fallback/top-level)");
+    printf("\n");
+    printf("\n");
+
+    printf("Would write approximate SklaffKOM text file:\n");
+    printf("------------------------------------------------------------\n");
+
+    /*
+     * Dry-run approximation of the SklaffKOM text header:
+     *   textno:anonymous?:time:comment-to:...:...:line-count
+     * The real importer should use the same header logic as newstoss/send_news.
+     */
+    printf("%ld:%d:%ld:%ld:%d:%d:%ld\n",
+        plan->planned_textnum, 0, 0L, com, 0, 0, size);
+
+    printf("%s\n", msg.subject[0] ? msg.subject : "(no subject)");
+    printf("From: %s\n", msg.from[0] ? msg.from : "(unknown)");
+    printf("To: %s\n", msg.to[0] ? msg.to : "(unknown)");
+    printf("Subject: %s\n", msg.subject[0] ? msg.subject : "(no subject)");
+    printf("Date: %s\n", msg.date[0] ? msg.date : "(unknown)");
+    printf("FTN-Area: %s\n", area);
+
+    if (msg.chrs[0] != '\0')
+        printf("FTN-CHRS: %s\n", msg.chrs);
+    if (msg.msgid[0] != '\0')
+        printf("FTN-MSGID: %s\n", msg.msgid);
+    if (msg.reply[0] != '\0')
+        printf("FTN-REPLY: %s\n", msg.reply);
+
+    printf("\n");
+
+    /* Show real FTN kludges visibly as ^A in the dump. */
+    print_visible_ctrl(msg.raw_body);
+
+    printf("\n------------------------------------------------------------\n");
+    printf("End dry-run import dump\n");
+
+    free_fido_msg(&msg);
+    return 0;
+}
+
+static int
+dump_one_import(const char *area, const struct ftn_conf_info *ce,
+    const char *filename)
+{
+    struct skref *skrefs = NULL;
+    struct msgref *refs = NULL;
+    struct msgitem *items = NULL;
+    struct planref *plans = NULL;
+    char spooldir[PATH_MAX];
+    long existing_indexed = 0;
+    long seen = 0;
+    long failed = 0;
+    long indexed = 0;
+    long top_level = 0;
+    long reply_existing = 0;
+    long reply_planned = 0;
+    long reply_orphan = 0;
+    long next_textnum;
+    long planned = 0;
+    int rc = -1;
+
+    if (snprintf(spooldir, sizeof(spooldir), "%s/%s", FTN_SPOOL, area) >= (int)sizeof(spooldir)) {
+        fprintf(stderr, "[ERROR] Spool path too long: %s/%s\n", FTN_SPOOL, area);
+        return -1;
+    }
+
+    printf("\n");
+    printf("FTN dump-import setup\n");
+    printf("---------------------\n");
+    printf("Area:        %s\n", area);
+    printf("Spool:       %s\n", spooldir);
+    printf("Conf name:   %s\n", ce->name);
+    printf("Conf num:    %d\n", ce->num);
+    printf("Conf type:   %d", ce->type);
+    if (ce->type == FTN_CONF)
+        printf(" (FTN_CONF)");
+    printf("\n");
+    printf("Last text:   %ld\n", ce->last_text);
+    printf("Target file: %s\n", filename);
+    printf("\n");
+
+    if (ce->type != FTN_CONF) {
+        fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
+            ce->name, ce->type);
+        return -1;
+    }
+
+    if (scan_existing_skl_msgids(ce, &skrefs, &existing_indexed) != 0)
+        goto cleanup;
+
+    if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0)
+        goto cleanup;
+
+    next_textnum = ce->last_text + 1;
+
+    if (build_import_plan(items, skrefs, next_textnum, &plans, &planned,
+        &next_textnum, &top_level, &reply_existing, &reply_planned,
+        &reply_orphan) != 0)
+        goto cleanup;
+
+    printf("Dump plan summary\n");
+    printf("-----------------\n");
+    printf("Seen:          %ld .MSG file(s)\n", seen);
+    printf("Indexed:       %ld MSGID value(s)\n", indexed);
+    printf("Existing IDs:  %ld SklaffKOM MSGID value(s)\n", existing_indexed);
+    printf("Failed:        %ld\n", failed);
+    printf("Top-level:     %ld\n", top_level);
+    printf("Reply existing:%ld\n", reply_existing);
+    printf("Reply planned: %ld\n", reply_planned);
+    printf("Orphan reply:  %ld\n", reply_orphan);
+    printf("Planned:       %ld simulated import(s)\n", planned);
+    printf("Next text no:  %ld\n", next_textnum);
+
+    rc = dump_import_text(area, ce, filename, items, plans);
+
+cleanup:
+    free_msgrefs(refs);
+    free_skrefs(skrefs);
+    free_msgitems(items);
+    free_planrefs(plans);
+
+    return rc;
+}
+
 static int
 scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
 {
@@ -856,10 +1075,26 @@ main(int argc, char **argv)
 {
     struct ftn_conf_info ce;
 
+    if (argc == 4 && strcmp(argv[1], "--dump-import") == 0) {
+        printf("ftntoss dump-import dry-run starting\n");
+        printf("====================================\n\n");
+
+        if (find_ftn_conf(argv[2], &ce) != 0)
+            return 1;
+
+        if (dump_one_import(argv[2], &ce, argv[3]) != 0)
+            return 1;
+
+        printf("\nftntoss dump-import dry-run done\n");
+        return 0;
+    }
+
     if (argc != 2) {
-        fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n\n", argv[0]);
-        fprintf(stderr, "Example:\n");
-        fprintf(stderr, "  %s FSX_GEN\n\n", argv[0]);
+        fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
+        fprintf(stderr, "       %s --dump-import <FTN-area / SklaffKOM conference> <file.msg>\n\n", argv[0]);
+        fprintf(stderr, "Examples:\n");
+        fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
+        fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
         return 1;
     }
 
