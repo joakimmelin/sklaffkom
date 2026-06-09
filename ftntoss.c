@@ -52,6 +52,8 @@ struct planref {
     char filename[PATH_MAX];
     char msgid[256];
     long planned_textnum;
+    long parent_textnum;
+    int orphan;
     struct planref *next;
 };
 
@@ -60,10 +62,6 @@ struct msgitem {
     char path[PATH_MAX];
     char msgid[256];
     char reply[256];
-    int planned;
-    int orphan;
-    long planned_textnum;
-    long parent_textnum;
     struct msgitem *next;
 };
 
@@ -80,23 +78,25 @@ static long find_skref(struct skref *list, const char *msgid);
 static void free_skrefs(struct skref *list);
 
 static void add_planref(struct planref **list, const char *filename,
-    const char *msgid, long planned_textnum);
+    const char *msgid, long planned_textnum, long parent_textnum, int orphan);
+static const struct planref *find_planref_by_filename(struct planref *list,
+    const char *filename);
 static long find_planref_by_msgid(struct planref *list, const char *msgid);
 static void free_planrefs(struct planref *list);
 
 static int add_msgitem(struct msgitem **list, struct msgitem **tail,
     const char *filename, const char *path, const char *msgid, const char *reply);
-static struct msgitem *find_msgitem_by_filename(struct msgitem *list, const char *filename);
 static void free_msgitems(struct msgitem *list);
-
-static int plan_imports(struct msgitem *items, struct skref *skrefs,
-    struct planref **plans, long first_textnum, long *out_next_textnum,
-    long *out_planned, long *out_top_level, long *out_reply_existing,
-    long *out_reply_planned, long *out_orphan);
 
 static int scan_existing_skl_msgids(const struct ftn_conf_info *ce,
     struct skref **out_refs, long *out_indexed);
 static int extract_ftn_msgid_from_line(const char *line, char *out, size_t outsz);
+static int build_spool_index(const char *spooldir, struct msgref **out_refs,
+    struct msgitem **out_items, long *out_seen, long *out_indexed, long *out_failed);
+static int build_import_plan(struct msgitem *items, struct skref *skrefs,
+    long first_textnum, struct planref **out_plans, long *out_planned,
+    long *out_next_textnum, long *out_top_level, long *out_reply_existing,
+    long *out_reply_planned, long *out_orphan);
 
 static int
 parse_conf_line(const char *line, struct ftn_conf_info *ce)
@@ -280,12 +280,11 @@ free_skrefs(struct skref *list)
 
 static void
 add_planref(struct planref **list, const char *filename,
-    const char *msgid, long planned_textnum)
+    const char *msgid, long planned_textnum, long parent_textnum, int orphan)
 {
     struct planref *n;
 
-    if (list == NULL || filename == NULL || *filename == '\0' ||
-        msgid == NULL || *msgid == '\0' || planned_textnum <= 0)
+    if (list == NULL || filename == NULL || *filename == '\0' || planned_textnum <= 0)
         return;
 
     n = (struct planref *)calloc(1, sizeof(*n));
@@ -293,11 +292,30 @@ add_planref(struct planref **list, const char *filename,
         return;
 
     strlcpy(n->filename, filename, sizeof(n->filename)); /* modified on 2026-06-09, PL */
-    strlcpy(n->msgid, msgid, sizeof(n->msgid)); /* modified on 2026-06-09, PL */
+    if (msgid != NULL)
+        strlcpy(n->msgid, msgid, sizeof(n->msgid)); /* modified on 2026-06-09, PL */
     n->planned_textnum = planned_textnum;
+    n->parent_textnum = parent_textnum;
+    n->orphan = orphan;
 
     n->next = *list;
     *list = n;
+}
+
+static const struct planref *
+find_planref_by_filename(struct planref *list, const char *filename)
+{
+    struct planref *p;
+
+    if (filename == NULL || *filename == '\0')
+        return NULL;
+
+    for (p = list; p != NULL; p = p->next) {
+        if (strcmp(p->filename, filename) == 0)
+            return p;
+    }
+
+    return NULL;
 }
 
 static long
@@ -309,7 +327,7 @@ find_planref_by_msgid(struct planref *list, const char *msgid)
         return 0;
 
     for (p = list; p != NULL; p = p->next) {
-        if (strcmp(p->msgid, msgid) == 0)
+        if (p->msgid[0] != '\0' && strcmp(p->msgid, msgid) == 0)
             return p->planned_textnum;
     }
 
@@ -341,13 +359,12 @@ add_msgitem(struct msgitem **list, struct msgitem **tail,
 
     strlcpy(n->filename, filename, sizeof(n->filename)); /* modified on 2026-06-09, PL */
     strlcpy(n->path, path, sizeof(n->path)); /* modified on 2026-06-09, PL */
-
     if (msgid != NULL)
         strlcpy(n->msgid, msgid, sizeof(n->msgid)); /* modified on 2026-06-09, PL */
     if (reply != NULL)
         strlcpy(n->reply, reply, sizeof(n->reply)); /* modified on 2026-06-09, PL */
 
-    if (*tail == NULL) {
+    if (*list == NULL) {
         *list = n;
         *tail = n;
     } else {
@@ -358,22 +375,6 @@ add_msgitem(struct msgitem **list, struct msgitem **tail,
     return 0;
 }
 
-static struct msgitem *
-find_msgitem_by_filename(struct msgitem *list, const char *filename)
-{
-    struct msgitem *p;
-
-    if (filename == NULL || *filename == '\0')
-        return NULL;
-
-    for (p = list; p != NULL; p = p->next) {
-        if (strcmp(p->filename, filename) == 0)
-            return p;
-    }
-
-    return NULL;
-}
-
 static void
 free_msgitems(struct msgitem *list)
 {
@@ -382,111 +383,6 @@ free_msgitems(struct msgitem *list)
         free(list);
         list = t;
     }
-}
-
-static int
-plan_imports(struct msgitem *items, struct skref *skrefs,
-    struct planref **plans, long first_textnum, long *out_next_textnum,
-    long *out_planned, long *out_top_level, long *out_reply_existing,
-    long *out_reply_planned, long *out_orphan)
-{
-    int changed;
-    long next_textnum = first_textnum;
-    long planned = 0;
-    long top_level = 0;
-    long reply_existing = 0;
-    long reply_planned = 0;
-    long orphan = 0;
-
-    if (plans == NULL || out_next_textnum == NULL || out_planned == NULL ||
-        out_top_level == NULL || out_reply_existing == NULL ||
-        out_reply_planned == NULL || out_orphan == NULL)
-        return -1;
-
-    *plans = NULL;
-
-    /*
-     * Multi-pass planning:
-     * - top-level messages can always be planned
-     * - replies to existing SklaffKOM texts can always be planned
-     * - replies to already-planned messages can be planned on later passes
-     */
-    do {
-        struct msgitem *m;
-
-        changed = 0;
-
-        for (m = items; m != NULL; m = m->next) {
-            long parent_text = 0;
-            long planned_parent = 0;
-
-            if (m->planned)
-                continue;
-
-            if (m->reply[0] == '\0') {
-                m->planned = 1;
-                m->planned_textnum = next_textnum++;
-                add_planref(plans, m->filename, m->msgid, m->planned_textnum);
-                planned++;
-                top_level++;
-                changed = 1;
-                continue;
-            }
-
-            parent_text = find_skref(skrefs, m->reply);
-            if (parent_text > 0) {
-                m->planned = 1;
-                m->parent_textnum = parent_text;
-                m->planned_textnum = next_textnum++;
-                add_planref(plans, m->filename, m->msgid, m->planned_textnum);
-                planned++;
-                reply_existing++;
-                changed = 1;
-                continue;
-            }
-
-            planned_parent = find_planref_by_msgid(*plans, m->reply);
-            if (planned_parent > 0) {
-                m->planned = 1;
-                m->parent_textnum = planned_parent;
-                m->planned_textnum = next_textnum++;
-                add_planref(plans, m->filename, m->msgid, m->planned_textnum);
-                planned++;
-                reply_planned++;
-                changed = 1;
-                continue;
-            }
-        }
-    } while (changed);
-
-    /*
-     * Anything left is a true orphan for this dry-run:
-     * no parent in existing SklaffKOM texts and no resolvable parent in spool.
-     */
-    {
-        struct msgitem *m;
-
-        for (m = items; m != NULL; m = m->next) {
-            if (m->planned)
-                continue;
-
-            m->planned = 1;
-            m->orphan = 1;
-            m->planned_textnum = next_textnum++;
-            add_planref(plans, m->filename, m->msgid, m->planned_textnum);
-            planned++;
-            orphan++;
-        }
-    }
-
-    *out_next_textnum = next_textnum;
-    *out_planned = planned;
-    *out_top_level = top_level;
-    *out_reply_existing = reply_existing;
-    *out_reply_planned = reply_planned;
-    *out_orphan = orphan;
-
-    return 0;
 }
 
 static void
@@ -513,15 +409,6 @@ extract_ftn_msgid_from_line(const char *line, char *out, size_t outsz)
     if (line == NULL || out == NULL || outsz == 0)
         return 0;
 
-    /*
-     * Support both real FTN kludge byte and visible debug-style ^A.
-     *
-     * Real stored FTN:
-     *   \001MSGID: ...
-     *
-     * Possible visible/debug form:
-     *   ^AMSGID: ...
-     */
     if (line[0] == '\001' && strncmp(line + 1, "MSGID:", 6) == 0)
         p = line + 7;
     else if (strncmp(line, "^AMSGID:", 8) == 0)
@@ -572,13 +459,8 @@ scan_existing_skl_msgids(const struct ftn_conf_info *ce,
         }
 
         fp = fopen(path, "r");
-        if (fp == NULL) {
-            /*
-             * Gaps/deleted texts are normal enough. Do not treat missing
-             * numbered files as fatal in this dry-run scanner.
-             */
+        if (fp == NULL)
             continue;
-        }
 
         while (fgets(line, sizeof(line), fp) != NULL) {
             if (extract_ftn_msgid_from_line(line, msgid, sizeof(msgid))) {
@@ -600,17 +482,197 @@ scan_existing_skl_msgids(const struct ftn_conf_info *ce,
 }
 
 static int
-scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
+build_spool_index(const char *spooldir, struct msgref **out_refs,
+    struct msgitem **out_items, long *out_seen, long *out_indexed, long *out_failed)
 {
     DIR *dir;
     struct dirent *de;
-    struct msgref *refs = NULL;
-    struct skref *skrefs = NULL;
-    struct planref *plans = NULL;
     struct msgitem *items = NULL;
-    struct msgitem *items_tail = NULL;
-    char spooldir[PATH_MAX];
+    struct msgitem *tail = NULL;
     char path[PATH_MAX];
+    long seen = 0;
+    long indexed = 0;
+    long failed = 0;
+
+    if (spooldir == NULL || out_refs == NULL || out_items == NULL ||
+        out_seen == NULL || out_indexed == NULL || out_failed == NULL)
+        return -1;
+
+    *out_refs = NULL;
+    *out_items = NULL;
+    *out_seen = 0;
+    *out_indexed = 0;
+    *out_failed = 0;
+
+    dir = opendir(spooldir);
+    if (dir == NULL) {
+        fprintf(stderr, "[ERROR] Could not open FTN spool directory '%s'\n", spooldir);
+        perror("opendir");
+        return -1;
+    }
+
+    printf("Indexing .MSG files by MSGID...\n");
+
+    while ((de = readdir(dir)) != NULL) {
+        struct fido_msg msg;
+
+        if (!is_msg_file(de->d_name))
+            continue;
+
+        seen++;
+
+        if (snprintf(path, sizeof(path), "%s/%s", spooldir, de->d_name) >= (int)sizeof(path)) {
+            fprintf(stderr, "[ERROR] Path too long while indexing: %s/%s\n",
+                spooldir, de->d_name);
+            failed++;
+            continue;
+        }
+
+        if (read_fido_msg(path, &msg) != 0) {
+            fprintf(stderr, "[ERROR] Could not parse .MSG while indexing: %s\n", path);
+            failed++;
+            continue;
+        }
+
+        if (msg.msgid[0] != '\0') {
+            add_msgref(out_refs, msg.msgid, de->d_name);
+            indexed++;
+        }
+
+        if (add_msgitem(&items, &tail, de->d_name, path, msg.msgid, msg.reply) != 0) {
+            fprintf(stderr, "[ERROR] Out of memory while indexing: %s\n", path);
+            free_fido_msg(&msg);
+            closedir(dir);
+            free_msgitems(items);
+            free_msgrefs(*out_refs);
+            *out_refs = NULL;
+            return -1;
+        }
+
+        free_fido_msg(&msg);
+    }
+
+    closedir(dir);
+
+    *out_items = items;
+    *out_seen = seen;
+    *out_indexed = indexed;
+    *out_failed = failed;
+
+    printf("Indexed:     %ld MSGID value(s)\n\n", indexed);
+
+    return failed ? -1 : 0;
+}
+
+static int
+build_import_plan(struct msgitem *items, struct skref *skrefs,
+    long first_textnum, struct planref **out_plans, long *out_planned,
+    long *out_next_textnum, long *out_top_level, long *out_reply_existing,
+    long *out_reply_planned, long *out_orphan)
+{
+    struct planref *plans = NULL;
+    struct msgitem *m;
+    long next_textnum = first_textnum;
+    long planned = 0;
+    long top_level = 0;
+    long reply_existing = 0;
+    long reply_planned = 0;
+    long orphan = 0;
+    int changed;
+
+    if (out_plans == NULL || out_planned == NULL || out_next_textnum == NULL ||
+        out_top_level == NULL || out_reply_existing == NULL ||
+        out_reply_planned == NULL || out_orphan == NULL)
+        return -1;
+
+    *out_plans = NULL;
+    *out_planned = 0;
+    *out_next_textnum = first_textnum;
+    *out_top_level = 0;
+    *out_reply_existing = 0;
+    *out_reply_planned = 0;
+    *out_orphan = 0;
+
+    printf("Planning dry-run import order...\n");
+
+    /* Pass 1: top-level messages and replies to existing SklaffKOM texts. */
+    for (m = items; m != NULL; m = m->next) {
+        long parent_text;
+
+        if (find_planref_by_filename(plans, m->filename) != NULL)
+            continue;
+
+        if (m->reply[0] == '\0') {
+            add_planref(&plans, m->filename, m->msgid, next_textnum++, 0, 0);
+            planned++;
+            top_level++;
+            continue;
+        }
+
+        parent_text = find_skref(skrefs, m->reply);
+        if (parent_text > 0) {
+            add_planref(&plans, m->filename, m->msgid, next_textnum++, parent_text, 0);
+            planned++;
+            reply_existing++;
+        }
+    }
+
+    /* Pass 2..N: replies whose parent was planned in an earlier pass. */
+    do {
+        changed = 0;
+
+        for (m = items; m != NULL; m = m->next) {
+            long parent_text;
+
+            if (find_planref_by_filename(plans, m->filename) != NULL)
+                continue;
+
+            if (m->reply[0] == '\0')
+                continue;
+
+            parent_text = find_planref_by_msgid(plans, m->reply);
+            if (parent_text > 0) {
+                add_planref(&plans, m->filename, m->msgid, next_textnum++, parent_text, 0);
+                planned++;
+                reply_planned++;
+                changed = 1;
+            }
+        }
+    } while (changed);
+
+    /* Final pass: unresolved replies become top-level for now. */
+    for (m = items; m != NULL; m = m->next) {
+        if (find_planref_by_filename(plans, m->filename) != NULL)
+            continue;
+
+        add_planref(&plans, m->filename, m->msgid, next_textnum++, 0, 1);
+        planned++;
+        orphan++;
+    }
+
+    *out_plans = plans;
+    *out_planned = planned;
+    *out_next_textnum = next_textnum;
+    *out_top_level = top_level;
+    *out_reply_existing = reply_existing;
+    *out_reply_planned = reply_planned;
+    *out_orphan = orphan;
+
+    printf("Planned:     %ld simulated import(s)\n", planned);
+    printf("Next text:   %ld\n\n", next_textnum);
+
+    return 0;
+}
+
+static int
+scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
+{
+    struct skref *skrefs = NULL;
+    struct msgref *refs = NULL;
+    struct msgitem *items = NULL;
+    struct msgitem *m;
+    struct planref *plans = NULL;
+    char spooldir[PATH_MAX];
     long existing_indexed = 0;
     long seen = 0;
     long parsed = 0;
@@ -620,7 +682,7 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
     long reply_existing = 0;
     long reply_planned = 0;
     long reply_orphan = 0;
-    long next_textnum = 0;
+    long next_textnum;
     long planned = 0;
 
     if (snprintf(spooldir, sizeof(spooldir), "%s/%s", FTN_SPOOL, area) >= (int)sizeof(spooldir)) {
@@ -651,105 +713,43 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
     if (scan_existing_skl_msgids(ce, &skrefs, &existing_indexed) != 0)
         return -1;
 
-    dir = opendir(spooldir);
-    if (dir == NULL) {
-        fprintf(stderr, "[ERROR] Could not open FTN spool directory '%s'\n", spooldir);
-        perror("opendir");
+    if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0) {
         free_skrefs(skrefs);
-        return -1;
-    }
-
-    /*
-     * Pass 1:
-     * Build in-memory metadata lists for all parseable .MSG files.
-     */
-    printf("Indexing .MSG files by MSGID...\n");
-
-    while ((de = readdir(dir)) != NULL) {
-        struct fido_msg msg;
-
-        if (!is_msg_file(de->d_name))
-            continue;
-
-        if (snprintf(path, sizeof(path), "%s/%s", spooldir, de->d_name) >= (int)sizeof(path)) {
-            fprintf(stderr, "[ERROR] Path too long while indexing: %s/%s\n",
-                spooldir, de->d_name);
-            failed++;
-            continue;
-        }
-
-        if (read_fido_msg(path, &msg) != 0) {
-            fprintf(stderr, "[ERROR] Could not parse .MSG while indexing: %s\n", path);
-            failed++;
-            continue;
-        }
-
-        if (msg.msgid[0] != '\0') {
-            add_msgref(&refs, msg.msgid, de->d_name);
-            indexed++;
-        }
-
-        if (add_msgitem(&items, &items_tail, de->d_name, path, msg.msgid, msg.reply) != 0) {
-            fprintf(stderr, "[ERROR] Could not allocate message item for %s\n", path);
-            failed++;
-        }
-
-        free_fido_msg(&msg);
-    }
-
-    printf("Indexed:     %ld MSGID value(s)\n\n", indexed);
-
-    if (plan_imports(items, skrefs, &plans, ce->last_text + 1, &next_textnum,
-        &planned, &top_level, &reply_existing, &reply_planned, &reply_orphan) != 0) {
-        closedir(dir);
         free_msgrefs(refs);
-        free_skrefs(skrefs);
         free_msgitems(items);
         return -1;
     }
 
-    printf("Planning dry-run import order...\n");
-    printf("Planned:     %ld simulated import(s)\n", planned);
-    printf("Next text:   %ld\n\n", next_textnum);
+    next_textnum = ce->last_text + 1;
 
-    rewinddir(dir);
+    if (build_import_plan(items, skrefs, next_textnum, &plans, &planned,
+        &next_textnum, &top_level, &reply_existing, &reply_planned,
+        &reply_orphan) != 0) {
+        free_skrefs(skrefs);
+        free_msgrefs(refs);
+        free_msgitems(items);
+        free_planrefs(plans);
+        return -1;
+    }
 
     printf("Scanning for .MSG files...\n\n");
 
-    /*
-     * Pass 2:
-     * Parse each .MSG again, print debug output, and show the dry-run plan.
-     */
-    while ((de = readdir(dir)) != NULL) {
+    for (m = items; m != NULL; m = m->next) {
         struct fido_msg msg;
-        struct msgitem *item;
-        const char *parent_file = NULL;
-        long parent_text = 0;
-        long planned_parent_text = 0;
-
-        if (!is_msg_file(de->d_name))
-            continue;
-
-        seen++;
-
-        if (snprintf(path, sizeof(path), "%s/%s", spooldir, de->d_name) >= (int)sizeof(path)) {
-            fprintf(stderr, "[ERROR] Path too long: %s/%s\n", spooldir, de->d_name);
-            failed++;
-            continue;
-        }
-
-        item = find_msgitem_by_filename(items, de->d_name);
+        const struct planref *plan;
+        const char *parent_file;
 
         printf("============================================================\n");
-        printf("File:    %s\n", path);
+        printf("File:    %s\n", m->path);
 
-        if (read_fido_msg(path, &msg) != 0) {
+        if (read_fido_msg(m->path, &msg) != 0) {
             printf("[ERROR] Could not parse .MSG file\n");
             failed++;
             continue;
         }
 
         parsed++;
+        plan = find_planref_by_filename(plans, m->filename);
 
         printf("From:    %s\n", msg.from);
         printf("To:      %s\n", msg.to);
@@ -766,48 +766,44 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
         else
             printf("MSGID:   (missing)\n");
 
-        if (item == NULL) {
-            printf("Plan:    internal planning error for %s\n", de->d_name);
-        } else if (msg.reply[0] != '\0') {
+        if (msg.reply[0] != '\0') {
             printf("REPLY:   %s\n", msg.reply);
 
-            parent_text = find_skref(skrefs, msg.reply);
-            if (parent_text > 0) {
-                printf("Thread:  reply to existing SklaffKOM text %ld\n", parent_text);
-                printf("Plan:    would import %s as SklaffKOM text %ld, comment to existing text %ld\n",
-                    de->d_name, item->planned_textnum, parent_text);
+            if (plan != NULL && plan->parent_textnum > 0) {
+                if (find_skref(skrefs, msg.reply) > 0)
+                    printf("Thread:  reply to existing SklaffKOM text %ld\n", plan->parent_textnum);
+                else
+                    printf("Thread:  reply to newly planned SklaffKOM text %ld\n", plan->parent_textnum);
+
+                printf("Plan:    would import %s as SklaffKOM text %ld, comment to text %ld\n",
+                    m->filename, plan->planned_textnum, plan->parent_textnum);
+            } else if (plan != NULL && plan->orphan) {
+                parent_file = find_msgref(refs, msg.reply);
+                if (parent_file != NULL)
+                    printf("Thread:  unresolved reply; parent exists in current spool as %s but could not be planned\n",
+                        parent_file);
+                else
+                    printf("Thread:  orphan reply, parent not found in SklaffKOM or current spool\n");
+
+                printf("Plan:    would import %s as SklaffKOM text %ld as top-level for now\n",
+                    m->filename, plan->planned_textnum);
+            } else if (plan != NULL) {
+                printf("Thread:  new top-level text\n");
+                printf("Plan:    would import %s as SklaffKOM text %ld as top-level\n",
+                    m->filename, plan->planned_textnum);
             } else {
-                planned_parent_text = find_planref_by_msgid(plans, msg.reply);
-                if (planned_parent_text > 0 && !item->orphan) {
-                    printf("Thread:  reply to newly planned SklaffKOM text %ld\n",
-                        planned_parent_text);
-                    printf("Plan:    would import %s as SklaffKOM text %ld, comment to newly planned text %ld\n",
-                        de->d_name, item->planned_textnum, planned_parent_text);
-                } else {
-                    parent_file = find_msgref(refs, msg.reply);
-                    if (parent_file != NULL) {
-                        printf("Thread:  parent exists in current spool as %s, but could not be resolved by planner\n",
-                            parent_file);
-                    } else {
-                        printf("Thread:  orphan reply, parent not found in SklaffKOM or current spool\n");
-                    }
-                    printf("Plan:    would import %s as SklaffKOM text %ld as top-level for now\n",
-                        de->d_name, item->planned_textnum);
-                }
+                printf("Thread:  no plan found\n");
+                printf("Plan:    would skip %s for now\n", m->filename);
             }
         } else {
             printf("REPLY:   (missing)\n");
             printf("Thread:  new top-level text\n");
-            printf("Plan:    would import %s as SklaffKOM text %ld as top-level\n",
-                de->d_name, item->planned_textnum);
+            if (plan != NULL)
+                printf("Plan:    would import %s as SklaffKOM text %ld as top-level\n",
+                    m->filename, plan->planned_textnum);
+            else
+                printf("Plan:    would skip %s for now\n", m->filename);
         }
-
-        /*
-         * Later:
-         *   - create real SklaffKOM texts in the planned order
-         *   - use item->parent_textnum / planned parent lookup to set com
-         *   - preserve ^AMSGID / ^AREPLY in stored body
-         */
 
         printf("\n--- CLEAN BODY PREVIEW ---\n");
         if (msg.clean_body != NULL) {
@@ -830,8 +826,6 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
         free_fido_msg(&msg);
     }
 
-    closedir(dir);
-
     printf("============================================================\n");
     printf("FTN dry-run summary\n");
     printf("-------------------\n");
@@ -851,8 +845,8 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
 
     free_msgrefs(refs);
     free_skrefs(skrefs);
-    free_planrefs(plans);
     free_msgitems(items);
+    free_planrefs(plans);
 
     return failed ? -1 : 0;
 }
