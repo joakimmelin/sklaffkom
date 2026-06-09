@@ -11,3 +11,4 @@ version.c
 *~
 *.o
 ftnmsgdump
+ftntoss

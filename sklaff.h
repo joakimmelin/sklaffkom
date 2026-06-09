@@ -82,6 +82,7 @@
 #define MAIL_LIB	"/var/mail"
 #define NEWS_SPOOL	"/usr/local/news/spool/articles"
 #define NEWS_GROUPS	"/usr/local/news/db/active"
+#define FTN_SPOOL 	"/usr/local/ftn/echomail"    /* modified on 2026-06-09, PL */
 
 /* Programs used by SklaffKOM */
 
