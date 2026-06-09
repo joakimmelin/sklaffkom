@@ -24,6 +24,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <time.h>
+#include <unistd.h>
 
 struct ftn_conf_info {
     int num;
@@ -103,6 +106,12 @@ static int dump_import_text(const char *area, const struct ftn_conf_info *ce,
     const char *filename, struct msgitem *items, struct planref *plans);
 static int dump_one_import(const char *area, const struct ftn_conf_info *ce,
     const char *filename);
+
+static char *build_ftn_mbuf(const char *area, const struct fido_msg *msg);
+static int rewrite_conf_last_text(int confid, long *new_textnum);
+static int append_comment_link(int confid, long parent_text, long child_text);
+static long send_ftn(int confid, const char *area, const struct fido_msg *msg, long com);
+static int import_one_ftn(const char *area, const char *filename);
 
 static int
 parse_conf_line(const char *line, struct ftn_conf_info *ce)
@@ -800,6 +809,169 @@ dump_import_text(const char *area, const struct ftn_conf_info *ce,
 }
 
 static int
+import_one_ftn(const char *area, const char *filename)
+{
+    struct ftn_conf_info ce;
+    struct msgref *refs = NULL;
+    struct skref *skrefs = NULL;
+    struct msgitem *items = NULL;
+    struct msgitem *m = NULL;
+    struct planref *plans = NULL;
+    const struct planref *plan = NULL;
+    char spooldir[PATH_MAX];
+    struct fido_msg msg;
+    long indexed = 0;
+    long existing_indexed = 0;
+    long failed = 0;
+    long seen = 0;
+    long planned = 0;
+    long next_textnum = 0;
+    long top_level = 0;
+    long reply_existing = 0;
+    long reply_planned = 0;
+    long reply_orphan = 0;
+    long com = 0;
+    long imported_text = 0;
+    int rc = -1;
+
+    if (area == NULL || filename == NULL)
+        return -1;
+
+    printf("ftntoss import-one starting\n");
+    printf("===========================\n\n");
+
+    if (find_ftn_conf(area, &ce) != 0)
+        return -1;
+
+    if (ce.type != FTN_CONF) {
+        fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
+            ce.name, ce.type);
+        return -1;
+    }
+
+    if (snprintf(spooldir, sizeof(spooldir), "%s/%s", FTN_SPOOL, area) >= (int)sizeof(spooldir)) {
+        fprintf(stderr, "[ERROR] Spool path too long: %s/%s\n", FTN_SPOOL, area);
+        return -1;
+    }
+
+    printf("FTN import-one setup\n");
+    printf("--------------------\n");
+    printf("Area:        %s\n", area);
+    printf("Spool:       %s\n", spooldir);
+    printf("Conf name:   %s\n", ce.name);
+    printf("Conf num:    %d\n", ce.num);
+    printf("Conf type:   %d (FTN_CONF)\n", ce.type);
+    printf("Last text:   %ld\n", ce.last_text);
+    printf("Target file: %s\n\n", filename);
+
+    if (scan_existing_skl_msgids(&ce, &skrefs, &existing_indexed) != 0)
+        goto cleanup;
+
+    if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0)
+        goto cleanup;
+
+    if (build_import_plan(items, skrefs, ce.last_text + 1,
+            &plans, &planned, &next_textnum,
+            &top_level, &reply_existing, &reply_planned, &reply_orphan) != 0)
+        goto cleanup;
+
+    for (m = items; m != NULL; m = m->next) {
+        if (strcmp(m->filename, filename) == 0)
+            break;
+    }
+
+    if (m == NULL) {
+        fprintf(stderr, "[ERROR] No such .MSG file in spool: %s\n", filename);
+        goto cleanup;
+    }
+
+    plan = find_planref_by_filename(plans, filename);
+    if (plan == NULL) {
+        fprintf(stderr, "[ERROR] No import plan found for %s\n", filename);
+        goto cleanup;
+    }
+
+    if (read_fido_msg(m->path, &msg) != 0) {
+        fprintf(stderr, "[ERROR] Could not parse .MSG file: %s\n", m->path);
+        goto cleanup;
+    }
+
+    /*
+     * First safe import-one rules:
+     *
+     * - top-level messages are OK
+     * - replies to already existing SklaffKOM texts are OK
+     * - replies to messages only planned in this same batch are refused
+     * - orphan replies are refused
+     */
+    if (msg.reply[0] != '\0') {
+        if (plan->orphan) {
+            fprintf(stderr,
+                "[REFUSE] %s is an orphan reply; parent not found in SklaffKOM or current spool.\n",
+                filename);
+            fprintf(stderr,
+                "[REFUSE] First version of --import-one only imports top-level messages or replies to existing SklaffKOM texts.\n");
+            free_fido_msg(&msg);
+            goto cleanup;
+        }
+
+        if (plan->parent_textnum <= 0) {
+            fprintf(stderr,
+                "[REFUSE] %s has REPLY but planner did not assign a parent text.\n",
+                filename);
+            free_fido_msg(&msg);
+            goto cleanup;
+        }
+
+        if (plan->parent_textnum > ce.last_text) {
+            fprintf(stderr,
+                "[REFUSE] %s is a reply to planned text %ld, but that parent is not imported yet.\n",
+                filename, plan->parent_textnum);
+            fprintf(stderr,
+                "[REFUSE] Import the parent first, then run --import-one again.\n");
+            free_fido_msg(&msg);
+            goto cleanup;
+        }
+
+        com = plan->parent_textnum;
+    } else {
+        com = 0;
+    }
+
+    printf("Import decision\n");
+    printf("---------------\n");
+    printf("File:          %s\n", filename);
+    printf("Path:          %s\n", m->path);
+    printf("Subject:       %s\n", msg.subject);
+    printf("MSGID:         %s\n", msg.msgid[0] ? msg.msgid : "(missing)");
+    printf("REPLY:         %s\n", msg.reply[0] ? msg.reply : "(missing)");
+    printf("Planned text:  %ld\n", plan->planned_textnum);
+    printf("Actual com:    %ld\n", com);
+    printf("\n");
+
+    imported_text = send_ftn(ce.num, area, &msg, com);
+    if (imported_text <= 0) {
+        fprintf(stderr, "[ERROR] send_ftn() failed\n");
+        free_fido_msg(&msg);
+        goto cleanup;
+    }
+
+    printf("\nftntoss import-one done\n");
+    printf("Imported: SklaffKOM text %ld\n", imported_text);
+
+    free_fido_msg(&msg);
+    rc = 0;
+
+cleanup:
+    free_msgrefs(refs);
+    free_skrefs(skrefs);
+    free_msgitems(items);
+    free_planrefs(plans);
+
+    return rc;
+}
+
+static int
 dump_one_import(const char *area, const struct ftn_conf_info *ce,
     const char *filename)
 {
@@ -881,6 +1053,290 @@ cleanup:
     free_planrefs(plans);
 
     return rc;
+}
+
+static char *
+build_ftn_mbuf(const char *area, const struct fido_msg *msg)
+{
+    char *mbuf;
+    size_t need;
+
+    if (area == NULL || msg == NULL)
+        return NULL;
+
+    need = 1024;
+    need += strlen(area);
+    need += strlen(msg->from);
+    need += strlen(msg->to);
+    need += strlen(msg->subject);
+    need += strlen(msg->date);
+    need += strlen(msg->msgid);
+    need += strlen(msg->reply);
+    need += strlen(msg->chrs);
+
+    if (msg->raw_body != NULL)
+        need += strlen(msg->raw_body);
+
+    mbuf = (char *)calloc(1, need);
+    if (mbuf == NULL)
+        return NULL;
+
+    snprintf(mbuf, need,
+        "From: %s\n"
+        "To: %s\n"
+        "Subject: %s\n"
+        "Date: %s\n"
+        "FTN-Area: %s\n",
+        msg->from,
+        msg->to,
+        msg->subject,
+        msg->date,
+        area);
+
+    if (msg->msgid[0] != '\0') {
+        strlcat(mbuf, "FTN-MSGID: ", need); /* modified on 2026-06-09, PL */
+        strlcat(mbuf, msg->msgid, need);    /* modified on 2026-06-09, PL */
+        strlcat(mbuf, "\n", need);          /* modified on 2026-06-09, PL */
+    }
+
+    if (msg->reply[0] != '\0') {
+        strlcat(mbuf, "FTN-REPLY: ", need); /* modified on 2026-06-09, PL */
+        strlcat(mbuf, msg->reply, need);    /* modified on 2026-06-09, PL */
+        strlcat(mbuf, "\n", need);          /* modified on 2026-06-09, PL */
+    }
+
+    if (msg->chrs[0] != '\0') {
+        strlcat(mbuf, "FTN-CHRS: ", need);  /* modified on 2026-06-09, PL */
+        strlcat(mbuf, msg->chrs, need);     /* modified on 2026-06-09, PL */
+        strlcat(mbuf, "\n", need);          /* modified on 2026-06-09, PL */
+    }
+
+    strlcat(mbuf, "\n", need);              /* modified on 2026-06-09, PL */
+
+    /*
+     * Preserve original FTN kludges/body. This keeps real 0x01 kludge bytes
+     * in the stored text, just like FTN expects.
+     */
+    if (msg->raw_body != NULL)
+        strlcat(mbuf, msg->raw_body, need); /* modified on 2026-06-09, PL */
+
+    return mbuf;
+}
+
+static int
+rewrite_conf_last_text(int confid, long *new_textnum)
+{
+    FILE *in;
+    FILE *out;
+    char tmpfile[PATH_MAX];
+    LONG_LINE line;
+    int found = 0;
+
+    if (new_textnum == NULL)
+        return -1;
+
+    if (snprintf(tmpfile, sizeof(tmpfile), "%s.ftntoss.tmp", CONF_FILE) >= (int)sizeof(tmpfile)) {
+        fprintf(stderr, "[ERROR] CONF_FILE temp path too long\n");
+        return -1;
+    }
+
+    in = fopen(CONF_FILE, "r");
+    if (in == NULL) {
+        perror(CONF_FILE);
+        return -1;
+    }
+
+    out = fopen(tmpfile, "w");
+    if (out == NULL) {
+        perror(tmpfile);
+        fclose(in);
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), in) != NULL) {
+        struct ftn_conf_info ce;
+
+        if (parse_conf_line(line, &ce) == 0 && ce.num == confid) {
+            ce.last_text++;
+            *new_textnum = ce.last_text;
+            found = 1;
+
+            fprintf(out, "%d:%ld:%d:%ld:%d:%d:%d:%s\n",
+                ce.num,
+                ce.last_text,
+                ce.creator,
+                ce.time,
+                ce.type,
+                ce.life,
+                ce.comconf,
+                ce.name);
+        } else {
+            fputs(line, out);
+        }
+    }
+
+    if (fclose(in) != 0) {
+        perror("fclose");
+        fclose(out);
+        unlink(tmpfile);
+        return -1;
+    }
+
+    if (fclose(out) != 0) {
+        perror("fclose");
+        unlink(tmpfile);
+        return -1;
+    }
+
+    if (!found) {
+        fprintf(stderr, "[ERROR] Conference number %d not found in %s\n",
+            confid, CONF_FILE);
+        unlink(tmpfile);
+        return -1;
+    }
+
+    if (rename(tmpfile, CONF_FILE) != 0) {
+        perror("rename");
+        unlink(tmpfile);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int
+append_comment_link(int confid, long parent_text, long child_text)
+{
+    FILE *fp;
+    char path[PATH_MAX];
+
+    if (parent_text <= 0 || child_text <= 0)
+        return 0;
+
+    if (snprintf(path, sizeof(path), "%s/%d/%ld", SKLAFF_DB, confid, parent_text) >= (int)sizeof(path)) {
+        fprintf(stderr, "[ERROR] Parent text path too long: %s/%d/%ld\n",
+            SKLAFF_DB, confid, parent_text);
+        return -1;
+    }
+
+    fp = fopen(path, "a");
+    if (fp == NULL) {
+        perror(path);
+        return -1;
+    }
+
+    /*
+     * Same comment-link style as send_news():
+     *   child_text:0
+     */
+    if (fprintf(fp, "%ld:%d\n", child_text, 0) < 0) {
+        perror("fprintf");
+        fclose(fp);
+        return -1;
+    }
+
+    if (fclose(fp) != 0) {
+        perror("fclose");
+        return -1;
+    }
+
+    return 0;
+}
+
+static long
+send_ftn(int confid, const char *area, const struct fido_msg *msg, long com)
+{
+    char path[PATH_MAX];
+    char *mbuf = NULL;
+    FILE *fp = NULL;
+    long new_textnum = 0;
+    long size = 0;
+    time_t now;
+
+    if (area == NULL || msg == NULL)
+        return -1;
+
+    /*
+     * This mirrors send_news():
+     *   - size is counted from the imported message buffer
+     *   - timestamp is import time for now
+     */
+    mbuf = build_ftn_mbuf(area, msg);
+    if (mbuf == NULL) {
+        fprintf(stderr, "[ERROR] Could not build FTN message buffer\n");
+        return -1;
+    }
+
+    size = count_body_lines(mbuf);
+    now = time(NULL);
+
+    if (rewrite_conf_last_text(confid, &new_textnum) != 0) {
+        free(mbuf);
+        return -1;
+    }
+
+    if (snprintf(path, sizeof(path), "%s/%d/%ld", SKLAFF_DB, confid, new_textnum) >= (int)sizeof(path)) {
+        fprintf(stderr, "[ERROR] Text path too long: %s/%d/%ld\n",
+            SKLAFF_DB, confid, new_textnum);
+        free(mbuf);
+        return -1;
+    }
+
+    fp = fopen(path, "w");
+    if (fp == NULL) {
+        perror(path);
+        free(mbuf);
+        return -1;
+    }
+
+    /*
+     * Same basic header shape as send_news():
+     *   textno:0:timestamp:com:0:0:size
+     */
+    if (fprintf(fp, "%ld:%d:%ld:%ld:%d:%d:%ld\n",
+            new_textnum, 0, (long)now, com, 0, 0, size) < 0) {
+        perror("fprintf");
+        fclose(fp);
+        free(mbuf);
+        return -1;
+    }
+
+    /*
+     * SklaffKOM stores the subject on the line after the metadata header.
+     */
+    if (fprintf(fp, "%s\n", msg->subject) < 0) {
+        perror("fprintf");
+        fclose(fp);
+        free(mbuf);
+        return -1;
+    }
+
+    if (fputs(mbuf, fp) == EOF) {
+        perror("fputs");
+        fclose(fp);
+        free(mbuf);
+        return -1;
+    }
+
+    if (fclose(fp) != 0) {
+        perror("fclose");
+        free(mbuf);
+        return -1;
+    }
+
+    free(mbuf);
+
+    if (com > 0) {
+        if (append_comment_link(confid, com, new_textnum) != 0)
+            return -1;
+    }
+
+    printf("Imported FTN message as SklaffKOM text %ld", new_textnum);
+    if (com > 0)
+        printf(" (comment to %ld)", com);
+    printf("\n");
+
+    return new_textnum;
 }
 
 static int
@@ -1088,10 +1544,14 @@ main(int argc, char **argv)
         printf("\nftntoss dump-import dry-run done\n");
         return 0;
     }
-
+    if (argc == 4 && strcmp(argv[1], "--import-one") == 0) {
+        return import_one_ftn(argv[2], argv[3]) == 0 ? 0 : 1;
+    }
+    
     if (argc != 2) {
         fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
         fprintf(stderr, "       %s --dump-import <FTN-area / SklaffKOM conference> <file.msg>\n\n", argv[0]);
+        fprintf(stderr, "       %s --import-one <FTN-area> <file.msg>\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
