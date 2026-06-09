@@ -700,16 +700,16 @@ count_body_lines(const char *s)
 {
     long lines = 0;
 
-    if (s == NULL || *s == '\0')
+    if (s == NULL)
         return 0;
 
-    while (*s) {
+    while (*s != '\0') {
         if (*s == '\n')
             lines++;
         s++;
     }
 
-    return lines + 1;
+    return lines;
 }
 
 static int
