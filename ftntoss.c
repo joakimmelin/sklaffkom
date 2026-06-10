@@ -65,6 +65,7 @@ struct msgitem {
     char path[PATH_MAX];
     char msgid[256];
     char reply[256];
+    char subject[256]; /* modified on 2026-06-10, PL */
     struct msgitem *next;
 };
 
@@ -88,7 +89,8 @@ static long find_planref_by_msgid(struct planref *list, const char *msgid);
 static void free_planrefs(struct planref *list);
 
 static int add_msgitem(struct msgitem **list, struct msgitem **tail,
-    const char *filename, const char *path, const char *msgid, const char *reply);
+    const char *filename, const char *path, const char *msgid,
+    const char *reply, const char *subject);
 static void free_msgitems(struct msgitem *list);
 
 static int scan_existing_skl_msgids(const struct ftn_conf_info *ce,
@@ -112,8 +114,22 @@ static int rewrite_conf_last_text(int confid, long *new_textnum);
 static int append_comment_link(int confid, long parent_text, long child_text);
 static long send_ftn(int confid, const char *area, const struct fido_msg *msg, long com);
 static int import_one_ftn(const char *area, const char *filename);
-static int import_all_ftn(const char *area);
+static int import_all_ftn(const char *area, int include_unsafe);
+static int diagnose_ftn(const char *area);
+static void print_unsafe_reason(const char *filename, const struct fido_msg *msg,
+    const char *reason);
 static int subject_looks_like_reply(const char *subject);
+
+static void
+print_unsafe_reason(const char *filename, const struct fido_msg *msg,
+    const char *reason)
+{
+    printf("%-8s %-18s %-28s %s\n",
+        filename ? filename : "(unknown)",
+        reason ? reason : "(unknown)",
+        msg && msg->from[0] ? msg->from : "(unknown)",
+        msg && msg->subject[0] ? msg->subject : "(no subject)");
+}
 
 static int
 subject_looks_like_reply(const char *subject)
@@ -392,7 +408,8 @@ free_planrefs(struct planref *list)
 
 static int
 add_msgitem(struct msgitem **list, struct msgitem **tail,
-    const char *filename, const char *path, const char *msgid, const char *reply)
+    const char *filename, const char *path, const char *msgid,
+    const char *reply, const char *subject)
 {
     struct msgitem *n;
 
@@ -409,7 +426,8 @@ add_msgitem(struct msgitem **list, struct msgitem **tail,
         strlcpy(n->msgid, msgid, sizeof(n->msgid)); /* modified on 2026-06-09, PL */
     if (reply != NULL)
         strlcpy(n->reply, reply, sizeof(n->reply)); /* modified on 2026-06-09, PL */
-
+    if (subject != NULL)
+        strlcpy(n->subject, subject, sizeof(n->subject)); /* modified on 2026-06-10, PL */
     if (*list == NULL) {
         *list = n;
         *tail = n;
@@ -585,7 +603,8 @@ build_spool_index(const char *spooldir, struct msgref **out_refs,
             indexed++;
         }
 
-        if (add_msgitem(&items, &tail, de->d_name, path, msg.msgid, msg.reply) != 0) {
+        if (add_msgitem(&items, &tail, de->d_name, path, msg.msgid,
+            msg.reply, msg.subject) != 0) {
             fprintf(stderr, "[ERROR] Out of memory while indexing: %s\n", path);
             free_fido_msg(&msg);
             closedir(dir);
@@ -649,10 +668,20 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
             continue;
 
         if (m->reply[0] == '\0') {
-            add_planref(&plans, m->filename, m->msgid, next_textnum++, 0, 0);
-            planned++;
-            top_level++;
+       /*
+        * Conservative FTN import rule:
+        * A message with "Re:" subject but no REPLY kludge is probably a reply
+         * whose parent cannot be resolved safely. Do not plan it as top-level.
+         *
+         * modified on 2026-06-10, PL
+         */
+        if (subject_looks_like_reply(m->subject))
             continue;
+
+        add_planref(&plans, m->filename, m->msgid, next_textnum++, 0, 0);
+        planned++;
+        top_level++;
+        continue;
         }
 
         parent_text = find_skref(skrefs, m->reply);
@@ -686,15 +715,13 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
         }
     } while (changed);
 
-    /* Final pass: unresolved replies become top-level for now. */
-    for (m = items; m != NULL; m = m->next) {
-        if (find_planref_by_filename(plans, m->filename) != NULL)
-            continue;
-
-        add_planref(&plans, m->filename, m->msgid, next_textnum++, 0, 1);
-        planned++;
-        orphan++;
-    }
+    /*
+ * No final top-level fallback here.
+ * Conservative planning must only include messages with known-safe parents,
+ * or true top-level messages that do not look like replies.
+ *
+ * modified on 2026-06-10, PL
+ */
 
     *out_plans = plans;
     *out_planned = planned;
@@ -709,7 +736,6 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
 
     return 0;
 }
-
 
 static void
 print_visible_ctrl(const char *s)
@@ -1026,7 +1052,7 @@ cleanup:
 }
 
 static int
-import_all_ftn(const char *area)
+import_all_ftn(const char *area, int include_unsafe)
 {
     struct ftn_conf_info ce;
     struct msgref *refs = NULL;
@@ -1075,6 +1101,7 @@ import_all_ftn(const char *area)
     printf("Conf name:   %s\n", ce.name);
     printf("Conf num:    %d\n", ce.num);
     printf("Conf type:   %d (FTN_CONF)\n", ce.type);
+    printf("Include unsafe: %s\n", include_unsafe ? "yes" : "no");
     printf("Last text:   %ld\n\n", ce.last_text);
 
     if (scan_existing_skl_msgids(&ce, &skrefs, &existing_indexed) != 0)
@@ -1127,16 +1154,38 @@ import_all_ftn(const char *area)
             }
             
             if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
+                if (!include_unsafe) {
                 free_fido_msg(&msg);
                 continue;
             }
+
+            /*
+             * Unsafe mode:
+             * Import Re:-without-REPLY as top-level. This preserves readability,
+             * but does not pretend we know the thread parent.
+             *
+             * modified on 2026-06-10, PL
+             */
+            com = 0;
+        }
             if (msg.reply[0] != '\0') {
                 com = find_skref(skrefs, msg.reply);
                 if (com <= 0) {
-                    free_fido_msg(&msg);
-                    continue;
-                }
-            }
+                    if (!include_unsafe) {
+                        free_fido_msg(&msg);
+                        continue;
+        }
+
+            /*
+             * Unsafe mode:
+             * Parent cannot be resolved. Import as top-level rather than
+             * inventing a false parent.
+             *
+             * modified on 2026-06-10, PL
+             */
+            com = 0;
+        }
+    }
 
             printf("Importing %-8s -> ", m->filename);
 
@@ -1231,6 +1280,154 @@ cleanup:
     free_skrefs(skrefs);
     free_msgitems(items);
 
+    return rc;
+}
+
+static int
+diagnose_ftn(const char *area)
+{
+    struct ftn_conf_info ce;
+    struct msgref *refs = NULL;
+    struct skref *skrefs = NULL;
+    struct msgitem *items = NULL;
+    struct msgitem *m;
+    struct planref *plans = NULL;
+    char spooldir[PATH_MAX];
+    long indexed = 0;
+    long existing_indexed = 0;
+    long failed = 0;
+    long seen = 0;
+    long duplicates = 0;
+    long missing_msgid = 0;
+    long re_without_reply = 0;
+    long deferred = 0;
+    long orphan = 0;
+    long planned = 0;
+    long next_textnum = 0;
+    long top_level = 0;
+    long reply_existing = 0;
+    long reply_planned = 0;
+    long reply_orphan = 0;
+    int rc = -1;
+    
+    if (area == NULL)
+        return -1;
+
+    printf("ftntoss diagnose starting\n");
+    printf("=========================\n\n");
+
+    if (find_ftn_conf(area, &ce) != 0)
+        return -1;
+
+    if (ce.type != FTN_CONF) {
+        fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
+            ce.name, ce.type);
+        return -1;
+    }
+
+    if (snprintf(spooldir, sizeof(spooldir), "%s/%s", FTN_SPOOL, area) >= (int)sizeof(spooldir)) {
+        fprintf(stderr, "[ERROR] Spool path too long: %s/%s\n", FTN_SPOOL, area);
+        return -1;
+    }
+
+    printf("FTN diagnose setup\n");
+    printf("------------------\n");
+    printf("Area:        %s\n", area);
+    printf("Spool:       %s\n", spooldir);
+    printf("Conf name:   %s\n", ce.name);
+    printf("Conf num:    %d\n", ce.num);
+    printf("Conf type:   %d (FTN_CONF)\n", ce.type);
+    printf("Last text:   %ld\n\n", ce.last_text);
+
+    if (scan_existing_skl_msgids(&ce, &skrefs, &existing_indexed) != 0)
+        goto cleanup;
+
+    if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0)
+        goto cleanup;
+    
+    if (build_import_plan(items, skrefs, ce.last_text + 1,
+        &plans, &planned, &next_textnum,
+        &top_level, &reply_existing, &reply_planned, &reply_orphan) != 0)
+        goto cleanup;
+
+    printf("Unsafe / skipped diagnostics\n");
+    printf("----------------------------\n");
+    printf("%-8s %-18s %-28s %s\n", "File", "Reason", "From", "Subject");
+    printf("%-8s %-18s %-28s %s\n", "----", "------", "----", "-------");
+
+    for (m = items; m != NULL; m = m->next) {
+        struct fido_msg msg;
+        long existing = 0;
+
+        if (read_fido_msg(m->path, &msg) != 0) {
+            failed++;
+            continue;
+        }
+
+        if (msg.msgid[0] == '\0') {
+            missing_msgid++;
+            print_unsafe_reason(m->filename, &msg, "missing-msgid");
+            free_fido_msg(&msg);
+            continue;
+        }
+
+        existing = find_skref(skrefs, msg.msgid);
+        if (existing > 0) {
+            duplicates++;
+            free_fido_msg(&msg);
+            continue;
+        }
+        if (find_planref_by_msgid(plans, msg.msgid) > 0) {
+            free_fido_msg(&msg);
+            continue;
+        }
+        if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
+            re_without_reply++;
+            print_unsafe_reason(m->filename, &msg, "re-no-reply");
+            free_fido_msg(&msg);
+            continue;
+        }
+
+        if (msg.reply[0] != '\0') {
+            if (find_skref(skrefs, msg.reply) > 0) {
+                free_fido_msg(&msg);
+                continue;
+            }
+
+            if (find_msgref(refs, msg.reply) != NULL) {
+                deferred++;
+                print_unsafe_reason(m->filename, &msg, "deferred");
+            } else {
+                orphan++;
+                print_unsafe_reason(m->filename, &msg, "orphan");
+            }
+        }
+
+        free_fido_msg(&msg);
+    }
+
+    printf("\n");
+    printf("FTN diagnose summary\n");
+    printf("--------------------\n");
+    printf("Area:             %s\n", area);
+    printf("Seen:             %ld .MSG file(s)\n", seen);
+    printf("Indexed:          %ld MSGID value(s)\n", indexed);
+    printf("Existing IDs:     %ld SklaffKOM MSGID value(s)\n", existing_indexed);
+    printf("Duplicates:       %ld already imported\n", duplicates);
+    printf("Would import:     %ld safely\n", planned);
+    printf("Missing MSGID:    %ld\n", missing_msgid);
+    printf("Re without REPLY: %ld\n", re_without_reply);
+    printf("Deferred replies: %ld\n", deferred);
+    printf("Orphan replies:   %ld\n", orphan);
+    printf("Failed:           %ld\n", failed);
+
+    rc = failed ? -1 : 0;
+
+cleanup:
+    free_msgrefs(refs);
+    free_skrefs(skrefs);
+    free_msgitems(items);
+    free_planrefs(plans);
     return rc;
 }
 static int
@@ -1810,13 +2007,23 @@ main(int argc, char **argv)
         return import_one_ftn(argv[2], argv[3]) == 0 ? 0 : 1;
     }
     if (argc == 3 && strcmp(argv[1], "--import-all") == 0) {
-        return import_all_ftn(argv[2]) == 0 ? 0 : 1;
+        return import_all_ftn(argv[2], 0) == 0 ? 0 : 1;
     }
+    if (argc == 4 && strcmp(argv[1], "--import-all") == 0 &&
+        strcmp(argv[3], "--include-unsafe") == 0) {
+    return import_all_ftn(argv[2], 1) == 0 ? 0 : 1;
+    }
+
+if (argc == 3 && strcmp(argv[1], "--diagnose") == 0) {
+    return diagnose_ftn(argv[2]) == 0 ? 0 : 1;
+}
     if (argc != 2) {
         fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
         fprintf(stderr, "       %s --dump-import <FTN-area / SklaffKOM conference> <file.msg>\n\n", argv[0]);
         fprintf(stderr, "       %s --import-one <FTN-area> <file.msg>\n", argv[0]);
         fprintf(stderr, "       %s --import-all <FTN-area>\n", argv[0]);
+        fprintf(stderr, "  %s --import-all <FTN-area> --include-unsafe\n", argv[0]);
+    fprintf(stderr, "  %s --diagnose <FTN-area>\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
