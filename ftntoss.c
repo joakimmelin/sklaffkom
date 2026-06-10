@@ -895,7 +895,30 @@ import_one_ftn(const char *area, const char *filename)
         fprintf(stderr, "[ERROR] Could not parse .MSG file: %s\n", m->path);
         goto cleanup;
     }
+    
+    if (msg.msgid[0] != '\0') {
+        long already_imported = 0;
 
+        already_imported = find_skref(skrefs, msg.msgid);
+        if (already_imported > 0) {
+            fprintf(stderr,
+                "[REFUSE] %s is already imported as SklaffKOM text %ld\n",
+                filename, already_imported);
+            fprintf(stderr,
+                "[REFUSE] MSGID: %s\n",
+                msg.msgid);
+
+            free_fido_msg(&msg);
+            goto cleanup;
+        }
+    } else {
+        fprintf(stderr,
+            "[REFUSE] %s has no MSGID; refusing import to avoid duplicates\n",
+            filename);
+
+        free_fido_msg(&msg);
+        goto cleanup;
+    }
     /*
      * First safe import-one rules:
      *
