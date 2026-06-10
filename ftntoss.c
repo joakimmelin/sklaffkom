@@ -112,6 +112,37 @@ static int rewrite_conf_last_text(int confid, long *new_textnum);
 static int append_comment_link(int confid, long parent_text, long child_text);
 static long send_ftn(int confid, const char *area, const struct fido_msg *msg, long com);
 static int import_one_ftn(const char *area, const char *filename);
+static int import_all_ftn(const char *area);
+static int subject_looks_like_reply(const char *subject);
+
+static int
+subject_looks_like_reply(const char *subject)
+{
+    const char *p;
+
+    if (subject == NULL)
+        return 0;
+
+    p = subject;
+
+    while (*p == ' ' || *p == '\t')
+        p++;
+
+    /*
+     * Conservative FTN batch-import safety:
+     * if a message says "Re:" but has no REPLY kludge, do not import it
+     * as a top-level message.  It is probably a reply whose parent cannot
+     * be resolved safely yet.
+     *
+     * modified on 2026-06-10, PL
+     */
+    if ((p[0] == 'R' || p[0] == 'r') &&
+        (p[1] == 'E' || p[1] == 'e') &&
+        p[2] == ':')
+        return 1;
+
+    return 0;
+}
 
 static int
 parse_conf_line(const char *line, struct ftn_conf_info *ce)
@@ -995,6 +1026,214 @@ cleanup:
 }
 
 static int
+import_all_ftn(const char *area)
+{
+    struct ftn_conf_info ce;
+    struct msgref *refs = NULL;
+    struct skref *skrefs = NULL;
+    struct msgitem *items = NULL;
+    struct msgitem *m;
+    char spooldir[PATH_MAX];
+    long indexed = 0;
+    long existing_indexed = 0;
+    long failed = 0;
+    long seen = 0;
+    long imported = 0;
+    long skipped_duplicate = 0;
+    long skipped_nomsgid = 0;
+    long skipped_re_without_reply = 0; /* modified on 2026-06-10, PL */
+    long deferred = 0;
+    long orphan = 0;
+    long pass = 0;
+    int changed;
+    int rc = -1;
+
+    if (area == NULL)
+        return -1;
+
+    printf("ftntoss import-all starting\n");
+    printf("===========================\n\n");
+
+    if (find_ftn_conf(area, &ce) != 0)
+        return -1;
+
+    if (ce.type != FTN_CONF) {
+        fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
+            ce.name, ce.type);
+        return -1;
+    }
+
+    if (snprintf(spooldir, sizeof(spooldir), "%s/%s", FTN_SPOOL, area) >= (int)sizeof(spooldir)) {
+        fprintf(stderr, "[ERROR] Spool path too long: %s/%s\n", FTN_SPOOL, area);
+        return -1;
+    }
+
+    printf("FTN import-all setup\n");
+    printf("--------------------\n");
+    printf("Area:        %s\n", area);
+    printf("Spool:       %s\n", spooldir);
+    printf("Conf name:   %s\n", ce.name);
+    printf("Conf num:    %d\n", ce.num);
+    printf("Conf type:   %d (FTN_CONF)\n", ce.type);
+    printf("Last text:   %ld\n\n", ce.last_text);
+
+    if (scan_existing_skl_msgids(&ce, &skrefs, &existing_indexed) != 0)
+        goto cleanup;
+
+    if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0)
+        goto cleanup;
+
+    printf("Importing all safe messages...\n\n");
+
+    /*
+     * Multi-pass import:
+     *
+     * Pass 1 imports top-level messages and replies to already imported
+     * SklaffKOM texts.
+     *
+     * Later passes can import replies whose parent was imported in an
+     * earlier pass. This avoids needing the filesystem/readdir order to
+     * be thread-safe.
+     */
+    do {
+        changed = 0;
+        pass++;
+
+        printf("Import pass %ld\n", pass);
+        printf("---------------\n");
+
+        for (m = items; m != NULL; m = m->next) {
+            struct fido_msg msg;
+            long already_imported = 0;
+            long com = 0;
+            long imported_text = 0;
+
+            if (read_fido_msg(m->path, &msg) != 0) {
+                fprintf(stderr, "[ERROR] Could not parse .MSG file: %s\n", m->path);
+                failed++;
+                continue;
+            }
+
+            if (msg.msgid[0] == '\0') {
+                skipped_nomsgid++;
+                free_fido_msg(&msg);
+                continue;
+            }
+
+            already_imported = find_skref(skrefs, msg.msgid);
+            if (already_imported > 0) {
+                free_fido_msg(&msg);
+                continue;
+            }
+            
+            if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
+                free_fido_msg(&msg);
+                continue;
+            }
+            if (msg.reply[0] != '\0') {
+                com = find_skref(skrefs, msg.reply);
+                if (com <= 0) {
+                    free_fido_msg(&msg);
+                    continue;
+                }
+            }
+
+            printf("Importing %-8s -> ", m->filename);
+
+            imported_text = send_ftn(ce.num, area, &msg, com);
+            if (imported_text <= 0) {
+                printf("FAILED\n");
+                fprintf(stderr, "[ERROR] send_ftn() failed for %s\n", m->filename);
+                free_fido_msg(&msg);
+                goto cleanup;
+            }
+
+            /*
+             * Add the newly imported MSGID to the in-memory SklaffKOM index
+             * so replies later in this run can attach to it.
+             */
+            add_skref(&skrefs, msg.msgid, imported_text);
+
+            imported++;
+            changed = 1;
+
+            free_fido_msg(&msg);
+        }
+
+        printf("\n");
+    } while (changed);
+
+    /*
+     * Final diagnostics: anything not imported now is either a duplicate,
+     * missing MSGID, or unresolved reply/orphan.
+     */
+    for (m = items; m != NULL; m = m->next) {
+        struct fido_msg msg;
+        long existing = 0;
+
+        if (read_fido_msg(m->path, &msg) != 0)
+            continue;
+
+        if (msg.msgid[0] == '\0') {
+            free_fido_msg(&msg);
+            continue;
+        }
+
+        existing = find_skref(skrefs, msg.msgid);
+        if (existing > 0) {
+            /*
+             * Already imported before this run or during this run.
+             */
+            if (existing <= ce.last_text)
+                skipped_duplicate++;
+
+            free_fido_msg(&msg);
+            continue;
+        }
+        if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
+            skipped_re_without_reply++;
+            free_fido_msg(&msg);
+            continue;
+        }
+
+
+        if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
+            free_fido_msg(&msg);
+            continue;
+        }
+        if (msg.reply[0] != '\0') {
+            if (find_msgref(refs, msg.reply) != NULL)
+                deferred++;
+            else
+                orphan++;
+        }
+
+        free_fido_msg(&msg);
+    }
+
+    printf("FTN import-all summary\n");
+    printf("----------------------\n");
+    printf("Area:             %s\n", area);
+    printf("Seen:             %ld .MSG file(s)\n", seen);
+    printf("Indexed:          %ld MSGID value(s)\n", indexed);
+    printf("Existing IDs:     %ld SklaffKOM MSGID value(s) at start\n", existing_indexed);
+    printf("Imported:         %ld\n", imported);
+    printf("Duplicates:       %ld already imported\n", skipped_duplicate);
+    printf("Missing MSGID:    %ld skipped\n", skipped_nomsgid);
+    printf("Deferred replies: %ld unresolved parent in spool\n", deferred);
+    printf("Orphan replies:   %ld parent not found\n", orphan);
+    printf("Re without REPLY: %ld skipped\n", skipped_re_without_reply);
+    printf("Failed:           %ld\n", failed);
+    rc = failed ? -1 : 0;
+
+cleanup:
+    free_msgrefs(refs);
+    free_skrefs(skrefs);
+    free_msgitems(items);
+
+    return rc;
+}
+static int
 dump_one_import(const char *area, const struct ftn_conf_info *ce,
     const char *filename)
 {
@@ -1570,11 +1809,14 @@ main(int argc, char **argv)
     if (argc == 4 && strcmp(argv[1], "--import-one") == 0) {
         return import_one_ftn(argv[2], argv[3]) == 0 ? 0 : 1;
     }
-    
+    if (argc == 3 && strcmp(argv[1], "--import-all") == 0) {
+        return import_all_ftn(argv[2]) == 0 ? 0 : 1;
+    }
     if (argc != 2) {
         fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
         fprintf(stderr, "       %s --dump-import <FTN-area / SklaffKOM conference> <file.msg>\n\n", argv[0]);
         fprintf(stderr, "       %s --import-one <FTN-area> <file.msg>\n", argv[0]);
+        fprintf(stderr, "       %s --import-all <FTN-area>\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
