@@ -760,8 +760,8 @@ conf_right(struct USER_LIST * ul, int uid, int type, int cr_num)
     int xit;
 
     xit = type;
-    if (xit == NEWS_CONF)
-        xit = OPEN_CONF;
+	if (xit == NEWS_CONF || xit == FTN_CONF) /* modified on 2026-06-11, PL */
+    	xit = OPEN_CONF;
     if (cr_num == uid) {
         xit = 0;
     } else {
@@ -773,7 +773,7 @@ conf_right(struct USER_LIST * ul, int uid, int type, int cr_num)
         }
 
         if (ul && (ul->num == uid)) {
-            if ((type == OPEN_CONF) || (type == NEWS_CONF))
+            if ((type == OPEN_CONF) || (type == NEWS_CONF) || (type == FTN_CONF)) /* modified on 2026-06-11, PL */
                 xit = 1;
             else
                 xit = 0;
