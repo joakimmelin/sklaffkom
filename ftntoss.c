@@ -27,6 +27,10 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
+
+#define FTNTOSS_LOCKFILE "/tmp/ftntoss.lock" /* modified on 2026-06-11, PL */
 
 struct ftn_conf_info {
     int num;
@@ -124,6 +128,28 @@ static int subject_looks_like_reply(const char *subject);
 
 static int import_all_areas_ftn(int include_unsafe);
 
+static int acquire_ftntoss_lock(void);
+static void release_ftntoss_lock(void);
+static int run_with_lock(int (*fn)(void *), void *arg);
+
+static int run_import_one_locked(void *arg);
+static int run_import_area_locked(void *arg);
+static int run_import_all_areas_locked(void *arg);
+
+struct import_one_args {
+    const char *area;
+    const char *filename;
+};
+
+struct import_area_args {
+    const char *area;
+    int include_unsafe;
+};
+
+struct import_all_areas_args {
+    int include_unsafe;
+};
+
 static void
 print_unsafe_reason(const char *filename, const struct fido_msg *msg,
     const char *reason)
@@ -133,6 +159,61 @@ print_unsafe_reason(const char *filename, const struct fido_msg *msg,
         reason ? reason : "(unknown)",
         msg && msg->from[0] ? msg->from : "(unknown)",
         msg && msg->subject[0] ? msg->subject : "(no subject)");
+}
+
+static int
+acquire_ftntoss_lock(void)
+{
+    int fd;
+    char buf[64];
+
+    fd = open(FTNTOSS_LOCKFILE, O_CREAT | O_EXCL | O_WRONLY, 0644);
+    if (fd == -1) {
+        if (errno == EEXIST) {
+            fprintf(stderr, "[ERROR] ftntoss is already running, lock exists: %s\n",
+                FTNTOSS_LOCKFILE);
+            fprintf(stderr, "[ERROR] Remove the lock only if you are sure no ftntoss process is active.\n");
+        } else {
+            perror(FTNTOSS_LOCKFILE);
+        }
+        return -1;
+    }
+
+    snprintf(buf, sizeof(buf), "%ld\n", (long)getpid());
+    if (write(fd, buf, strlen(buf)) == -1) {
+        perror("write lockfile");
+        close(fd);
+        unlink(FTNTOSS_LOCKFILE);
+        return -1;
+    }
+
+    close(fd);
+    return 0;
+}
+
+static void
+release_ftntoss_lock(void)
+{
+    if (unlink(FTNTOSS_LOCKFILE) == -1 && errno != ENOENT)
+        perror("unlink lockfile");
+}
+
+static int
+run_with_lock(int (*fn)(void *), void *arg)
+{
+    int rc;
+
+    if (fn == NULL)
+        return -1;
+
+    if (acquire_ftntoss_lock() != 0)
+        return -1;
+
+    rc = fn(arg);
+
+    release_ftntoss_lock();
+
+    return rc;
 }
 
 static int
@@ -2115,6 +2196,39 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
     return failed ? -1 : 0;
 }
 
+static int
+run_import_one_locked(void *arg)
+{
+    struct import_one_args *a = arg;
+
+    if (a == NULL)
+        return -1;
+
+    return import_one_ftn(a->area, a->filename);
+}
+
+static int
+run_import_area_locked(void *arg)
+{
+    struct import_area_args *a = arg;
+
+    if (a == NULL)
+        return -1;
+
+    return import_all_ftn(a->area, a->include_unsafe);
+}
+
+static int
+run_import_all_areas_locked(void *arg)
+{
+    struct import_all_areas_args *a = arg;
+
+    if (a == NULL)
+        return -1;
+
+    return import_all_areas_ftn(a->include_unsafe);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -2134,33 +2248,58 @@ main(int argc, char **argv)
         return 0;
     }
     if (argc == 4 && strcmp(argv[1], "--import-one") == 0) {
-        return import_one_ftn(argv[2], argv[3]) == 0 ? 0 : 1;
-    }
+    	struct import_one_args a;
+
+    	a.area = argv[2];
+    	a.filename = argv[3];
+
+    	return run_with_lock(run_import_one_locked, &a) == 0 ? 0 : 1;
+	}
+	
     if (argc == 3 && strcmp(argv[1], "--import-all") == 0) {
-        return import_all_ftn(argv[2], 0) == 0 ? 0 : 1;
-    }
+    	struct import_area_args a;
+
+   	 	a.area = argv[2];
+    	a.include_unsafe = 0;
+
+    	return run_with_lock(run_import_area_locked, &a) == 0 ? 0 : 1;
+	}
+    
     if (argc == 4 && strcmp(argv[1], "--import-all") == 0 &&
-        strcmp(argv[3], "--include-unsafe") == 0) {
-    return import_all_ftn(argv[2], 1) == 0 ? 0 : 1;
-    }
+        	strcmp(argv[3], "--include-unsafe") == 0) {
+    	struct import_area_args a;
 
-if (argc == 3 && strcmp(argv[1], "--diagnose") == 0) {
-    return diagnose_ftn(argv[2], 0) == 0 ? 0 : 1;
-}
+    	a.area = argv[2];
+    	a.include_unsafe = 1;
 
-if (argc == 4 && strcmp(argv[1], "--diagnose") == 0 &&
+    return run_with_lock(run_import_area_locked, &a) == 0 ? 0 : 1;
+	}
+
+	if (argc == 3 && strcmp(argv[1], "--diagnose") == 0) {
+    	return diagnose_ftn(argv[2], 0) == 0 ? 0 : 1;
+	}
+
+	if (argc == 4 && strcmp(argv[1], "--diagnose") == 0 &&
         strcmp(argv[3], "--include-unsafe") == 0) {
     return diagnose_ftn(argv[2], 1) == 0 ? 0 : 1;
-}
+	}
 
-if (argc == 2 && strcmp(argv[1], "--import-all-areas") == 0) {
-    return import_all_areas_ftn(0) == 0 ? 0 : 1;
-}
+	if (argc == 2 && strcmp(argv[1], "--import-all-areas") == 0) {
+    	struct import_all_areas_args a;
 
-if (argc == 3 && strcmp(argv[1], "--import-all-areas") == 0 &&
-        strcmp(argv[2], "--include-unsafe") == 0) {
-    return import_all_areas_ftn(1) == 0 ? 0 : 1;
-}
+    	a.include_unsafe = 0;
+
+    return run_with_lock(run_import_all_areas_locked, &a) == 0 ? 0 : 1;
+	}
+
+	if (argc == 3 && strcmp(argv[1], "--import-all-areas") == 0 &&
+        	strcmp(argv[2], "--include-unsafe") == 0) {
+    	struct import_all_areas_args a;
+
+    	a.include_unsafe = 1;
+
+    	return run_with_lock(run_import_all_areas_locked, &a) == 0 ? 0 : 1;
+	}
 
     if (argc != 2) {
         fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
