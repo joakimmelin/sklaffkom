@@ -122,6 +122,8 @@ static void print_unsafe_reason(const char *filename, const struct fido_msg *msg
     const char *reason);
 static int subject_looks_like_reply(const char *subject);
 
+static int import_all_areas_ftn(int include_unsafe);
+
 static void
 print_unsafe_reason(const char *filename, const struct fido_msg *msg,
     const char *reason)
@@ -1336,6 +1338,63 @@ cleanup:
 }
 
 static int
+import_all_areas_ftn(int include_unsafe)
+{
+    FILE *fp;
+    char line[1024];
+    long areas = 0;
+    long ok = 0;
+    long failed = 0;
+
+    printf("ftntoss import-all-areas starting\n");
+    printf("=================================\n\n");
+    printf("CONF_FILE:      %s\n", CONF_FILE);
+    printf("Include unsafe: %s\n\n", include_unsafe ? "yes" : "no");
+
+    fp = fopen(CONF_FILE, "r");
+    if (fp == NULL) {
+        perror(CONF_FILE);
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        struct ftn_conf_info ce;
+
+        if (parse_conf_line(line, &ce) != 0)
+            continue;
+
+        if (ce.type != FTN_CONF)
+            continue;
+
+        areas++;
+
+        printf("\n");
+        printf("============================================================\n");
+        printf("Importing FTN area: %s (conf %d)\n", ce.name, ce.num);
+        printf("============================================================\n\n");
+
+        if (import_all_ftn(ce.name, include_unsafe) == 0) {
+            ok++;
+        } else {
+            failed++;
+            fprintf(stderr, "[ERROR] FTN import failed for area '%s'\n", ce.name);
+        }
+    }
+
+    fclose(fp);
+
+    printf("\n");
+    printf("FTN import-all-areas summary\n");
+    printf("----------------------------\n");
+    printf("Areas found:      %ld\n", areas);
+    printf("Areas OK:         %ld\n", ok);
+    printf("Areas failed:     %ld\n", failed);
+    printf("Include unsafe:   %s\n", include_unsafe ? "yes" : "no");
+
+    return failed ? -1 : 0;
+}
+
+static int
 diagnose_ftn(const char *area, int include_unsafe)
 {
     struct ftn_conf_info ce;
@@ -2093,6 +2152,16 @@ if (argc == 4 && strcmp(argv[1], "--diagnose") == 0 &&
         strcmp(argv[3], "--include-unsafe") == 0) {
     return diagnose_ftn(argv[2], 1) == 0 ? 0 : 1;
 }
+
+if (argc == 2 && strcmp(argv[1], "--import-all-areas") == 0) {
+    return import_all_areas_ftn(0) == 0 ? 0 : 1;
+}
+
+if (argc == 3 && strcmp(argv[1], "--import-all-areas") == 0 &&
+        strcmp(argv[2], "--include-unsafe") == 0) {
+    return import_all_areas_ftn(1) == 0 ? 0 : 1;
+}
+
     if (argc != 2) {
         fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
         fprintf(stderr, "       %s --dump-import <FTN-area / SklaffKOM conference> <file.msg>\n", argv[0]);
@@ -2101,6 +2170,8 @@ if (argc == 4 && strcmp(argv[1], "--diagnose") == 0 &&
         fprintf(stderr, "       %s --import-all <FTN-area> --include-unsafe\n", argv[0]);
         fprintf(stderr, "       %s --diagnose <FTN-area>\n\n", argv[0]);
         fprintf(stderr, "  		%s --diagnose <FTN-area> --include-unsafe\n", argv[0]);
+        fprintf(stderr, "       %s --import-all-areas\n", argv[0]);
+		fprintf(stderr, "       %s --import-all-areas --include-unsafe\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
