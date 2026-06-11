@@ -667,6 +667,14 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
         if (find_planref_by_filename(plans, m->filename) != NULL)
             continue;
 
+        /*
+        * Do not plan messages already imported into SklaffKOM.
+        *
+        * modified on 2026-06-10, PL
+        */
+        if (find_skref(skrefs, m->msgid) > 0)
+            continue;
+
         if (m->reply[0] == '\0') {
        /*
         * Conservative FTN import rule:
@@ -699,14 +707,22 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
         for (m = items; m != NULL; m = m->next) {
             long parent_text;
 
-            if (find_planref_by_filename(plans, m->filename) != NULL)
-                continue;
+        if (find_planref_by_filename(plans, m->filename) != NULL)
+            continue;
 
-            if (m->reply[0] == '\0')
-                continue;
+        /*
+        * Do not plan messages already imported into SklaffKOM.
+        *
+        * modified on 2026-06-10, PL
+        */
+        if (find_skref(skrefs, m->msgid) > 0)
+            continue;
 
-            parent_text = find_planref_by_msgid(plans, m->reply);
-            if (parent_text > 0) {
+        if (m->reply[0] == '\0')
+            continue;
+
+        parent_text = find_planref_by_msgid(plans, m->reply);
+        if (parent_text > 0) {
                 add_planref(&plans, m->filename, m->msgid, next_textnum++, parent_text, 0);
                 planned++;
                 reply_planned++;
@@ -1101,16 +1117,17 @@ import_all_ftn(const char *area, int include_unsafe)
     printf("Conf name:   %s\n", ce.name);
     printf("Conf num:    %d\n", ce.num);
     printf("Conf type:   %d (FTN_CONF)\n", ce.type);
-    printf("Include unsafe: %s\n", include_unsafe ? "yes" : "no");
-    printf("Last text:   %ld\n\n", ce.last_text);
-
+    printf("Last text:   %ld\n", ce.last_text);
+    printf("Include unsafe: %s\n\n", include_unsafe ? "yes" : "no");
+    
     if (scan_existing_skl_msgids(&ce, &skrefs, &existing_indexed) != 0)
         goto cleanup;
 
     if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0)
         goto cleanup;
 
-    printf("Importing all safe messages...\n\n");
+    printf("Importing messages%s...\n\n",
+        include_unsafe ? " including unsafe fallbacks" : " safely");
 
     /*
      * Multi-pass import:
@@ -1152,22 +1169,21 @@ import_all_ftn(const char *area, int include_unsafe)
                 free_fido_msg(&msg);
                 continue;
             }
-            
             if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
                 if (!include_unsafe) {
                 free_fido_msg(&msg);
                 continue;
-            }
-
-            /*
-             * Unsafe mode:
-             * Import Re:-without-REPLY as top-level. This preserves readability,
-             * but does not pretend we know the thread parent.
-             *
-             * modified on 2026-06-10, PL
-             */
-            com = 0;
         }
+
+        /*
+        * Unsafe mode:
+        * Import Re:-without-REPLY as top-level. This preserves readability,
+        * but does not pretend we know the thread parent.
+        *
+        * modified on 2026-06-10, PL
+        */
+        com = 0;
+    }
             if (msg.reply[0] != '\0') {
                 com = find_skref(skrefs, msg.reply);
                 if (com <= 0) {
@@ -1221,35 +1237,31 @@ import_all_ftn(const char *area, int include_unsafe)
         long existing = 0;
 
         if (read_fido_msg(m->path, &msg) != 0)
-            continue;
+        continue;
 
         if (msg.msgid[0] == '\0') {
-            free_fido_msg(&msg);
-            continue;
+        free_fido_msg(&msg);
+        continue;
         }
 
         existing = find_skref(skrefs, msg.msgid);
         if (existing > 0) {
-            /*
-             * Already imported before this run or during this run.
-             */
-            if (existing <= ce.last_text)
+           /*
+            * Already imported before this run or during this run.
+            */
+           if (existing <= ce.last_text)
                 skipped_duplicate++;
 
             free_fido_msg(&msg);
             continue;
-        }
+            }
+
         if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
             skipped_re_without_reply++;
             free_fido_msg(&msg);
             continue;
         }
 
-
-        if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
-            free_fido_msg(&msg);
-            continue;
-        }
         if (msg.reply[0] != '\0') {
             if (find_msgref(refs, msg.reply) != NULL)
                 deferred++;
@@ -2019,11 +2031,11 @@ if (argc == 3 && strcmp(argv[1], "--diagnose") == 0) {
 }
     if (argc != 2) {
         fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
-        fprintf(stderr, "       %s --dump-import <FTN-area / SklaffKOM conference> <file.msg>\n\n", argv[0]);
+        fprintf(stderr, "       %s --dump-import <FTN-area / SklaffKOM conference> <file.msg>\n", argv[0]);
         fprintf(stderr, "       %s --import-one <FTN-area> <file.msg>\n", argv[0]);
         fprintf(stderr, "       %s --import-all <FTN-area>\n", argv[0]);
-        fprintf(stderr, "  %s --import-all <FTN-area> --include-unsafe\n", argv[0]);
-    fprintf(stderr, "  %s --diagnose <FTN-area>\n", argv[0]);
+        fprintf(stderr, "       %s --import-all <FTN-area> --include-unsafe\n", argv[0]);
+        fprintf(stderr, "       %s --diagnose <FTN-area>\n\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
