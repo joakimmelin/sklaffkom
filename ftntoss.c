@@ -99,9 +99,9 @@ static int extract_ftn_msgid_from_line(const char *line, char *out, size_t outsz
 static int build_spool_index(const char *spooldir, struct msgref **out_refs,
     struct msgitem **out_items, long *out_seen, long *out_indexed, long *out_failed);
 static int build_import_plan(struct msgitem *items, struct skref *skrefs,
-    long first_textnum, struct planref **out_plans, long *out_planned,
-    long *out_next_textnum, long *out_top_level, long *out_reply_existing,
-    long *out_reply_planned, long *out_orphan);
+    long first_textnum, int include_unsafe, struct planref **out_plans,
+    long *out_planned, long *out_next_textnum, long *out_top_level,
+    long *out_reply_existing, long *out_reply_planned, long *out_orphan);
 static void print_visible_ctrl(const char *s);
 static long count_body_lines(const char *s);
 static int dump_import_text(const char *area, const struct ftn_conf_info *ce,
@@ -117,7 +117,7 @@ static int rewrite_conf_last_text(int confid, long *new_textnum);
 static int append_comment_link(int confid, long parent_text, long child_text);
 static int import_one_ftn(const char *area, const char *filename);
 static int import_all_ftn(const char *area, int include_unsafe);
-static int diagnose_ftn(const char *area);
+static int diagnose_ftn(const char *area, int include_unsafe);
 static void print_unsafe_reason(const char *filename, const struct fido_msg *msg,
     const char *reason);
 static int subject_looks_like_reply(const char *subject);
@@ -630,12 +630,11 @@ build_spool_index(const char *spooldir, struct msgref **out_refs,
 
     return failed ? -1 : 0;
 }
-
 static int
 build_import_plan(struct msgitem *items, struct skref *skrefs,
-    long first_textnum, struct planref **out_plans, long *out_planned,
-    long *out_next_textnum, long *out_top_level, long *out_reply_existing,
-    long *out_reply_planned, long *out_orphan)
+    long first_textnum, int include_unsafe, struct planref **out_plans,
+    long *out_planned, long *out_next_textnum, long *out_top_level,
+    long *out_reply_existing, long *out_reply_planned, long *out_orphan)
 {
     struct planref *plans = NULL;
     struct msgitem *m;
@@ -662,7 +661,11 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
 
     printf("Planning dry-run import order...\n");
 
-    /* Pass 1: top-level messages and replies to existing SklaffKOM texts. */
+    /*
+     * Pass 1:
+     * Plan true top-level messages and replies to messages that already
+     * exist in SklaffKOM.
+     */
     for (m = items; m != NULL; m = m->next) {
         long parent_text;
 
@@ -670,62 +673,75 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
             continue;
 
         /*
-        * Do not plan messages already imported into SklaffKOM.
-        *
-        * modified on 2026-06-10, PL
-        */
+         * Do not plan messages already imported into SklaffKOM.
+         *
+         * modified on 2026-06-11, PL
+         */
         if (find_skref(skrefs, m->msgid) > 0)
             continue;
 
         if (m->reply[0] == '\0') {
-       /*
-        * Conservative FTN import rule:
-        * A message with "Re:" subject but no REPLY kludge is probably a reply
-         * whose parent cannot be resolved safely. Do not plan it as top-level.
-         *
-         * modified on 2026-06-10, PL
-         */
-        if (subject_looks_like_reply(m->subject))
-            continue;
+            if (subject_looks_like_reply(m->subject)) {
+                if (!include_unsafe)
+                    continue;
 
-        add_planref(&plans, m->filename, m->msgid, next_textnum++, 0, 0);
-        planned++;
-        top_level++;
-        continue;
+                /*
+                 * Diagnose/include-unsafe:
+                 * Re:-without-REPLY would be imported as top-level fallback.
+                 *
+                 * modified on 2026-06-11, PL
+                 */
+                add_planref(&plans, m->filename, m->msgid,
+                    next_textnum++, 0, 1);
+                planned++;
+                top_level++;
+                continue;
+            }
+
+            add_planref(&plans, m->filename, m->msgid,
+                next_textnum++, 0, 0);
+            planned++;
+            top_level++;
+            continue;
         }
 
         parent_text = find_skref(skrefs, m->reply);
         if (parent_text > 0) {
-            add_planref(&plans, m->filename, m->msgid, next_textnum++, parent_text, 0);
+            add_planref(&plans, m->filename, m->msgid,
+                next_textnum++, parent_text, 0);
             planned++;
             reply_existing++;
         }
     }
 
-    /* Pass 2..N: replies whose parent was planned in an earlier pass. */
+    /*
+     * Pass 2..N:
+     * Plan replies whose parent was planned in an earlier pass.
+     */
     do {
         changed = 0;
 
         for (m = items; m != NULL; m = m->next) {
             long parent_text;
 
-        if (find_planref_by_filename(plans, m->filename) != NULL)
-            continue;
+            if (find_planref_by_filename(plans, m->filename) != NULL)
+                continue;
 
-        /*
-        * Do not plan messages already imported into SklaffKOM.
-        *
-        * modified on 2026-06-10, PL
-        */
-        if (find_skref(skrefs, m->msgid) > 0)
-            continue;
+            /*
+             * Do not plan messages already imported into SklaffKOM.
+             *
+             * modified on 2026-06-11, PL
+             */
+            if (find_skref(skrefs, m->msgid) > 0)
+                continue;
 
-        if (m->reply[0] == '\0')
-            continue;
+            if (m->reply[0] == '\0')
+                continue;
 
-        parent_text = find_planref_by_msgid(plans, m->reply);
-        if (parent_text > 0) {
-                add_planref(&plans, m->filename, m->msgid, next_textnum++, parent_text, 0);
+            parent_text = find_planref_by_msgid(plans, m->reply);
+            if (parent_text > 0) {
+                add_planref(&plans, m->filename, m->msgid,
+                    next_textnum++, parent_text, 0);
                 planned++;
                 reply_planned++;
                 changed = 1;
@@ -734,12 +750,26 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
     } while (changed);
 
     /*
- * No final top-level fallback here.
- * Conservative planning must only include messages with known-safe parents,
- * or true top-level messages that do not look like replies.
- *
- * modified on 2026-06-10, PL
- */
+     * Include-unsafe mode:
+     * Any still-unplanned message is importable as top-level fallback.
+     * This matches --import-all --include-unsafe.
+     *
+     * modified on 2026-06-11, PL
+     */
+    if (include_unsafe) {
+        for (m = items; m != NULL; m = m->next) {
+            if (find_planref_by_filename(plans, m->filename) != NULL)
+                continue;
+
+            if (find_skref(skrefs, m->msgid) > 0)
+                continue;
+
+            add_planref(&plans, m->filename, m->msgid,
+                next_textnum++, 0, 1);
+            planned++;
+            orphan++;
+        }
+    }
 
     *out_plans = plans;
     *out_planned = planned;
@@ -754,6 +784,7 @@ build_import_plan(struct msgitem *items, struct skref *skrefs,
 
     return 0;
 }
+
 
 static void
 print_visible_ctrl(const char *s)
@@ -945,7 +976,7 @@ import_one_ftn(const char *area, const char *filename)
     if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0)
         goto cleanup;
 
-    if (build_import_plan(items, skrefs, ce.last_text + 1,
+    if (build_import_plan(items, skrefs, ce.last_text + 1, 0,
             &plans, &planned, &next_textnum,
             &top_level, &reply_existing, &reply_planned, &reply_orphan) != 0)
         goto cleanup;
@@ -1305,7 +1336,7 @@ cleanup:
 }
 
 static int
-diagnose_ftn(const char *area)
+diagnose_ftn(const char *area, int include_unsafe)
 {
     struct ftn_conf_info ce;
     struct msgref *refs = NULL;
@@ -1359,17 +1390,18 @@ diagnose_ftn(const char *area)
     printf("Conf num:    %d\n", ce.num);
     printf("Conf type:   %d (FTN_CONF)\n", ce.type);
     printf("Last text:   %ld\n\n", ce.last_text);
-
+	printf("Include unsafe: %s\n\n", include_unsafe ? "yes" : "no");
+	
     if (scan_existing_skl_msgids(&ce, &skrefs, &existing_indexed) != 0)
         goto cleanup;
 
     if (build_spool_index(spooldir, &refs, &items, &seen, &indexed, &failed) != 0)
         goto cleanup;
     
-    if (build_import_plan(items, skrefs, ce.last_text + 1,
-        &plans, &planned, &next_textnum,
-        &top_level, &reply_existing, &reply_planned, &reply_orphan) != 0)
-        goto cleanup;
+    if (build_import_plan(items, skrefs, ce.last_text + 1, include_unsafe,
+        	&plans, &planned, &next_textnum,
+        	&top_level, &reply_existing, &reply_planned, &reply_orphan) != 0)
+    	goto cleanup;
 
     printf("Unsafe / skipped diagnostics\n");
     printf("----------------------------\n");
@@ -1435,7 +1467,8 @@ diagnose_ftn(const char *area)
     printf("Indexed:          %ld MSGID value(s)\n", indexed);
     printf("Existing IDs:     %ld SklaffKOM MSGID value(s)\n", existing_indexed);
     printf("Duplicates:       %ld already imported\n", duplicates);
-    printf("Would import:     %ld safely\n", planned);
+	printf("Would import:     %ld %s\n", planned,
+    include_unsafe ? "including unsafe fallbacks" : "safely");
     printf("Missing MSGID:    %ld\n", missing_msgid);
     printf("Re without REPLY: %ld\n", re_without_reply);
     printf("Deferred replies: %ld\n", deferred);
@@ -1506,7 +1539,7 @@ dump_one_import(const char *area, const struct ftn_conf_info *ce,
 
     next_textnum = ce->last_text + 1;
 
-    if (build_import_plan(items, skrefs, next_textnum, &plans, &planned,
+	if (build_import_plan(items, skrefs, next_textnum, 0, &plans, &planned,
         &next_textnum, &top_level, &reply_existing, &reply_planned,
         &reply_orphan) != 0)
         goto cleanup;
@@ -1894,7 +1927,7 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
 
     next_textnum = ce->last_text + 1;
 
-    if (build_import_plan(items, skrefs, next_textnum, &plans, &planned,
+	if (build_import_plan(items, skrefs, next_textnum, 0, &plans, &planned,
         &next_textnum, &top_level, &reply_existing, &reply_planned,
         &reply_orphan) != 0) {
         free_skrefs(skrefs);
@@ -2053,7 +2086,12 @@ main(int argc, char **argv)
     }
 
 if (argc == 3 && strcmp(argv[1], "--diagnose") == 0) {
-    return diagnose_ftn(argv[2]) == 0 ? 0 : 1;
+    return diagnose_ftn(argv[2], 0) == 0 ? 0 : 1;
+}
+
+if (argc == 4 && strcmp(argv[1], "--diagnose") == 0 &&
+        strcmp(argv[3], "--include-unsafe") == 0) {
+    return diagnose_ftn(argv[2], 1) == 0 ? 0 : 1;
 }
     if (argc != 2) {
         fprintf(stderr, "\nUsage: %s <FTN-area / SklaffKOM conference>\n", argv[0]);
@@ -2062,6 +2100,7 @@ if (argc == 3 && strcmp(argv[1], "--diagnose") == 0) {
         fprintf(stderr, "       %s --import-all <FTN-area>\n", argv[0]);
         fprintf(stderr, "       %s --import-all <FTN-area> --include-unsafe\n", argv[0]);
         fprintf(stderr, "       %s --diagnose <FTN-area>\n\n", argv[0]);
+        fprintf(stderr, "  		%s --diagnose <FTN-area> --include-unsafe\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
