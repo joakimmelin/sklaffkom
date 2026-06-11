@@ -109,10 +109,12 @@ static int dump_import_text(const char *area, const struct ftn_conf_info *ce,
 static int dump_one_import(const char *area, const struct ftn_conf_info *ce,
     const char *filename);
 
-static char *build_ftn_mbuf(const char *area, const struct fido_msg *msg);
+static char *build_ftn_mbuf(const char *area, const struct fido_msg *msg,
+    const char *unsafe_reason);
+static long send_ftn(int confid, const char *area, const struct fido_msg *msg,
+    long com, const char *unsafe_reason);
 static int rewrite_conf_last_text(int confid, long *new_textnum);
 static int append_comment_link(int confid, long parent_text, long child_text);
-static long send_ftn(int confid, const char *area, const struct fido_msg *msg, long com);
 static int import_one_ftn(const char *area, const char *filename);
 static int import_all_ftn(const char *area, int include_unsafe);
 static int diagnose_ftn(const char *area);
@@ -1045,7 +1047,7 @@ import_one_ftn(const char *area, const char *filename)
     printf("Actual com:    %ld\n", com);
     printf("\n");
 
-    imported_text = send_ftn(ce.num, area, &msg, com);
+	imported_text = send_ftn(ce.num, area, &msg, com, NULL);
     if (imported_text <= 0) {
         fprintf(stderr, "[ERROR] send_ftn() failed\n");
         free_fido_msg(&msg);
@@ -1151,7 +1153,8 @@ import_all_ftn(const char *area, int include_unsafe)
             long already_imported = 0;
             long com = 0;
             long imported_text = 0;
-
+			const char *unsafe_reason = NULL; /* modified on 2026-06-11, PL */
+			
             if (read_fido_msg(m->path, &msg) != 0) {
                 fprintf(stderr, "[ERROR] Could not parse .MSG file: %s\n", m->path);
                 failed++;
@@ -1169,43 +1172,49 @@ import_all_ftn(const char *area, int include_unsafe)
                 free_fido_msg(&msg);
                 continue;
             }
-            if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
-                if (!include_unsafe) {
-                free_fido_msg(&msg);
-                continue;
-        }
+			if (msg.reply[0] == '\0' && subject_looks_like_reply(msg.subject)) {
+    			if (!include_unsafe) {
+        		free_fido_msg(&msg);
+        		continue;
+    		}
 
-        /*
-        * Unsafe mode:
-        * Import Re:-without-REPLY as top-level. This preserves readability,
-        * but does not pretend we know the thread parent.
-        *
-        * modified on 2026-06-10, PL
-        */
-        com = 0;
-    }
+    	/*
+	     * Unsafe mode:
+	     * Import Re:-without-REPLY as top-level. This preserves readability,
+	     * but does not pretend we know the thread parent.
+	     *
+	     * modified on 2026-06-11, PL
+	     */
+	    com = 0;
+	    unsafe_reason = "re-no-reply";
+	}
             if (msg.reply[0] != '\0') {
-                com = find_skref(skrefs, msg.reply);
-                if (com <= 0) {
-                    if (!include_unsafe) {
-                        free_fido_msg(&msg);
-                        continue;
-        }
+    			com = find_skref(skrefs, msg.reply);
+    				if (com <= 0) {
+        				if (!include_unsafe) {
+            			free_fido_msg(&msg);
+            			continue;
+        	}
+        	
+			/*
+        	 * Unsafe mode:
+        	 * Parent cannot be resolved. Import as top-level rather than
+      		 * inventing a false parent.
+     	     *
+     	     * modified on 2026-06-11, PL
+    	     */
+    	    com = 0;
 
-            /*
-             * Unsafe mode:
-             * Parent cannot be resolved. Import as top-level rather than
-             * inventing a false parent.
-             *
-             * modified on 2026-06-10, PL
-             */
-            com = 0;
-        }
-    }
+  	      if (find_msgref(refs, msg.reply) != NULL)
+  	          unsafe_reason = "deferred";
+  	      else
+  	          unsafe_reason = "orphan";
+ 	   		}
+		}
 
             printf("Importing %-8s -> ", m->filename);
 
-            imported_text = send_ftn(ce.num, area, &msg, com);
+			imported_text = send_ftn(ce.num, area, &msg, com, unsafe_reason);
             if (imported_text <= 0) {
                 printf("FAILED\n");
                 fprintf(stderr, "[ERROR] send_ftn() failed for %s\n", m->filename);
@@ -1527,7 +1536,8 @@ cleanup:
 }
 
 static char *
-build_ftn_mbuf(const char *area, const struct fido_msg *msg)
+build_ftn_mbuf(const char *area, const struct fido_msg *msg,
+    const char *unsafe_reason)
 {
     char *mbuf;
     size_t need;
@@ -1544,7 +1554,10 @@ build_ftn_mbuf(const char *area, const struct fido_msg *msg)
     need += strlen(msg->msgid);
     need += strlen(msg->reply);
     need += strlen(msg->chrs);
-
+	
+	if (unsafe_reason != NULL && *unsafe_reason != '\0')
+    need += strlen("FTN-Unsafe: ") + strlen(unsafe_reason) + 1; /* modified on 2026-06-11, PL */
+    
     if (msg->raw_body != NULL)
         need += strlen(msg->raw_body);
 
@@ -1581,7 +1594,19 @@ build_ftn_mbuf(const char *area, const struct fido_msg *msg)
         strlcat(mbuf, msg->chrs, need);     /* modified on 2026-06-09, PL */
         strlcat(mbuf, "\n", need);          /* modified on 2026-06-09, PL */
     }
-
+	
+	if (unsafe_reason != NULL && *unsafe_reason != '\0') {
+    /*
+     * Mark unsafe FTN fallback imports so SklaffKOM can later filter
+     * or display them differently.
+     *
+     * modified on 2026-06-11, PL
+     */
+    strlcat(mbuf, "FTN-Unsafe: ", need);     /* modified on 2026-06-11, PL */
+    strlcat(mbuf, unsafe_reason, need);      /* modified on 2026-06-11, PL */
+    strlcat(mbuf, "\n", need);              /* modified on 2026-06-11, PL */
+	}
+	
     strlcat(mbuf, "\n", need);              /* modified on 2026-06-09, PL */
 
     /*
@@ -1715,7 +1740,8 @@ append_comment_link(int confid, long parent_text, long child_text)
 }
 
 static long
-send_ftn(int confid, const char *area, const struct fido_msg *msg, long com)
+send_ftn(int confid, const char *area, const struct fido_msg *msg, long com,
+    const char *unsafe_reason)
 {
     char path[PATH_MAX];
     char *mbuf = NULL;
@@ -1732,7 +1758,7 @@ send_ftn(int confid, const char *area, const struct fido_msg *msg, long com)
      *   - size is counted from the imported message buffer
      *   - timestamp is import time for now
      */
-    mbuf = build_ftn_mbuf(area, msg);
+	mbuf = build_ftn_mbuf(area, msg, unsafe_reason);
     if (mbuf == NULL) {
         fprintf(stderr, "[ERROR] Could not build FTN message buffer\n");
         return -1;
