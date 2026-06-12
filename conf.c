@@ -654,7 +654,8 @@ if ((buf = get_conf_entry(buf, &ce))) {
 
         /* visibility like before */
         int rights = ce.type;
-        if (rights == NEWS_CONF) rights = OPEN_CONF;
+        if (rights == NEWS_CONF || rights == FTN_CONF)
+            rights = OPEN_CONF;
         if (ce.creator == Uid) rights = 0;
         else if (rights == SECRET_CONF &&
                  !can_see_conf(Uid, ce.num, ce.type, ce.creator))
@@ -672,7 +673,7 @@ if ((buf = get_conf_entry(buf, &ce))) {
                   while (rmap){struct ReadMap *t=rmap->next; free(rmap); rmap=t;}
                   return -1; }
 
-        strcpy(n->name, ce.name);
+        strlcpy(n->name, ce.name, sizeof(n->name)); /* modified on 2026-06-08, PL */
         n->total     = total;
         n->unreads   = ur;
         n->num       = ce.num;
@@ -707,17 +708,21 @@ if ((buf = get_conf_entry(buf, &ce))) {
     for (struct CEL *c = local; c; c = c->next) {
         const char *mark = c->is_member ? " " : (Ansi_output ? YELLOW "*" DOT : "*");
         char filelist[PATH_MAX];
-        char *suffix = "";
+        const char *file_suffix = "";
+        const char *type_suffix = "";
+
         snprintf(filelist, sizeof(filelist), "%s/%d%s", FILE_DB, c->num, INDEX_FILE);
         if (file_exists(filelist) != -1)
-            suffix = " (F)";
-		// TODO cleanup
-		// const char *suffix = has_file_area(c->num) ? " (F)" : "";
+            file_suffix = " (F)";
+
+        /* modified on 2026-06-08, PL */
+        if (c->type == FTN_CONF)
+            type_suffix = " (FTN)";
 
         output_ansi_fmt(
-        CYAN"%6ld  %6ld"DOT"  %s" BR_RED "%s"DOT"%s\n",
-        "%6ld  %6ld  %s%s%s\n",
-        c->total, c->unreads, mark, c->name, suffix
+            CYAN"%6ld  %6ld"DOT"  %s" BR_RED "%s" BLUE"%s" DOT "%s\n",
+            "%6ld  %6ld  %s%s%s%s\n",
+            c->total, c->unreads, mark, c->name, type_suffix, file_suffix
         );
     }
     /* -------- Print Usenet (with colored "(Usenet)" suffix) -------- */
@@ -755,8 +760,8 @@ conf_right(struct USER_LIST * ul, int uid, int type, int cr_num)
     int xit;
 
     xit = type;
-    if (xit == NEWS_CONF)
-        xit = OPEN_CONF;
+	if (xit == NEWS_CONF || xit == FTN_CONF) /* modified on 2026-06-11, PL */
+    	xit = OPEN_CONF;
     if (cr_num == uid) {
         xit = 0;
     } else {
@@ -768,7 +773,7 @@ conf_right(struct USER_LIST * ul, int uid, int type, int cr_num)
         }
 
         if (ul && (ul->num == uid)) {
-            if ((type == OPEN_CONF) || (type == NEWS_CONF))
+            if ((type == OPEN_CONF) || (type == NEWS_CONF) || (type == FTN_CONF)) /* modified on 2026-06-11, PL */
                 xit = 1;
             else
                 xit = 0;

@@ -72,8 +72,9 @@
 
 /* Default number of days before texts expire */
 
-#define EXP_DEF		10      /* Ordinary confs */
-#define EXP_DEF_NEWS	 3      /* News confs	  */
+#define EXP_DEF		    10      /* Ordinary confs */
+#define EXP_DEF_NEWS	10      /* News confs	  */
+#define EXP_DEF_FTN     10      /* FTN confs */     
 
 /* System files used by SklaffKOM */
 
@@ -81,6 +82,7 @@
 #define MAIL_LIB	"/var/mail"
 #define NEWS_SPOOL	"/usr/local/news/spool/articles"
 #define NEWS_GROUPS	"/usr/local/news/db/active"
+#define FTN_SPOOL 	"/usr/local/ftn/echomail"    /* modified on 2026-06-09, PL */
 
 /* Programs used by SklaffKOM */
 
@@ -296,6 +298,7 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #define CLOSED_CONF	1
 #define SECRET_CONF	2
 #define NEWS_CONF	3
+#define FTN_CONF	4
 
 /* Defines for text types */
 

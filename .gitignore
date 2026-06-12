@@ -10,3 +10,5 @@ version.c
 /survreport
 *~
 *.o
+ftnmsgdump
+ftntoss

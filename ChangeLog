@@ -17,6 +17,14 @@ v1.33-rc1 Thursday 02 June 2026 PL
   command ;). We now also print build date and time in version.c when
   version.sh is run.
 
+* Minor cleanup.
+
+* Implementation of ftn support has begun, we now have a ftnmsg "decoder" and
+  we're able to create ftn-conferences inside Sklaffkom the same way we create
+  conferences for news. Next up is a ftntoss.c program. Wish me luck :P.
+  - update ftntoss.c is now parsing .MSG but only in dry-run mode so far.
+
+
 v1.33 beta13 Wednesday 28 May 2026 PL
 It's been a while!
 
