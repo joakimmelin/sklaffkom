@@ -32,6 +32,19 @@
 
 #define FTNTOSS_LOCKFILE "/tmp/ftntoss.lock" /* modified on 2026-06-11, PL */
 
+#define FTN_OUR_ZONE  21   /* modified on 2026-06-12, PL */
+#define FTN_OUR_NET   3    /* modified on 2026-06-12, PL */
+#define FTN_OUR_NODE  242  /* modified on 2026-06-12, PL */
+#define FTN_OUR_POINT 0    /* modified on 2026-06-12, PL */
+
+#define FTN_HUB_ZONE  21   /* modified on 2026-06-12, PL */
+#define FTN_HUB_NET   3    /* modified on 2026-06-12, PL */
+#define FTN_HUB_NODE  100  /* modified on 2026-06-12, PL */
+#define FTN_HUB_POINT 0    /* modified on 2026-06-12, PL */
+
+#define FTN_LOCAL_ATTR 0x0100 /* modified on 2026-06-12, PL */
+#define FTN_ORIGIN "Twilight Node" /* modified on 2026-06-12, PL */
+
 struct ftn_conf_info {
     int num;
     long last_text;
@@ -72,6 +85,16 @@ struct msgitem {
     char subject[256]; /* modified on 2026-06-10, PL */
     struct msgitem *next;
 };
+
+static int export_test_ftn(const char *area);
+static int next_msg_path(const char *area, char *out, size_t outsz, long *out_num);
+static int write_fido_msg_out(const char *path, const char *area,
+    const char *from, const char *to, const char *subject,
+    const char *body, const char *reply);
+static void write_fixed_field(unsigned char *dst, size_t len, const char *src);
+static void write_u16_le(unsigned char *dst, unsigned int val);
+static void make_fido_date(char *out, size_t outsz);
+static void make_ftn_msgid(char *out, size_t outsz, const char *area, long seq);
 
 static int find_ftn_conf(const char *name, struct ftn_conf_info *out_ce);
 static int is_msg_file(const char *name);
@@ -149,6 +172,238 @@ struct import_area_args {
 struct import_all_areas_args {
     int include_unsafe;
 };
+
+static void
+write_fixed_field(unsigned char *dst, size_t len, const char *src)
+{
+    size_t n;
+
+    if (dst == NULL || len == 0)
+        return;
+
+    memset(dst, 0, len);
+
+    if (src == NULL)
+        return;
+
+    n = strlen(src);
+    if (n >= len)
+        n = len - 1;
+
+    memcpy(dst, src, n);
+}
+
+static void
+write_u16_le(unsigned char *dst, unsigned int val)
+{
+    if (dst == NULL)
+        return;
+
+    dst[0] = (unsigned char)(val & 0xff);
+    dst[1] = (unsigned char)((val >> 8) & 0xff);
+}
+
+static void
+make_fido_date(char *out, size_t outsz)
+{
+    time_t now;
+    struct tm *tm;
+    static const char *months[] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+
+    if (out == NULL || outsz == 0)
+        return;
+
+    out[0] = '\0';
+
+    now = time(NULL);
+    tm = localtime(&now);
+    if (tm == NULL)
+        return;
+
+    snprintf(out, outsz, "%02d %s %02d  %02d:%02d:%02d",
+        tm->tm_mday,
+        months[tm->tm_mon],
+        tm->tm_year % 100,
+        tm->tm_hour,
+        tm->tm_min,
+        tm->tm_sec);
+}
+
+static void
+make_ftn_msgid(char *out, size_t outsz, const char *area, long seq)
+{
+    unsigned long t;
+
+    if (out == NULL || outsz == 0)
+        return;
+
+    t = (unsigned long)time(NULL);
+
+    /*
+     * Make a stable-enough test MSGID for outgoing FSX echomail.
+     * Later export-one should base this on SklaffKOM conf/text number.
+     *
+     * modified on 2026-06-12, PL
+     */
+    snprintf(out, outsz, "%d:%d/%d.%d %08lx%04lx",
+        FTN_OUR_ZONE, FTN_OUR_NET, FTN_OUR_NODE, FTN_OUR_POINT,
+        t, (unsigned long)(seq & 0xffff));
+
+    (void)area;
+}
+
+static int
+next_msg_path(const char *area, char *out, size_t outsz, long *out_num)
+{
+    char dirpath[PATH_MAX];
+    DIR *dir;
+    struct dirent *de;
+    long maxnum = 0;
+
+    if (area == NULL || out == NULL || outsz == 0)
+        return -1;
+
+    if (snprintf(dirpath, sizeof(dirpath), "%s/%s", FTN_SPOOL, area) >=
+            (int)sizeof(dirpath)) {
+        fprintf(stderr, "[ERROR] FTN area path too long: %s/%s\n", FTN_SPOOL, area);
+        return -1;
+    }
+
+    dir = opendir(dirpath);
+    if (dir == NULL) {
+        perror(dirpath);
+        return -1;
+    }
+
+    while ((de = readdir(dir)) != NULL) {
+        char *endp;
+        long n;
+
+        if (de->d_name[0] == '.')
+            continue;
+
+        errno = 0;
+        n = strtol(de->d_name, &endp, 10);
+        if (errno != 0 || endp == de->d_name)
+            continue;
+
+        if (strcmp(endp, ".msg") != 0 && strcmp(endp, ".MSG") != 0)
+            continue;
+
+        if (n > maxnum)
+            maxnum = n;
+    }
+
+    closedir(dir);
+
+    maxnum++;
+
+    if (snprintf(out, outsz, "%s/%ld.msg", dirpath, maxnum) >= (int)outsz) {
+        fprintf(stderr, "[ERROR] Output .MSG path too long\n");
+        return -1;
+    }
+
+    if (out_num != NULL)
+        *out_num = maxnum;
+
+    return 0;
+}
+
+static int
+write_fido_msg_out(const char *path, const char *area,
+    const char *from, const char *to, const char *subject,
+    const char *body, const char *reply)
+{
+    FILE *fp;
+    unsigned char hdr[190];
+    char datebuf[32];
+    char msgid[128];
+
+    if (path == NULL || area == NULL || from == NULL || to == NULL ||
+            subject == NULL || body == NULL)
+        return -1;
+
+    memset(hdr, 0, sizeof(hdr));
+
+    make_fido_date(datebuf, sizeof(datebuf));
+    make_ftn_msgid(msgid, sizeof(msgid), area, (long)getpid());
+
+    /*
+     * Fido .MSG header:
+     * from[36], to[36], subject[72], date[20],
+     * then 13 little-endian 16-bit fields.
+     *
+     * modified on 2026-06-12, PL
+     */
+    write_fixed_field(hdr + 0,   36, from);
+    write_fixed_field(hdr + 36,  36, to);
+    write_fixed_field(hdr + 72,  72, subject);
+    write_fixed_field(hdr + 144, 20, datebuf);
+
+    write_u16_le(hdr + 164, 0);                  /* times read */
+    write_u16_le(hdr + 166, FTN_HUB_NODE);       /* dest node */
+    write_u16_le(hdr + 168, FTN_OUR_NODE);       /* orig node */
+    write_u16_le(hdr + 170, 0);                  /* cost */
+    write_u16_le(hdr + 172, FTN_OUR_NET);        /* orig net */
+    write_u16_le(hdr + 174, FTN_HUB_NET);        /* dest net */
+    write_u16_le(hdr + 176, FTN_HUB_ZONE);       /* dest zone */
+    write_u16_le(hdr + 178, FTN_OUR_ZONE);       /* orig zone */
+    write_u16_le(hdr + 180, FTN_HUB_POINT);      /* dest point */
+    write_u16_le(hdr + 182, FTN_OUR_POINT);      /* orig point */
+    write_u16_le(hdr + 184, 0);                  /* reply to */
+    write_u16_le(hdr + 186, FTN_LOCAL_ATTR);     /* attr: local */
+    write_u16_le(hdr + 188, 0);                  /* next reply */
+
+    fp = fopen(path, "wb");
+    if (fp == NULL) {
+        perror(path);
+        return -1;
+    }
+
+    if (fwrite(hdr, 1, sizeof(hdr), fp) != sizeof(hdr)) {
+        perror("write .MSG header");
+        fclose(fp);
+        return -1;
+    }
+
+    fprintf(fp, "AREA:%s\r", area);
+    fprintf(fp, "\001MSGID: %s\r", msgid);
+
+    if (reply != NULL && *reply != '\0')
+        fprintf(fp, "\001REPLY: %s\r", reply);
+
+    fprintf(fp, "\001PID: SklaffKOM ftntoss\r");
+    fprintf(fp, "\001CHRS: UTF-8 4\r");
+    fprintf(fp, "\r");
+
+    while (*body != '\0') {
+        if (*body == '\n')
+            fputc('\r', fp);
+        else
+            fputc((unsigned char)*body, fp);
+        body++;
+    }
+
+    fprintf(fp, "\r");
+    fprintf(fp, "--- SklaffKOM\r");
+    fprintf(fp, " * Origin: %s (%d:%d/%d.%d)\r",
+        FTN_ORIGIN, FTN_OUR_ZONE, FTN_OUR_NET, FTN_OUR_NODE, FTN_OUR_POINT);
+
+    fputc('\0', fp);
+
+    if (fclose(fp) != 0) {
+        perror(path);
+        return -1;
+    }
+
+    printf("Wrote FTN .MSG: %s\n", path);
+    printf("MSGID: %s\n", msgid);
+
+    return 0;
+}
 
 static void
 print_unsafe_reason(const char *filename, const struct fido_msg *msg,
@@ -995,6 +1250,64 @@ dump_import_text(const char *area, const struct ftn_conf_info *ce,
 
     free_fido_msg(&msg);
     return 0;
+}
+
+static int
+export_test_ftn(const char *area)
+{
+    struct ftn_conf_info ce;
+    char path[PATH_MAX];
+    long msgnum = 0;
+    char body[1024];
+
+    if (area == NULL || *area == '\0')
+        return -1;
+
+    printf("ftntoss export-test starting\n");
+    printf("============================\n\n");
+
+    printf("Checking conference: %s... ", area);
+    fflush(stdout);
+
+    if (find_ftn_conf(area, &ce) != 0) {
+        printf("FAILED\n");
+        fprintf(stderr, "[ERROR] Could not find FTN conference '%s'\n", area);
+        return -1;
+    }
+
+    printf("OK!\n");
+
+    if (ce.type != FTN_CONF) {
+        fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
+            area, ce.type);
+        return -1;
+    }
+
+    if (next_msg_path(area, path, sizeof(path), &msgnum) != 0)
+        return -1;
+
+    snprintf(body, sizeof(body),
+        "Testpost fran SklaffKOM/ftntoss.\n"
+        "\n"
+        "Area: %s\n"
+        "Local test message number: %ld\n"
+        "\n"
+        "Om detta syns i FSX_TST fungerar outgoing echomail fran SklaffKOM.\n",
+        area, msgnum);
+
+    printf("FTN export-test setup\n");
+    printf("---------------------\n");
+    printf("Area:       %s\n", area);
+    printf("Conf num:   %d\n", ce.num);
+    printf("Conf type:  %d (FTN_CONF)\n", ce.type);
+    printf("Output:     %s\n\n", path);
+
+    return write_fido_msg_out(path, area,
+        "Peter London",
+        "All",
+        "SklaffKOM FTN export test",
+        body,
+        NULL);
 }
 
 static int
@@ -2233,6 +2546,10 @@ int
 main(int argc, char **argv)
 {
     struct ftn_conf_info ce;
+    
+    if (argc == 3 && strcmp(argv[1], "--export-test") == 0) {
+    return export_test_ftn(argv[2]) == 0 ? 0 : 1;
+    }
 
     if (argc == 4 && strcmp(argv[1], "--dump-import") == 0) {
         printf("ftntoss dump-import dry-run starting\n");
@@ -2311,6 +2628,7 @@ main(int argc, char **argv)
         fprintf(stderr, "  		%s --diagnose <FTN-area> --include-unsafe\n", argv[0]);
         fprintf(stderr, "       %s --import-all-areas\n", argv[0]);
 		fprintf(stderr, "       %s --import-all-areas --include-unsafe\n", argv[0]);
+		fprintf(stderr, "       %s --export-test <FTN-area>\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
