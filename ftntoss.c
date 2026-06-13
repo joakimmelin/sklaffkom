@@ -233,24 +233,41 @@ make_fido_date(char *out, size_t outsz)
 }
 
 static void
+make_ftn_addr(char *out, size_t outsz, int zone, int net, int node, int point)
+{
+    if (out == NULL || outsz == 0)
+        return;
+
+    /*
+     * Keep point-zero addresses in classic 2D form for echomail kludges.
+     * modified on 2026-06-13, PL
+     */
+    if (point == 0)
+        snprintf(out, outsz, "%d:%d/%d", zone, net, node);
+    else
+        snprintf(out, outsz, "%d:%d/%d.%d", zone, net, node, point);
+}
+
+static void
 make_ftn_msgid(char *out, size_t outsz, const char *area, long seq)
 {
     unsigned long t;
+    char addr[64];
 
     if (out == NULL || outsz == 0)
         return;
 
     t = (unsigned long)time(NULL);
+    make_ftn_addr(addr, sizeof(addr), FTN_OUR_ZONE, FTN_OUR_NET,
+        FTN_OUR_NODE, FTN_OUR_POINT);
 
     /*
      * Make a stable-enough test MSGID for outgoing FSX echomail.
      * Later export-one should base this on SklaffKOM conf/text number.
-     *
-     * modified on 2026-06-12, PL
+     * modified on 2026-06-13, PL
      */
-    snprintf(out, outsz, "%d:%d/%d.%d %08lx%04lx",
-        FTN_OUR_ZONE, FTN_OUR_NET, FTN_OUR_NODE, FTN_OUR_POINT,
-        t, (unsigned long)(seq & 0xffff));
+    snprintf(out, outsz, "%s %08lx%04lx",
+        addr, t, (unsigned long)(seq & 0xffff));
 
     (void)area;
 }
@@ -369,7 +386,11 @@ write_fido_msg_out(const char *path, const char *area,
         return -1;
     }
 
-    fprintf(fp, "AREA:%s\r", area);
+    /*
+     * Do not write AREA here: CrashMail adds AREA:<tag> when packing.
+     * Writing it in the local .MSG too creates a duplicate AREA line.
+     * modified on 2026-06-13, PL
+     */
     fprintf(fp, "\001MSGID: %s\r", msgid);
 
     if (reply != NULL && *reply != '\0')
@@ -388,9 +409,14 @@ write_fido_msg_out(const char *path, const char *area,
     }
 
     fprintf(fp, "\r");
-    fprintf(fp, "--- SklaffKOM\r");
-    fprintf(fp, " * Origin: %s (%d:%d/%d.%d)\r",
-        FTN_ORIGIN, FTN_OUR_ZONE, FTN_OUR_NET, FTN_OUR_NODE, FTN_OUR_POINT);
+    {
+        char origin_addr[64];
+
+        make_ftn_addr(origin_addr, sizeof(origin_addr), FTN_OUR_ZONE,
+            FTN_OUR_NET, FTN_OUR_NODE, FTN_OUR_POINT);
+        fprintf(fp, "--- SklaffKOM\r");
+        fprintf(fp, " * Origin: %s (%s)\r", FTN_ORIGIN, origin_addr);
+    }
 
     fputc('\0', fp);
 
@@ -1287,12 +1313,13 @@ export_test_ftn(const char *area)
         return -1;
 
     snprintf(body, sizeof(body),
-        "Testpost fran SklaffKOM/ftntoss.\n"
+        "A test from SklaffKOM/ftntoss.\n"
         "\n"
-        "Area: %s\n"
+        "Local SklaffKOM area: %s\n"
         "Local test message number: %ld\n"
         "\n"
-        "Om detta syns i FSX_TST fungerar outgoing echomail fran SklaffKOM.\n",
+        "This is a test message from SklaffKOM / twilightnode.org.\n"
+		"Please reply if you can, cheers",
         area, msgnum);
 
     printf("FTN export-test setup\n");
