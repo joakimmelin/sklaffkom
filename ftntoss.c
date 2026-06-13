@@ -1493,26 +1493,45 @@ export_test_ftn(const char *area)
         return -1;
 
     snprintf(body, sizeof(body),
-        "A test from SklaffKOM/ftntoss.\n"
+        "This is a SklaffKOM/ftntoss echomail export test.\n"
         "\n"
-        "Local SklaffKOM area: %s\n"
-        "Local test message number: %ld\n"
+        "BBS name:      %s\n"
+        "Hostname:      %s\n"
+        "Location:      %s\n"
+        "Sysop:         %s\n"
         "\n"
-        "This is a test message from SklaffKOM.\n\n"
-		"Please reply if you can, cheers",
-        area, msgnum);
+        "FTN area:      %s\n"
+        "Local conf:    %d\n"
+        "Local msg no:  %ld\n"
+        "\n"
+        "If you can read this message, outgoing FTN echomail from this\n"
+        "SklaffKOM system appears to be working.\n"
+        "\n"
+        "Please reply if you can. Thanks!\n",
+        SKLAFF_ID,
+        MACHINE_NAME,
+        SKLAFF_LOC,
+        SKLAFF_SYSOP,
+        area,
+        ce.num,
+        msgnum);
 
     printf("FTN export-test setup\n");
     printf("---------------------\n");
+    printf("BBS name:   %s\n", SKLAFF_ID);
+    printf("Hostname:   %s\n", MACHINE_NAME);
+    printf("Location:   %s\n", SKLAFF_LOC);
+    printf("Sysop:      %s\n", SKLAFF_SYSOP);
     printf("Area:       %s\n", area);
     printf("Conf num:   %d\n", ce.num);
     printf("Conf type:  %d (FTN_CONF)\n", ce.type);
+    printf("Msg no:     %ld\n", msgnum);
     printf("Output:     %s\n\n", path);
 
     return write_fido_msg_out(path, area,
-        "Peter London",
+        SKLAFF_SYSOP,
         "All",
-        "SklaffKOM FTN export test",
+        SKLAFF_ID " FTN export test",
         body,
         NULL);
 }
