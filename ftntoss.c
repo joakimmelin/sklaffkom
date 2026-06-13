@@ -31,6 +31,7 @@
 #include <signal.h>
 
 #define FTNTOSS_LOCKFILE "/tmp/ftntoss.lock" /* modified on 2026-06-11, PL */
+#define FTN_WRAP_COL 78 /* modified on 2026-06-13, PL */
 
 #define FTN_OUR_ZONE  21   /* modified on 2026-06-12, PL */
 #define FTN_OUR_NET   3    /* modified on 2026-06-12, PL */
@@ -159,6 +160,12 @@ static int run_import_one_locked(void *arg);
 static int run_import_area_locked(void *arg);
 static int run_import_all_areas_locked(void *arg);
 
+static char *wrap_ftn_body_for_skom(const char *body);
+static void append_wrapped_segment(char *out, size_t outsz,
+    const char *seg, size_t len);
+static void append_to_dynbuf(char **buf, size_t *cap, size_t *len,
+    const char *text);
+
 struct import_one_args {
     const char *area;
     const char *filename;
@@ -270,6 +277,179 @@ make_ftn_msgid(char *out, size_t outsz, const char *area, long seq)
         addr, t, (unsigned long)(seq & 0xffff));
 
     (void)area;
+}
+
+static void
+append_to_dynbuf(char **buf, size_t *cap, size_t *len, const char *text)
+{
+    size_t need;
+    size_t add;
+    char *nbuf;
+
+    if (buf == NULL || cap == NULL || len == NULL || text == NULL)
+        return;
+
+    add = strlen(text);
+    need = *len + add + 1;
+
+    if (*buf == NULL || need > *cap) {
+        size_t newcap = (*cap > 0) ? *cap : 1024;
+
+        while (newcap < need)
+            newcap *= 2;
+
+        nbuf = realloc(*buf, newcap);
+        if (nbuf == NULL)
+            return;
+
+        *buf = nbuf;
+        *cap = newcap;
+    }
+
+    memcpy(*buf + *len, text, add);
+    *len += add;
+    (*buf)[*len] = '\0';
+}
+
+static void
+append_wrapped_segment(char *out, size_t outsz, const char *seg, size_t len)
+{
+    size_t pos = 0;
+
+    if (out == NULL || outsz == 0 || seg == NULL)
+        return;
+
+    out[0] = '\0';
+
+    while (pos < len) {
+        size_t left = len - pos;
+        size_t take = left;
+        size_t i;
+        size_t start;
+
+        while (left > 0 && (seg[pos] == ' ' || seg[pos] == '\t')) {
+            pos++;
+            left--;
+        }
+
+        if (left == 0)
+            break;
+
+        take = left;
+        if (take > FTN_WRAP_COL) {
+            take = FTN_WRAP_COL;
+
+            /*
+             * Prefer breaking at whitespace before the wrap column.
+             * If no whitespace exists, hard-wrap the long word.
+             *
+             * modified on 2026-06-13, PL
+             */
+            for (i = take; i > 0; i--) {
+                if (seg[pos + i] == ' ' || seg[pos + i] == '\t') {
+                    take = i;
+                    break;
+                }
+            }
+
+            if (i == 0)
+                take = FTN_WRAP_COL;
+        }
+
+        start = strlen(out);
+        if (start + take + 2 >= outsz)
+            break;
+
+        memcpy(out + start, seg + pos, take);
+        out[start + take] = '\n';
+        out[start + take + 1] = '\0';
+
+        pos += take;
+
+        while (pos < len && (seg[pos] == ' ' || seg[pos] == '\t'))
+            pos++;
+    }
+}
+
+static char *
+wrap_ftn_body_for_skom(const char *body)
+{
+    char *out = NULL;
+    size_t cap = 0;
+    size_t outlen = 0;
+    const char *p;
+    const char *line_start;
+
+    if (body == NULL)
+        return NULL;
+
+    p = body;
+    line_start = body;
+
+    while (1) {
+        if (*p == '\n' || *p == '\0') {
+            size_t linelen = (size_t)(p - line_start);
+
+            /*
+             * Preserve blank lines. Preserve quoted/origin/control-ish lines
+             * as-is, but wrap normal prose before storing it in SklaffKOM.
+             *
+             * modified on 2026-06-13, PL
+             */
+            if (linelen == 0) {
+                append_to_dynbuf(&out, &cap, &outlen, "\n");
+            } else if (line_start[0] == '>' ||
+                       line_start[0] == '|' ||
+                       line_start[0] == '*' ||
+                       line_start[0] == '-' ||
+                       line_start[0] == '\001') {
+                char *tmp;
+
+                tmp = malloc(linelen + 2);
+                if (tmp != NULL) {
+                    memcpy(tmp, line_start, linelen);
+                    tmp[linelen] = '\n';
+                    tmp[linelen + 1] = '\0';
+                    append_to_dynbuf(&out, &cap, &outlen, tmp);
+                    free(tmp);
+                }
+            } else if (linelen <= FTN_WRAP_COL) {
+                char *tmp;
+
+                tmp = malloc(linelen + 2);
+                if (tmp != NULL) {
+                    memcpy(tmp, line_start, linelen);
+                    tmp[linelen] = '\n';
+                    tmp[linelen + 1] = '\0';
+                    append_to_dynbuf(&out, &cap, &outlen, tmp);
+                    free(tmp);
+                }
+            } else {
+                char wrapped[4096];
+
+                append_wrapped_segment(wrapped, sizeof(wrapped),
+                    line_start, linelen);
+                append_to_dynbuf(&out, &cap, &outlen, wrapped);
+            }
+
+            if (*p == '\0')
+                break;
+
+            p++;
+            line_start = p;
+            continue;
+        }
+
+        p++;
+    }
+
+    if (out == NULL) {
+        out = malloc(1);
+        if (out != NULL)
+            out[0] = '\0';
+    }
+
+    return out;
 }
 
 static int
@@ -1318,7 +1498,7 @@ export_test_ftn(const char *area)
         "Local SklaffKOM area: %s\n"
         "Local test message number: %ld\n"
         "\n"
-        "This is a test message from SklaffKOM / twilightnode.org.\n"
+        "This is a test message from SklaffKOM.\n\n"
 		"Please reply if you can, cheers",
         area, msgnum);
 
@@ -2053,9 +2233,28 @@ build_ftn_mbuf(const char *area, const struct fido_msg *msg,
     const char *unsafe_reason)
 {
     char *mbuf;
+    char *wrapped_body;
+    const char *body;
     size_t need;
 
     if (area == NULL || msg == NULL)
+        return NULL;
+
+    /*
+     * Store cleaned and wrapped FTN text in SklaffKOM.  The raw body may
+     * contain FTN kludges, SEEN-BY/PATH lines and very long modern lines
+     * that SklaffKOM's old display code does not handle nicely.
+     *
+     * modified on 2026-06-13, PL
+     */
+    body = msg->clean_body;
+    if (body == NULL)
+        body = msg->raw_body;
+    if (body == NULL)
+        body = "";
+
+    wrapped_body = wrap_ftn_body_for_skom(body);
+    if (wrapped_body == NULL)
         return NULL;
 
     need = 1024;
@@ -2067,16 +2266,16 @@ build_ftn_mbuf(const char *area, const struct fido_msg *msg,
     need += strlen(msg->msgid);
     need += strlen(msg->reply);
     need += strlen(msg->chrs);
-	
-	if (unsafe_reason != NULL && *unsafe_reason != '\0')
-    need += strlen("FTN-Unsafe: ") + strlen(unsafe_reason) + 1; /* modified on 2026-06-11, PL */
-    
-    if (msg->raw_body != NULL)
-        need += strlen(msg->raw_body);
+    need += strlen(wrapped_body);
+
+    if (unsafe_reason != NULL && *unsafe_reason != '\0')
+        need += strlen("FTN-Unsafe: ") + strlen(unsafe_reason) + 1; /* modified on 2026-06-13, PL */
 
     mbuf = (char *)calloc(1, need);
-    if (mbuf == NULL)
+    if (mbuf == NULL) {
+        free(wrapped_body);
         return NULL;
+    }
 
     snprintf(mbuf, need,
         "From: %s\n"
@@ -2107,27 +2306,17 @@ build_ftn_mbuf(const char *area, const struct fido_msg *msg,
         strlcat(mbuf, msg->chrs, need);     /* modified on 2026-06-09, PL */
         strlcat(mbuf, "\n", need);          /* modified on 2026-06-09, PL */
     }
-	
-	if (unsafe_reason != NULL && *unsafe_reason != '\0') {
-    /*
-     * Mark unsafe FTN fallback imports so SklaffKOM can later filter
-     * or display them differently.
-     *
-     * modified on 2026-06-11, PL
-     */
-    strlcat(mbuf, "FTN-Unsafe: ", need);     /* modified on 2026-06-11, PL */
-    strlcat(mbuf, unsafe_reason, need);      /* modified on 2026-06-11, PL */
-    strlcat(mbuf, "\n", need);              /* modified on 2026-06-11, PL */
-	}
-	
-    strlcat(mbuf, "\n", need);              /* modified on 2026-06-09, PL */
 
-    /*
-     * Preserve original FTN kludges/body. This keeps real 0x01 kludge bytes
-     * in the stored text, just like FTN expects.
-     */
-    if (msg->raw_body != NULL)
-        strlcat(mbuf, msg->raw_body, need); /* modified on 2026-06-09, PL */
+    if (unsafe_reason != NULL && *unsafe_reason != '\0') {
+        strlcat(mbuf, "FTN-Unsafe: ", need); /* modified on 2026-06-13, PL */
+        strlcat(mbuf, unsafe_reason, need);  /* modified on 2026-06-13, PL */
+        strlcat(mbuf, "\n", need);           /* modified on 2026-06-13, PL */
+    }
+
+    strlcat(mbuf, "\n", need);              /* modified on 2026-06-09, PL */
+    strlcat(mbuf, wrapped_body, need);      /* modified on 2026-06-13, PL */
+
+    free(wrapped_body);
 
     return mbuf;
 }
@@ -2651,11 +2840,11 @@ main(int argc, char **argv)
         fprintf(stderr, "       %s --import-one <FTN-area> <file.msg>\n", argv[0]);
         fprintf(stderr, "       %s --import-all <FTN-area>\n", argv[0]);
         fprintf(stderr, "       %s --import-all <FTN-area> --include-unsafe\n", argv[0]);
-        fprintf(stderr, "       %s --diagnose <FTN-area>\n\n", argv[0]);
-        fprintf(stderr, "  		%s --diagnose <FTN-area> --include-unsafe\n", argv[0]);
+        fprintf(stderr, "       %s --diagnose <FTN-area>\n", argv[0]);
+        fprintf(stderr, "       %s --diagnose <FTN-area> --include-unsafe\n", argv[0]);
         fprintf(stderr, "       %s --import-all-areas\n", argv[0]);
-		fprintf(stderr, "       %s --import-all-areas --include-unsafe\n", argv[0]);
-		fprintf(stderr, "       %s --export-test <FTN-area>\n", argv[0]);
+        fprintf(stderr, "       %s --import-all-areas --include-unsafe\n", argv[0]);
+        fprintf(stderr, "       %s --export-test <FTN-area>\n\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
