@@ -3337,8 +3337,20 @@ if (rc != NULL) {
         non_critical();
         dlog(6, "cmd_comment: reply pointer updated %ld:%d", savednum, Uid);
     }
-    if (Current_conf) {
-        mark_as_read(savednum, nc);
+		if (Current_conf) {
+			mark_as_read(savednum, nc);
+
+			/*
+			* Export local FTN comments after the SklaffKOM text has been
+			* saved and local reply pointers have been updated.  ftntoss
+			* reads the saved SklaffKOM header and adds REPLY when the parent
+			* text has an FTN-MSGID.
+			*
+			* modified on 2026-06-14, PL
+			*/
+        ce = get_conf_struct(nc);
+        export_ftn_post_if_needed(ce, savednum); /* modified on 2026-06-14, PL */
+
         output("%s %ld %s\n\n", MSG_TEXTNAME, savednum, MSG_SAVED2);
         if (nc == Current_conf)
             Last_text = savednum;
