@@ -68,6 +68,7 @@ WHOOBJ=sklaffwho.o
 ACCTOBJ=sklaffacct.o
 MTOSSOBJ=mailtoss.o mailparse.o 
 NTOSSOBJ=newstoss.o
+FTNTOBJ=ftntoss.o ftnmsg.o
 SURVREPOBJ=survreport.o
 FTCOBJ=forwardtoconf.o
 FTYOBJ=forwardtoyell.o
@@ -75,7 +76,7 @@ FTYOBJ=forwardtoyell.o
 SKLAFFLIB=lib/libsklaff.a
 
 #newstoss was missing below, added 2025-07-14
-all: $(SKLAFFLIB) sklaffkom sklaffadm sklaffacct newstoss mailtoss survreport sklaffwho
+all: $(SKLAFFLIB) sklaffkom sklaffadm sklaffacct newstoss mailtoss ftntoss survreport sklaffwho
 
 $(OBJS): sklaff.h ext_globals.h struct.h lang.h
 $(KOMOBJ): sklaff.h globals.h struct.h lang.h
@@ -84,6 +85,7 @@ $(WHOOBJ): sklaff.h globals.h struct.h lang.h
 $(ACCTOBJ): sklaff.h globals.h struct.h lang.h
 $(MTOSSOBJ): sklaff.h globals.h struct.h lang.h
 $(NTOSSOBJ): sklaff.h globals.h struct.h lang.h
+$(FTNTOBJ): sklaff.h struct.h ftnmsg.h
 $(SURVREPOBJ): sklaff.h globals.h struct.h lang.h
 $(FTCOBJ): sklaff.h globals.h struct.h lang.h
 $(FTYOBJ): sklaff.h globals.h struct.h lang.h
@@ -116,6 +118,10 @@ newstoss: $(SKLAFFLIB) $(NTOSSOBJ) $(OBJS)
 	$(CC) -o newstoss $(NTOSSOBJ) $(OBJS) -Llib $(LIBS)
 #	strip newstoss
 
+ftntoss: $(FTNTOBJ)
+	$(CC) -o ftntoss $(FTNTOBJ) $(CFLAGS) -lbsd
+#	strip ftntoss
+
 survreport: $(SKLAFFLIB) $(SURVREPOBJ) $(OBJS)
 	$(CC) -o survreport $(SURVREPOBJ) $(OBJS) -Llib $(LIBS)
 	strip survreport
@@ -134,7 +140,7 @@ version.c:
 $(SKLAFFLIB):
 	(cd lib; $(MAKE) CC=$(CC) CFLAGS='$(CFLAGS) -I..')
 
-install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss
+install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss ftntoss
 	@echo Making libraries
 	-mkdir $(SKLAFFDIR)
 	-mkdir $(SKLAFFDIR)/etc
@@ -150,14 +156,18 @@ install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss
 	chmod u+s $(SKLAFFBIN)/sklaffkom $(SKLAFFBIN)/sklaffacct $(SKLAFFBIN)/sklaffwho
 	chmod og-rxw $(SKLAFFBIN)/sklaffadm
 	-chmod 4755   $(SKLAFFBIN)/srep
-	cp newstoss mailtoss $(SKLAFFDIR)/etc
+	cp newstoss mailtoss ftntoss $(SKLAFFDIR)/etc
 	cp newstoss $(SKLAFFDIR)/etc/ntoss
 	cp mailtoss $(SKLAFFDIR)/etc/mtoss
 	# Better copy mailtoss and newstoss to sklaffbin also
 	cp mailtoss $(SKLAFFBIN)
 	cp newstoss $(SKLAFFBIN)
-	-chown root $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss
-	-chmod og-rxw $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss
+	cp ftntoss $(SKLAFFBIN)
+	cp etc/ftnqueue-runner $(SKLAFFBIN)/ftnqueue-runner
+	chown root $(SKLAFFBIN)/ftnqueue-runner
+	chmod 755 $(SKLAFFBIN)/ftnqueue-runner
+	-chown root $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss
+	-chmod og-rxw $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss
 installdb:
 	@echo Installing datafiles
 	-mkdir $(SKLAFFDIR)
@@ -167,6 +177,16 @@ installdb:
 	mkdir $(SKLAFFDIR)/db
 	chown $(SKLAFFUSER) $(SKLAFFDIR)/db
 	chmod og-rwx $(SKLAFFDIR)/db
+	rm -rf $(SKLAFFDIR)/ftnqueue
+	mkdir $(SKLAFFDIR)/ftnqueue
+	chown $(SKLAFFUSER) $(SKLAFFDIR)/ftnqueue
+	chmod og-rwx $(SKLAFFDIR)/ftnqueue
+	mkdir $(SKLAFFDIR)/ftnqueue/tmp
+	chown $(SKLAFFUSER) $(SKLAFFDIR)/ftnqueue/tmp
+	chmod og-rwx $(SKLAFFDIR)/ftnqueue/tmp
+	mkdir $(SKLAFFDIR)/ftnqueue/pending
+	chown $(SKLAFFUSER) $(SKLAFFDIR)/ftnqueue/pending
+	chmod og-rwx $(SKLAFFDIR)/ftnqueue/pending
 	-rm -rf $(SKLAFFDIR)/user
 	mkdir $(SKLAFFDIR)/user
 	chown $(SKLAFFUSER) $(SKLAFFDIR)/user
@@ -201,7 +221,7 @@ installdb:
 
 clean:
 	(cd lib; make clean)
-	-rm -f *.o *.a \#* *~ core sklaffkom sklaffadm sklaffacct mailtoss newstoss survreport sklaffwho version.c
+	-rm -f *.o *.a \#* *~ core sklaffkom sklaffadm sklaffacct mailtoss newstoss ftntoss survreport sklaffwho version.c
 
 # distrib is rewritten 2025-08-16 by PL to work in our modern times
 

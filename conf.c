@@ -980,7 +980,6 @@ more_conf(void)
             break;
     }
 
-
     while ((buf2 = get_confs_entry(buf2, &cse))) {
         saveconf = cse.num;
         while (1) {
@@ -1061,11 +1060,23 @@ more_conf(void)
                     oldbuf2 = buf2;
                     if (close_file(fd2) == -1)
                         return -1;
-                    while ((buf2 = get_confs_entry(buf2, &cse))) {
-                        free_confs_entry(&cse);
-                        if (cse.num == saveconf)
-                            break;
-                    }
+					
+					while ((buf2 = get_confs_entry(buf2, &cse))) {
+						if (cse.num == saveconf)
+						break;
+						free_confs_entry(&cse);
+					}
+					
+					/*
+					 * We just rewrote the user's conference read interval because
+					 * the beginning of this conference has expired or missing text
+					 * files. Restart this conference using the refreshed entry,
+					 * otherwise more_conf() may keep probing the same missing text
+					 * forever.
+					 *
+					 * modified on 2026-06-13, PL
+					 */
+					continue;
                 } else {
                     free(oldbuf2);
                     free(oldbuf);
@@ -1166,11 +1177,24 @@ more_conf(void)
                     oldbuf2 = buf2;
                     if (close_file(fd2) == -1)
                         return -1;
-                    while ((buf2 = get_confs_entry(buf2, &cse))) {
-                        free_confs_entry(&cse);
-                        if (cse.num == saveconf)
-                            break;
-                    }
+                    
+					while ((buf2 = get_confs_entry(buf2, &cse))) {
+						if (cse.num == saveconf)
+							break;
+						free_confs_entry(&cse);
+					}
+						
+						/*
+						* We just rewrote the user's conference read interval because
+						* the beginning of this conference has expired or missing text
+						* files. Restart this conference using the refreshed entry,
+						* otherwise more_conf() may keep probing the same missing text
+						* forever.
+						*
+						* modified on 2026-06-13, PL
+						*/
+						continue;
+
                 } else {
                     free(oldbuf2);
                     free(oldbuf);
