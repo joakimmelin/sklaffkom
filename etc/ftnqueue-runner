@@ -1,0 +1,39 @@
+#!/bin/sh
+
+SKLAFFDIR=/usr/local/sklaff
+SKLAFFBIN=/usr/local/bin
+QUEUE="$SKLAFFDIR/ftnqueue"
+PENDING="$QUEUE/pending"
+LOCK="$QUEUE/runner.lock"
+
+if ! mkdir "$LOCK" 2>/dev/null; then
+    exit 0
+fi
+
+trap 'rmdir "$LOCK"' EXIT HUP INT TERM
+
+for job in "$PENDING"/*; do
+    [ -f "$job" ] || continue
+
+    IFS=: read area textnum created < "$job" || continue
+
+    case "$area" in
+        ''|*[!A-Za-z0-9_.-]*)
+            mv "$job" "$job.bad" 2>/dev/null || rm -f "$job"
+            continue
+            ;;
+    esac
+
+    case "$textnum" in
+        ''|*[!0-9]*)
+            mv "$job" "$job.bad" 2>/dev/null || rm -f "$job"
+            continue
+            ;;
+    esac
+
+    if "$SKLAFFBIN/ftntoss" --export-one "$area" "$textnum" >/dev/null 2>&1; then
+        rm -f "$job"
+    fi
+done
+
+exit 0

@@ -163,6 +163,9 @@ install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss ftntoss
 	cp mailtoss $(SKLAFFBIN)
 	cp newstoss $(SKLAFFBIN)
 	cp ftntoss $(SKLAFFBIN)
+	cp etc/ftnqueue-runner $(SKLAFFBIN)/ftnqueue-runner
+	chown root $(SKLAFFBIN)/ftnqueue-runner
+	chmod 755 $(SKLAFFBIN)/ftnqueue-runner
 	-chown root $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss
 	-chmod og-rxw $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss
 installdb:
@@ -174,6 +177,16 @@ installdb:
 	mkdir $(SKLAFFDIR)/db
 	chown $(SKLAFFUSER) $(SKLAFFDIR)/db
 	chmod og-rwx $(SKLAFFDIR)/db
+	rm -rf $(SKLAFFDIR)/ftnqueue
+	mkdir $(SKLAFFDIR)/ftnqueue
+	chown $(SKLAFFUSER) $(SKLAFFDIR)/ftnqueue
+	chmod og-rwx $(SKLAFFDIR)/ftnqueue
+	mkdir $(SKLAFFDIR)/ftnqueue/tmp
+	chown $(SKLAFFUSER) $(SKLAFFDIR)/ftnqueue/tmp
+	chmod og-rwx $(SKLAFFDIR)/ftnqueue/tmp
+	mkdir $(SKLAFFDIR)/ftnqueue/pending
+	chown $(SKLAFFUSER) $(SKLAFFDIR)/ftnqueue/pending
+	chmod og-rwx $(SKLAFFDIR)/ftnqueue/pending
 	-rm -rf $(SKLAFFDIR)/user
 	mkdir $(SKLAFFDIR)/user
 	chown $(SKLAFFUSER) $(SKLAFFDIR)/user
