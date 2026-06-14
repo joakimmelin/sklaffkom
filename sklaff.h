@@ -56,8 +56,8 @@
 
 /* For "batch" command */
 
-#define SKLAFF_ID	"SKOM II"
-#define SKLAFF_LOC	"Stockholm, Sweden"
+#define SKLAFF_ID	"Twilight Node"
+#define SKLAFF_LOC	"Solvesborg, Sweden"
 #define SKLAFF_NUM	"+46-8-7021174"
 #define SKLAFF_SYSOP	"Peter London"
 
@@ -403,6 +403,9 @@ void human_size(off_t bytes, char *out, size_t outsz);									/* For 1024-based
 void display_langfile(const char *base, const char *base_eng, const char *base_swe);        /* Support for multilingual display of files (news etc) 2025-09-24 PL */
 void display_news(void);
 void display_logout(void);
+
+/* lib/ftn.c */
+void export_ftn_post_if_needed(struct CONF_ENTRY *ce, long textnum); /* modified on 2026-06-14, PL */
 
 /* lib/misc.c */
 int quote_depth(const char *s);                                                         /* Usenet quotes in colors 2025-08-31 PL */

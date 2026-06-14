@@ -7,7 +7,7 @@ lock.o unlock.o input.o input.o output.o down_string.o up_string.o\
 time_string.o sys_error.o file_size.o rawio.o user_dir.o cmp_strings.o\
 copy_file.o wc.o rtrim.o ltrim.o parse_string.o file_exists.o hostname.o\
 sort_util.o prog_name.o mbox_dir.o compat.o misc.o ui.o display_header.o\
-display_langfile.o
+display_langfile.o ftn.o
 
 #
 # Include for debugging

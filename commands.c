@@ -2834,7 +2834,8 @@ cmd_post_text(char *args)
         Last_text = textnum;
     }
     mark_as_read(textnum, confid);
-    dlog(6, "cmd_post_text: leave (saved local text %ld in conf %d)", textnum, confid);
+    export_ftn_post_if_needed(ce, textnum); /* modified on 2026-06-14, PL */
+	dlog(6, "cmd_post_text: leave (saved local text %ld in conf %d)", textnum, confid);
     return 0;
 }
 
