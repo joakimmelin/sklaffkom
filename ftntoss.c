@@ -87,7 +87,36 @@ struct msgitem {
     struct msgitem *next;
 };
 
+struct import_one_args {
+    const char *area;
+    const char *filename;
+};
+
+struct import_area_args {
+    const char *area;
+    int include_unsafe;
+};
+
+struct import_all_areas_args {
+    int include_unsafe;
+};
+
+struct export_one_args {
+    const char *area;
+    long textnum;
+}; /* modified on 2026-06-14, PL */
+
 static int export_test_ftn(const char *area);
+
+static int export_one_ftn(const char *area, long textnum); /* modified on 2026-06-14, PL */
+static unsigned long make_export_one_serial(int confnum, long textnum); /* modified on 2026-06-14, PL */
+static int read_skom_export_text(int confnum, long textnum,
+    long *out_uid, long *out_time, long *out_com,
+    char *subject, size_t subjectsz, char **out_body); /* modified on 2026-06-14, PL */
+static int read_skom_ftn_msgid(int confnum, long textnum,
+    char *out, size_t outsz); /* modified on 2026-06-14, PL */
+static void strip_eol(char *s); /* modified on 2026-06-14, PL */
+
 static int next_msg_path(const char *area, char *out, size_t outsz, long *out_num);
 static int write_fido_msg_out(const char *path, const char *area,
     const char *from, const char *to, const char *subject,
@@ -161,25 +190,13 @@ static int run_import_one_locked(void *arg);
 static int run_import_area_locked(void *arg);
 static int run_import_all_areas_locked(void *arg);
 
+static int run_export_one_locked(void *arg); /* modified on 2026-06-14, PL */
+
 static char *wrap_ftn_body_for_skom(const char *body);
 static void append_wrapped_segment(char *out, size_t outsz,
     const char *seg, size_t len);
 static void append_to_dynbuf(char **buf, size_t *cap, size_t *len,
     const char *text);
-
-struct import_one_args {
-    const char *area;
-    const char *filename;
-};
-
-struct import_area_args {
-    const char *area;
-    int include_unsafe;
-};
-
-struct import_all_areas_args {
-    int include_unsafe;
-};
 
 static void
 write_fixed_field(unsigned char *dst, size_t len, const char *src)
@@ -299,6 +316,22 @@ make_export_test_serial(const char *area, long msgnum)
      */
     return ((hash & 0xffffUL) << 16) |
         ((unsigned long)msgnum & 0xffffUL);
+}
+
+static unsigned long
+make_export_one_serial(int confnum, long textnum)
+{
+    /*
+     * Deterministic real-export serial:
+     * high 16 bits = local SklaffKOM conference number
+     * low 16 bits  = local SklaffKOM text number
+     *
+     * Example: conf 48, text 123 -> 0030007b
+     *
+     * modified on 2026-06-14, PL
+     */
+    return (((unsigned long)confnum & 0xffffUL) << 16) |
+        ((unsigned long)textnum & 0xffffUL);
 }
 
 static void
@@ -1479,6 +1512,189 @@ dump_import_text(const char *area, const struct ftn_conf_info *ce,
     return 0;
 }
 
+static void
+strip_eol(char *s)
+{
+    size_t len;
+
+    if (s == NULL)
+        return;
+
+    len = strlen(s);
+    while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
+        s[len - 1] = '\0';
+        len--;
+    }
+}
+
+static int
+read_skom_export_text(int confnum, long textnum, long *out_uid,
+    long *out_time, long *out_com, char *subject, size_t subjectsz,
+    char **out_body)
+{
+    FILE *fp;
+    char path[PATH_MAX];
+    char *buf;
+    char *p;
+    char *subj;
+    char *body;
+    long size;
+    long hdr_textnum;
+    long uid;
+    long when;
+    long com;
+    long dummy1;
+    long dummy2;
+    long lines;
+
+    if (subject == NULL || subjectsz == 0 || out_body == NULL)
+        return -1;
+
+    *out_body = NULL;
+    subject[0] = '\0';
+
+    if (snprintf(path, sizeof(path), "%s/db/%d/%ld",
+            SKLAFFDIR, confnum, textnum) >= (int)sizeof(path)) {
+        fprintf(stderr, "[ERROR] SklaffKOM text path too long\n");
+        return -1;
+    }
+
+    fp = fopen(path, "rb");
+    if (fp == NULL) {
+        perror(path);
+        return -1;
+    }
+
+    if (fseek(fp, 0L, SEEK_END) != 0) {
+        perror(path);
+        fclose(fp);
+        return -1;
+    }
+
+    size = ftell(fp);
+    if (size < 0) {
+        perror(path);
+        fclose(fp);
+        return -1;
+    }
+
+    if (fseek(fp, 0L, SEEK_SET) != 0) {
+        perror(path);
+        fclose(fp);
+        return -1;
+    }
+
+    buf = (char *)calloc(1, (size_t)size + 1);
+    if (buf == NULL) {
+        fclose(fp);
+        return -1;
+    }
+
+    if (size > 0 && fread(buf, 1, (size_t)size, fp) != (size_t)size) {
+        perror(path);
+        free(buf);
+        fclose(fp);
+        return -1;
+    }
+
+    fclose(fp);
+
+    p = strchr(buf, '\n');
+    if (p == NULL) {
+        fprintf(stderr, "[ERROR] SklaffKOM text %ld has no subject line\n",
+            textnum);
+        free(buf);
+        return -1;
+    }
+
+    *p++ = '\0';
+    strip_eol(buf);
+
+    if (sscanf(buf, "%ld:%ld:%ld:%ld:%ld:%ld:%ld",
+            &hdr_textnum, &uid, &when, &com, &dummy1, &dummy2,
+            &lines) < 4) {
+        fprintf(stderr, "[ERROR] Could not parse SklaffKOM text header: %s\n",
+            buf);
+        free(buf);
+        return -1;
+    }
+
+    subj = p;
+    p = strchr(subj, '\n');
+    if (p != NULL) {
+        *p++ = '\0';
+        body = p;
+    } else {
+        body = "";
+    }
+
+    strip_eol(subj);
+
+    if (*subj != '\0')
+        strlcpy(subject, subj, subjectsz);
+    else
+        strlcpy(subject, "(no subject)", subjectsz);
+
+    *out_body = (char *)calloc(1, strlen(body) + 1);
+    if (*out_body == NULL) {
+        free(buf);
+        return -1;
+    }
+
+    strlcpy(*out_body, body, strlen(body) + 1);
+
+    if (out_uid != NULL)
+        *out_uid = uid;
+    if (out_time != NULL)
+        *out_time = when;
+    if (out_com != NULL)
+        *out_com = com;
+
+    free(buf);
+    return 0;
+}
+
+static int
+read_skom_ftn_msgid(int confnum, long textnum, char *out, size_t outsz)
+{
+    FILE *fp;
+    char path[PATH_MAX];
+    char line[1024];
+    char *p;
+
+    if (out == NULL || outsz == 0)
+        return -1;
+
+    out[0] = '\0';
+
+    if (snprintf(path, sizeof(path), "%s/db/%d/%ld",
+            SKLAFFDIR, confnum, textnum) >= (int)sizeof(path))
+        return -1;
+
+    fp = fopen(path, "r");
+    if (fp == NULL)
+        return -1;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        strip_eol(line);
+
+        if (strncmp(line, "FTN-MSGID:", 10) == 0) {
+            p = line + 10;
+            while (*p != '\0' && isspace((unsigned char)*p))
+                p++;
+
+            if (*p != '\0') {
+                strlcpy(out, p, outsz);
+                fclose(fp);
+                return 0;
+            }
+        }
+    }
+
+    fclose(fp);
+    return -1;
+}
+
 static int
 export_test_ftn(const char *area)
 {
@@ -1566,6 +1782,97 @@ export_test_ftn(const char *area)
         body,
         NULL,
         msgid);
+}
+
+static int
+export_one_ftn(const char *area, long textnum)
+{
+    struct ftn_conf_info ce;
+    char path[PATH_MAX];
+    char subject[256];
+    char msgid[128];
+    char reply[256];
+    char *body = NULL;
+    long msgnum = 0;
+    long uid = 0;
+    long when = 0;
+    long com = 0;
+    unsigned long serial;
+    int rc;
+
+    if (area == NULL || *area == '\0' || textnum <= 0)
+        return -1;
+
+    printf("ftntoss export-one starting\n");
+    printf("===========================\n\n");
+
+    printf("Checking conference: %s... ", area);
+    fflush(stdout);
+
+    if (find_ftn_conf(area, &ce) != 0) {
+        printf("FAILED\n");
+        fprintf(stderr, "[ERROR] Could not find FTN conference '%s'\n", area);
+        return -1;
+    }
+
+    printf("OK!\n");
+
+    if (ce.type != FTN_CONF) {
+        fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
+            area, ce.type);
+        return -1;
+    }
+
+    if (read_skom_export_text(ce.num, textnum, &uid, &when, &com,
+            subject, sizeof(subject), &body) != 0)
+        return -1;
+
+    if (next_msg_path(area, path, sizeof(path), &msgnum) != 0) {
+        free(body);
+        return -1;
+    }
+
+    serial = make_export_one_serial(ce.num, textnum);
+    make_ftn_msgid(msgid, sizeof(msgid), serial);
+
+    reply[0] = '\0';
+    if (com > 0)
+        (void)read_skom_ftn_msgid(ce.num, com, reply, sizeof(reply));
+
+    printf("FTN export-one setup\n");
+    printf("--------------------\n");
+    printf("BBS name:   %s\n", SKLAFF_ID);
+    printf("Hostname:   %s\n", MACHINE_NAME);
+    printf("Location:   %s\n", SKLAFF_LOC);
+    printf("Sysop:      %s\n", SKLAFF_SYSOP);
+    printf("Area:       %s\n", area);
+    printf("Conf num:   %d\n", ce.num);
+    printf("Conf type:  %d (FTN_CONF)\n", ce.type);
+    printf("Text num:   %ld\n", textnum);
+    printf("Text uid:   %ld\n", uid);
+    printf("Comment to: %ld\n", com);
+    printf("Subject:    %s\n", subject);
+    printf("MSGID:      %s\n", msgid);
+    if (reply[0] != '\0')
+        printf("REPLY:      %s\n", reply);
+    printf("Output:     %s\n\n", path);
+
+    /*
+     * First export-one version uses SKLAFF_SYSOP as the sender name.
+     * Later we can map the SklaffKOM text uid to the real user name.
+     *
+     * modified on 2026-06-14, PL
+     */
+    rc = write_fido_msg_out(path, area,
+        SKLAFF_SYSOP,
+        "All",
+        subject,
+        body,
+        reply[0] != '\0' ? reply : NULL,
+        msgid);
+
+    free(body);
+    return rc;
 }
 
 static int
@@ -2777,6 +3084,17 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
 }
 
 static int
+run_export_one_locked(void *arg)
+{
+    struct export_one_args *a = arg;
+
+    if (a == NULL)
+        return -1;
+
+    return export_one_ftn(a->area, a->textnum);
+}
+
+static int
 run_import_one_locked(void *arg)
 {
     struct import_one_args *a = arg;
@@ -2813,6 +3131,24 @@ int
 main(int argc, char **argv)
 {
     struct ftn_conf_info ce;
+    
+        if (argc == 4 && strcmp(argv[1], "--export-one") == 0) {
+        struct export_one_args a;
+        char *endp;
+        long textnum;
+
+        errno = 0;
+        textnum = strtol(argv[3], &endp, 10);
+        if (errno != 0 || endp == argv[3] || *endp != '\0' || textnum <= 0) {
+            fprintf(stderr, "[ERROR] Invalid text number: %s\n", argv[3]);
+            return 1;
+        }
+
+        a.area = argv[2];
+        a.textnum = textnum;
+
+        return run_with_lock(run_export_one_locked, &a) == 0 ? 0 : 1;
+    }
     
     if (argc == 3 && strcmp(argv[1], "--export-test") == 0) {
     return export_test_ftn(argv[2]) == 0 ? 0 : 1;
@@ -2896,6 +3232,7 @@ main(int argc, char **argv)
         fprintf(stderr, "       %s --import-all-areas\n", argv[0]);
         fprintf(stderr, "       %s --import-all-areas --include-unsafe\n", argv[0]);
         fprintf(stderr, "       %s --export-test <FTN-area>\n\n", argv[0]);
+        fprintf(stderr, "       %s --export-one <FTN-area> <textnum>\n", argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s FSX_GEN\n", argv[0]);
         fprintf(stderr, "  %s --dump-import FSX_BBS 32.msg\n\n", argv[0]);
