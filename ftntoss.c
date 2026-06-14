@@ -1521,8 +1521,7 @@ export_test_ftn(const char *area)
     snprintf(body, sizeof(body),
         "This is a SklaffKOM/ftntoss echomail export test.\n"
         "\n"
-        "(Testing again with fully compliant MSGID (hopefully)."
-		"\n"
+        "\n"
 		"BBS name:      %s\n"
         "Hostname:      %s\n"
         "Location:      %s\n"
