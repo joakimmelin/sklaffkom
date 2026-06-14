@@ -1,19 +1,4 @@
-/*
- * ftntoss.c - FTN .MSG dry-run tosser for SklaffKOM
- *
- * Current version:
- *   - does NOT import anything
- *   - finds SklaffKOM conference by area name
- *   - verifies conference type == FTN_CONF
- *   - scans FTN_SPOOL/<area> for *.msg
- *   - parses each .MSG using ftnmsg.c
- *   - builds an in-memory MSGID -> filename map
- *   - scans existing SklaffKOM texts for ^AMSGID
- *   - creates a multi-pass dry-run import plan
- *   - prints verbose debug output, including reply/thread resolution
- *
- * modified on 2026-06-09, PL
- */
+/* ftntoss.c */
 
 #include "sklaff.h"
 #include "ftnmsg.h"
@@ -29,6 +14,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <pwd.h> /* modified on 2026-06-14, PL */
 
 #define FTNTOSS_LOCKFILE "/tmp/ftntoss.lock" /* modified on 2026-06-11, PL */
 #define FTN_WRAP_COL 78 /* modified on 2026-06-13, PL */
@@ -191,6 +177,7 @@ static int run_import_area_locked(void *arg);
 static int run_import_all_areas_locked(void *arg);
 
 static int run_export_one_locked(void *arg); /* modified on 2026-06-14, PL */
+static void make_skom_from_name(long uid, char *out, size_t outsz); /* modified on 2026-06-14, PL */
 
 static char *wrap_ftn_body_for_skom(const char *body);
 static void append_wrapped_segment(char *out, size_t outsz,
@@ -1784,6 +1771,55 @@ export_test_ftn(const char *area)
         msgid);
 }
 
+static void
+make_skom_from_name(long uid, char *out, size_t outsz)
+{
+    struct passwd *pw;
+    char gecos[128];
+    char *comma;
+
+    if (out == NULL || outsz == 0)
+        return;
+
+    out[0] = '\0';
+
+    if (uid <= 0) {
+        strlcpy(out, SKLAFF_SYSOP, outsz);
+        return;
+    }
+
+    pw = getpwuid((uid_t)uid);
+    if (pw == NULL) {
+        strlcpy(out, SKLAFF_SYSOP, outsz);
+        return;
+    }
+
+    /*
+     * Prefer the Unix GECOS/full name field when available, but strip the
+     * comma-separated extra fields.  Fall back to login name if GECOS is
+     * empty.  This keeps ftntoss standalone while still giving outgoing
+     * FTN messages a useful local sender name.
+     *
+     * modified on 2026-06-14, PL
+     */
+    if (pw->pw_gecos != NULL && pw->pw_gecos[0] != '\0') {
+        strlcpy(gecos, pw->pw_gecos, sizeof(gecos));
+        comma = strchr(gecos, ',');
+        if (comma != NULL)
+            *comma = '\0';
+
+        if (gecos[0] != '\0') {
+            strlcpy(out, gecos, outsz);
+            return;
+        }
+    }
+
+    if (pw->pw_name != NULL && pw->pw_name[0] != '\0')
+        strlcpy(out, pw->pw_name, outsz);
+    else
+        strlcpy(out, SKLAFF_SYSOP, outsz);
+}
+
 static int
 export_one_ftn(const char *area, long textnum)
 {
@@ -1792,12 +1828,14 @@ export_one_ftn(const char *area, long textnum)
     char subject[256];
     char msgid[128];
     char reply[256];
-    char *body = NULL;
+    char from[128]; /* modified on 2026-06-14, PL */
+	char *body = NULL;
     long msgnum = 0;
     long uid = 0;
     long when = 0;
     long com = 0;
     unsigned long serial;
+    unsigned long reply_serial; /* modified on 2026-06-14, PL */
     int rc;
 
     if (area == NULL || *area == '\0' || textnum <= 0)
@@ -1827,6 +1865,8 @@ export_one_ftn(const char *area, long textnum)
             subject, sizeof(subject), &body) != 0)
         return -1;
 
+    make_skom_from_name(uid, from, sizeof(from)); /* modified on 2026-06-14, PL */
+
     if (next_msg_path(area, path, sizeof(path), &msgnum) != 0) {
         free(body);
         return -1;
@@ -1835,9 +1875,23 @@ export_one_ftn(const char *area, long textnum)
     serial = make_export_one_serial(ce.num, textnum);
     make_ftn_msgid(msgid, sizeof(msgid), serial);
 
-    reply[0] = '\0';
-    if (com > 0)
-        (void)read_skom_ftn_msgid(ce.num, com, reply, sizeof(reply));
+     reply[0] = '\0';
+
+    if (com > 0) {
+        if (read_skom_ftn_msgid(ce.num, com, reply, sizeof(reply)) != 0) {
+            /*
+             * Parent text has no stored FTN-MSGID.  This normally means it
+             * was written locally in SklaffKOM and exported using our
+             * deterministic MSGID scheme.  Recreate that parent MSGID so
+             * replies to local SklaffKOM-originated FTN texts remain proper
+             * FTN replies instead of becoming new top-level messages.
+             *
+             * modified on 2026-06-14, PL
+             */
+            reply_serial = make_export_one_serial(ce.num, com);
+            make_ftn_msgid(reply, sizeof(reply), reply_serial);
+        }
+    };
 
     printf("FTN export-one setup\n");
     printf("--------------------\n");
@@ -1850,6 +1904,7 @@ export_one_ftn(const char *area, long textnum)
     printf("Conf type:  %d (FTN_CONF)\n", ce.type);
     printf("Text num:   %ld\n", textnum);
     printf("Text uid:   %ld\n", uid);
+    printf("From:       %s\n", from);
     printf("Comment to: %ld\n", com);
     printf("Subject:    %s\n", subject);
     printf("MSGID:      %s\n", msgid);
@@ -1857,20 +1912,21 @@ export_one_ftn(const char *area, long textnum)
         printf("REPLY:      %s\n", reply);
     printf("Output:     %s\n\n", path);
 
-    /*
-     * First export-one version uses SKLAFF_SYSOP as the sender name.
-     * Later we can map the SklaffKOM text uid to the real user name.
-     *
-     * modified on 2026-06-14, PL
-     */
-    rc = write_fido_msg_out(path, area,
-        SKLAFF_SYSOP,
+	/*
+	* Use the local SklaffKOM text author uid as the FTN From name.
+	* make_skom_from_name() keeps ftntoss standalone by resolving the uid
+	* through the local passwd database.
+	*
+	* modified on 2026-06-14, PL
+	*/
+	
+	rc = write_fido_msg_out(path, area,
+        from,
         "All",
         subject,
         body,
         reply[0] != '\0' ? reply : NULL,
         msgid);
-
     free(body);
     return rc;
 }
