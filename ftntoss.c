@@ -91,11 +91,12 @@ static int export_test_ftn(const char *area);
 static int next_msg_path(const char *area, char *out, size_t outsz, long *out_num);
 static int write_fido_msg_out(const char *path, const char *area,
     const char *from, const char *to, const char *subject,
-    const char *body, const char *reply);
+    const char *body, const char *reply, const char *msgid);
 static void write_fixed_field(unsigned char *dst, size_t len, const char *src);
 static void write_u16_le(unsigned char *dst, unsigned int val);
 static void make_fido_date(char *out, size_t outsz);
-static void make_ftn_msgid(char *out, size_t outsz, const char *area, long seq);
+static void make_ftn_msgid(char *out, size_t outsz, unsigned long serial);
+static unsigned long make_export_test_serial(const char *area, long msgnum);
 
 static int find_ftn_conf(const char *name, struct ftn_conf_info *out_ce);
 static int is_msg_file(const char *name);
@@ -256,27 +257,48 @@ make_ftn_addr(char *out, size_t outsz, int zone, int net, int node, int point)
 }
 
 static void
-make_ftn_msgid(char *out, size_t outsz, const char *area, long seq)
+make_ftn_msgid(char *out, size_t outsz, unsigned long serial)
 {
-    unsigned long t;
     char addr[64];
 
     if (out == NULL || outsz == 0)
         return;
 
-    t = (unsigned long)time(NULL);
     make_ftn_addr(addr, sizeof(addr), FTN_OUR_ZONE, FTN_OUR_NET,
         FTN_OUR_NODE, FTN_OUR_POINT);
 
     /*
-     * Make a stable-enough test MSGID for outgoing FSX echomail.
-     * Later export-one should base this on SklaffKOM conf/text number.
-     * modified on 2026-06-13, PL
+     * FTS-0009 MSGID format is:
+     *
+     *   ^AMSGID: <origin-address> <8-hex-digit-serial>
+     *
+     * Keep the serial field at exactly eight hexadecimal digits.
+     *
+     * modified on 2026-06-14, PL
      */
-    snprintf(out, outsz, "%s %08lx%04lx",
-        addr, t, (unsigned long)(seq & 0xffff));
+    snprintf(out, outsz, "%s %08lx", addr, serial & 0xffffffffUL);
+}
 
-    (void)area;
+static unsigned long
+make_export_test_serial(const char *area, long msgnum)
+{
+    unsigned long hash = 5381UL;
+    const unsigned char *p;
+
+    if (area != NULL) {
+        for (p = (const unsigned char *)area; *p != '\0'; p++)
+            hash = ((hash << 5) + hash) ^ (unsigned long)(*p);
+    }
+
+    /*
+     * Deterministic test serial:
+     * high 16 bits = area hash
+     * low 16 bits  = local outgoing .MSG number
+     *
+     * modified on 2026-06-14, PL
+     */
+    return ((hash & 0xffffUL) << 16) |
+        ((unsigned long)msgnum & 0xffffUL);
 }
 
 static void
@@ -512,21 +534,20 @@ next_msg_path(const char *area, char *out, size_t outsz, long *out_num)
 static int
 write_fido_msg_out(const char *path, const char *area,
     const char *from, const char *to, const char *subject,
-    const char *body, const char *reply)
+    const char *body, const char *reply, const char *msgid)
 {
     FILE *fp;
     unsigned char hdr[190];
     char datebuf[32];
-    char msgid[128];
 
     if (path == NULL || area == NULL || from == NULL || to == NULL ||
-            subject == NULL || body == NULL)
+            subject == NULL || body == NULL || msgid == NULL ||
+            *msgid == '\0')
         return -1;
 
     memset(hdr, 0, sizeof(hdr));
 
     make_fido_date(datebuf, sizeof(datebuf));
-    make_ftn_msgid(msgid, sizeof(msgid), area, (long)getpid());
 
     /*
      * Fido .MSG header:
@@ -1465,6 +1486,8 @@ export_test_ftn(const char *area)
     char path[PATH_MAX];
     long msgnum = 0;
     char body[1024];
+    char msgid[128];
+    unsigned long serial;
 
     if (area == NULL || *area == '\0')
         return -1;
@@ -1491,11 +1514,16 @@ export_test_ftn(const char *area)
 
     if (next_msg_path(area, path, sizeof(path), &msgnum) != 0)
         return -1;
+        
+		serial = make_export_test_serial(area, msgnum);
+		make_ftn_msgid(msgid, sizeof(msgid), serial);
 
     snprintf(body, sizeof(body),
         "This is a SklaffKOM/ftntoss echomail export test.\n"
         "\n"
-        "BBS name:      %s\n"
+        "(Testing again with fully compliant MSGID (hopefully)."
+		"\n"
+		"BBS name:      %s\n"
         "Hostname:      %s\n"
         "Location:      %s\n"
         "Sysop:         %s\n"
@@ -1503,18 +1531,21 @@ export_test_ftn(const char *area)
         "FTN area:      %s\n"
         "Local conf:    %d\n"
         "Local msg no:  %ld\n"
+        "FTN MSGID:     %s\n"
+
         "\n"
         "If you can read this message, outgoing FTN echomail from this\n"
         "SklaffKOM system appears to be working.\n"
         "\n"
-        "Please reply if you can. Thanks!\n",
+        "Please reply if you can. Thanks!\n\n",
         SKLAFF_ID,
         MACHINE_NAME,
         SKLAFF_LOC,
         SKLAFF_SYSOP,
         area,
         ce.num,
-        msgnum);
+        msgnum,
+        msgid);
 
     printf("FTN export-test setup\n");
     printf("---------------------\n");
@@ -1526,14 +1557,16 @@ export_test_ftn(const char *area)
     printf("Conf num:   %d\n", ce.num);
     printf("Conf type:  %d (FTN_CONF)\n", ce.type);
     printf("Msg no:     %ld\n", msgnum);
+    printf("MSGID:      %s\n", msgid);
     printf("Output:     %s\n\n", path);
 
-    return write_fido_msg_out(path, area,
+	return write_fido_msg_out(path, area,
         SKLAFF_SYSOP,
         "All",
         SKLAFF_ID " FTN export test",
         body,
-        NULL);
+        NULL,
+        msgid);
 }
 
 static int
