@@ -1,0 +1,27 @@
+Arguments:
+  (<Conference>)
+
+Description:
+  This command lets the creator of a conference assign another
+  conference as its comment conference. A comment conference can be
+  used to place comments on texts in a separate conference, for example
+  if you want to keep information and the following discussion apart.
+
+  If no argument is given, the setting for your current conference is
+  changed. If a conference is given as an argument, that conference is
+  used instead. You will then be asked which existing conference should
+  be used as its comment conference.
+
+Please note:
+  Only the creator of a conference can change its comment conference.
+
+  If the conference itself is selected as its comment conference, the
+  link to a separate comment conference is removed.
+
+  This command cannot be used for the mailbox.
+
+Example:
+  To use "Discussion" as the comment conference for "Announcements":
+
+    -> change comment conference Announcements
+    New conference: Discussion

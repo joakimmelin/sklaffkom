@@ -1,0 +1,25 @@
+Arguments:
+  (<Game>)
+
+Description:
+  This command launches online games through the InterBBS-like service
+  BBSLink.net, a platform currently used by more than 140 active BBSes.
+  If the command is entered without an argument, a list of all available
+  games is displayed.
+
+Please note:
+  This feature requires a fair amount of configuration on the SysOp's
+  side. A good place to start is the following documentation:
+
+  https://github.com/loppanloppis/sklaffkom-dev/wiki/BBSLink
+
+Background:
+  Let's be honest - no matter how good Unix is, when it comes to BBS
+  door games, DOS is still king. We can of course use dosemu for this
+  purpose and launch suitable DOS games as external commands from our
+  BBS, but these days it would probably be difficult to gather more than
+  a handful of players on a single system.
+
+  With BBSLink, we can instead play alongside users from more than 100
+  other systems around the world. Hard to imagine back in 1993,
+  wasn't it? ;)

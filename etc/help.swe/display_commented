@@ -1,0 +1,18 @@
+Argument:
+  Inga
+
+Beskrivning:
+  Visar den text som den senast l{sta texten {r en kommentar till.
+  Kommandot {r anv{ndbart n{r du hamnat mitt i en diskussion och vill
+  g} tillbaka och se vad det egentligen var som kommenterades.
+
+  Om den f|reg}ende texten i sin tur ocks} {r en kommentar kan du ge
+  kommandot igen. P} s} s{tt kan du steg f|r steg f|lja diskussionen
+  bak}t, {nda till den ursprungliga texten.
+
+  Kommandot kan {ven f|lja kommentarer mellan olika m|ten, f|rutsatt
+  att du har r{tt att l{sa m|tet.
+
+Observera:
+  Om den senast l{sta texten inte {r en kommentar finns det naturligtvis
+  ingen tidigare text att visa.

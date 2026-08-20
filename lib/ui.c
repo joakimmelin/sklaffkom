@@ -91,3 +91,17 @@ int output_body_line(const char *line, const char *col)
     }
     return 0;
 }
+
+int
+output_ansi_raw_fmt(const char *ansi_fmt, const char *plain_fmt, ...)
+{
+    va_list args;
+    char buf[HUGE_LINE_LEN];
+    const char *fmt = Ansi_output ? ansi_fmt : plain_fmt;
+
+    va_start(args, plain_fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    return output_raw("%s", buf);   /* returns -1 on error */
+}

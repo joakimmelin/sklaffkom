@@ -187,8 +187,10 @@
 #define MSG_NORIGHTS	"F|ljande anv{ndare har inte r{ttigheter i"
 #define MSG_CNAMEASK	"M|tets namn: "
 #define MSG_ERRCNAME	"M|tesnamnet krockar med ett annat m|tesnamn."
-#define MSG_CONFTPROMPT	"Typ av m|te, (|)ppet, (s)lutet, (h)emligt, (n)ews, (f)tn: "
+#define MSG_CONFTPROMPT	"Typ av m|te, (l)okalt, (n)ews, (f)tn: "
+#define MSG_CONFACCESSPROMPT	"(|)ppet, (s)lutet, (h)emligt: "
 #define MSG_CONFDEFAULT	"|ppet"
+#define MSG_CONFLOCAL	'l'
 #define MSG_CONFOPEN	'|'
 #define MSG_CONFCLOSED	's'
 #define MSG_CONFSECRET	'h'
@@ -359,6 +361,7 @@
 #define MSG_BLOCKINTRO1	"Redigera blockerade avs{ndare, en per rad."
 #define MSG_BLOCKINTRO2	"Tomma rader och rader som b|rjar med # ignoreras."
 #define MSG_BLOCKED_MSG	"(Text %ld dold: blockerad avs}ndare)"
+#define MSG_JUMPUSERLOCAL "Detta kommando fungerar endast i lokala m|ten."
 /* Nytt Version-kommando */
 #define MSG_VERSIONH1	"UPPHOVSR[TT"
 #define MSG_VERSIONH1U	"==========="
@@ -427,6 +430,16 @@
 #define MSG_MODCONF_BADFTN   "Befintlig FTN-konfiguration {r felaktig."
 #define MSG_MODCONF_SAVED    "M|tet har {ndrats."
 #define MSG_MODCONF_NOCHANGE "Inga {ndringar."
+/* Väggen */
+#define MSG_IBOL_HEADER "Senaste fr}n InterBBS-v{ggen:"
+#define MSG_IBOL_AT     "p}"
+#define MSG_IBOL_DISABLED "InterBBS-v{ggen {r inte aktiverad av systemoperat|ren."
+#define MSG_IBOL_WRITE_PROMPT "Vill du skriva en rad? (j/n) "
+#define MSG_IBOL_LINE_PROMPT  "Din rad: "
+#define MSG_IBOL_EMPTY        "Du skrev ingen rad."
+#define MSG_IBOL_SENT         "Raden {r k|ad f|r utskick."
+#define MSG_IBOL_SEND_ERROR   "Raden kunde inte k|as f|r utskick."
+
 /* conf.c */
 
 #define MSG_CONFSORT	"Sorterar m|teslistan..."
@@ -780,10 +793,10 @@
 #define MSG_ADMHELP17	"   up - Till}ter inloggning i SklaffKOM.\n\n"
 
 /* sklaffacct.c */
-/* Let's do UTF-8 because at least we'll have a higher hitrate than SF7 */
-#define MSG_INNAME	"För och efternamn      : "
+/* Let's do plain ASCII here */
+#define MSG_INNAME	"For och efternamn      : "
 #define MSG_INLOGIN	"Inloggningsnamn        : "
-#define MSG_INPASSWD	"Önskat lösenord        : "
+#define MSG_INPASSWD	"Onskat losenord        : "
 #define MSG_INMODEM	"Modempools-tillgång    : "
 #define MSG_INPOST	"E-postadress           : "
 #define MSG_INTELE	"Telefonnummer          : "
@@ -794,8 +807,8 @@
 #define MSG_INSMODEM	"\nModem    : "
 #define MSG_INSPOST	"\nE-post   : "
 #define MSG_INSTELE	"\nTelefon  : "
-#define MSG_APPLIED	"Tackar för det! \nDin ansökan är registrerad och vi hör snart av oss.\nVälkommen åter.\n\n"
-#define MSG_UIDINUSE	"Inloggningsnamn kan ej anv{ndas. Vänligen välj annat."
+#define MSG_APPLIED	"Tackar för det! \nDin ansokan är registrerad och vi hor snart av oss.\nValkommen tillbaks!.\n\n"
+#define MSG_UIDINUSE	"Inloggningsnamn upptaget. Vanligen valj annat."
 
 /* mailtoss.c */
 
@@ -972,8 +985,10 @@
 #define MSG_NORIGHTS	"The following users have no permissions to"
 #define MSG_CNAMEASK	"Conference name: "
 #define MSG_ERRCNAME	"That name collides with another conference name."
-#define MSG_CONFTPROMPT	"Type of conference, (o)pen, (c)losed, (s)ecret, (n)ews, (f)tn: "
+#define MSG_CONFTPROMPT	"Type of conference, (l)ocal, (n)ews, (f)tn: "
+#define MSG_CONFACCESSPROMPT	"(o)pen, (c)losed, (s)ecret: "
 #define MSG_CONFDEFAULT	"open"
+#define MSG_CONFLOCAL	'l'
 #define MSG_CONFOPEN	'o'
 #define MSG_CONFCLOSED	'c'
 #define MSG_CONFSECRET	's'
@@ -1144,6 +1159,7 @@
 #define MSG_BLOCKINTRO1 "Enter your list of blocked users, one per row."
 #define MSG_BLOCKINTRO2 "Empty lines, and lines starting with # are ignored."
 #define MSG_BLOCKED_MSG "(Article %ld hidden: the author is on your blocklist)"                  
+#define MSG_JUMPUSERLOCAL "This command only works in local conferences."
 
 /* New version command */
 #define MSG_VERSIONH1	"COPYRIGHT"
@@ -1214,6 +1230,16 @@
 #define MSG_MODCONF_BADFTN   "The existing FTN configuration is invalid."
 #define MSG_MODCONF_SAVED    "The conference has been changed."
 #define MSG_MODCONF_NOCHANGE "No changes."
+/* The wall */
+#define MSG_IBOL_HEADER "Latest from the InterBBS wall:"
+#define MSG_IBOL_AT     "at"
+#define MSG_IBOL_DISABLED "The InterBBS wall has not been enabled by the sysop."
+#define MSG_IBOL_WRITE_PROMPT "Do you want to write a line? (y/n) "
+#define MSG_IBOL_LINE_PROMPT  "Your line: "
+#define MSG_IBOL_EMPTY        "You did not write a line."
+#define MSG_IBOL_SENT         "The line has been queued for sending."
+#define MSG_IBOL_SEND_ERROR   "The line could not be queued for sending."
+
 /* conf.c */
 
 #define MSG_CONFSORT	"Sorting conference list..."

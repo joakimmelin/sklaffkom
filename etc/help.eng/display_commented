@@ -1,0 +1,18 @@
+Arguments:
+  None
+
+Description:
+  Displays the text that the most recently read text is a comment on.
+  This is useful when you find yourself in the middle of a discussion
+  and want to go back and see what was actually being replied to.
+
+  If the previous text is itself a comment, you can use the command
+  again. In this way you can follow the discussion backwards, one step
+  at a time, all the way to the original text.
+
+  The command can also follow comments between different conferences,
+  provided that you have permission to read the conference.
+
+Please note:
+  If the most recently read text is not a comment, there is naturally
+  no previous text to display.

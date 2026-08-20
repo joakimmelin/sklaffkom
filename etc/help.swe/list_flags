@@ -1,2 +1,31 @@
 Beskrivning:
   Listar dina flaggor och vad de {r satta till.
+
+  De fyra f|rsta flaggorna anger vilken teckenupps{ttning din terminal anv{nder:
+
+  UTF-8 (teckenupps{ttning) - F|r de flesta moderna terminaler.
+  IBM-PC (teckenupps{ttning) - IBM CP437, vanligt i DOS-terminaler.
+  ISO 8859-1 (teckenupps{ttning) - Latin-1, vanligt val f|r Amiga-terminaler.
+  Macintosh (teckenupps{ttning) - F|r {ldre Macintosh-terminaler.
+
+  \vriga flaggor styr SklaffKOMs beteende:
+
+  (Visa) n{rvaromeddelanden - Visar n{r anv{ndare loggar in eller ut.
+  (Till}t) skrik - Till}ter meddelanden som skickas till alla inloggade.
+  Sluta (f|resl}s n{r du {r ikapp) - F|resl}r Sluta n{r inget finns att l{sa.
+  (Till}t) s{g - Till}ter personliga meddelanden fr}n andra anv{ndare.
+  [rende{ndring (vid kommentar) - Till}ter nytt {rende n{r du kommenterar.
+  Mellanslag (ger vagnretur) - Mellanslag fungerar som Retur i prompten.
+  Kopia (av s{nda brev) - Sparar en kopia av skickade brev i brevl}dan.
+  F|rfattare (alltid efter text) - Visar alltid f|rfattaren efter texten.
+  Datum (alltid absolut i texthuvud) - Visar alltid fullst{ndigt datum.
+  (Till}t) pip - Till}ter terminalens ljudsignal (BEL).
+  Rensa (sk{rmen f|re varje text) - Rensar sk{rmen f|re varje text.
+  Header (vid l{sning av e-post/Usenet/FTN) - Visar r}a headerf{lt.
+  Kompatibilitet (f|r specialklienter) - Kompatibilitetsl{ge f|r {ldre klienter.
+  Bell (vid n{rvaromeddelanden) - L}ter in- och utloggningar pipa.
+  Gammal (vilkalistesortering) - Visar {ldst inloggade f|rst.
+  ANSI-f{rger - Visar vissa element med ANSI-f{rger.
+  Alternativ (startsk{rm) - Anv{nder den alternativa startsk{rmen.
+  (Jag {r en) rookie - Visar nyb|rjartips och anpassad hj{lp.
+  (B|rja alltid i) Brevl}dan - B|rjar varje session i din brevl}da.

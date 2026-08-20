@@ -1,0 +1,6 @@
+Arguments:
+  (<Number>)
+
+Description:
+  Displays previously sent and received say messages. If no number is
+  given, the 10 most recent messages are shown.

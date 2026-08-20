@@ -1,0 +1,8 @@
+Arguments:
+  None
+
+Description:
+  Displays the latest text in your current reading of new texts.
+
+  This can for example be used to return to where you were after
+  temporarily reading another text.

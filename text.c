@@ -1115,8 +1115,8 @@ output("\n");
 	*
 	* modified on 2026-06-18, PL
 	*/
-	raw_ftn_output = (Utf8 && conf_type == FTN_CONF);
-	raw_news_output = (Utf8 && conf_type == NEWS_CONF);
+	raw_ftn_output = (Utf8 && conf_is_ftn(conf_type));
+	raw_news_output = (Utf8 && conf_is_news(conf_type));
 	raw_external_output = (raw_ftn_output || raw_news_output);
     
     if (Last_conf) {

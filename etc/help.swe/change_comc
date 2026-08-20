@@ -1,0 +1,27 @@
+Argument:
+  (<M|te>)
+
+Beskrivning:
+  Med detta kommando kan skaparen av ett m|te ange ett annat m|te som
+  kommentarsm|te. Ett kommentarsm|te kan anv{ndas f|r att placera
+  kommentarer till texter i ett annat m|te, till exempel om man vill
+  h}lla information och efterf|ljande diskussion }tskilda.
+
+  Om inget argument anges {ndras inst{llningen f|r det m|te du befinner
+  dig i. Om ett m|te anges som argument g{ller {ndringen detta m|te.
+  Du f}r d{refter ange vilket befintligt m|te som ska anv{ndas som
+  kommentarsm|te.
+
+Observera:
+  Endast den som skapade m|tet kan {ndra dess kommentarsm|te.
+
+  Om m|tet sj{lvt anges som kommentarsm|te tas kopplingen till ett
+  separat kommentarsm|te bort.
+
+  Kommandot kan inte anv{ndas f|r brevl}dan.
+
+Exempel:
+  Om m|tet "SysOp informerar" ska anv{nda "Diskussion" som kommentarsm|te:
+
+    -> {ndra kommentarsm|te SysOp informerar
+    Nytt m|te: Diskussion

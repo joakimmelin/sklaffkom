@@ -1,0 +1,9 @@
+Arguments:
+  (<Location>)
+
+Description:
+  Sets the location you are logged in from. This is shown to other users
+  in the Who list and in your user status.
+
+  If the command is given without an argument, the value is reset to the
+  system hostname.

@@ -259,9 +259,14 @@ int
 can_see_conf(int u_num, int c_num, int t_num, int cr_num)
 {
     int right;
+    int access;
     struct USER_LIST *ul;
 
-    if (t_num != SECRET_CONF)
+    access = conf_access_type(t_num);
+    if (access < 0)
+        return 0;
+
+    if (access != SECRET_CONF)
         return 1;
     if (cr_num == u_num)
         return 1;
@@ -269,7 +274,6 @@ can_see_conf(int u_num, int c_num, int t_num, int cr_num)
         return 1;
     }
     ul = get_confrc_struct(c_num);
-    right = 1;
     right = conf_right(ul, u_num, t_num, cr_num);
     free_userlist(ul);
     return ((right < 2) && (right >= 0));
@@ -1083,11 +1087,11 @@ if ((buf = get_conf_entry(buf, &ce))) {
         if (ce.creator == -1) continue;   /* erased */
         if (ce.num == 0)    continue;     /* mailbox already printed */
 
-        /* visibility like before */
-        int rights = ce.type;
-        if (rights == NEWS_CONF || rights == FTN_CONF)
-            rights = OPEN_CONF;
-        if (ce.creator == Uid) rights = 0;
+        /* Visibility is determined by access class, not transport. */
+        int rights = conf_access_type(ce.type);
+        if (rights < 0)
+            continue;
+        if (ce.creator == Uid) rights = OPEN_CONF;
         else if (rights == SECRET_CONF &&
                  !can_see_conf(Uid, ce.num, ce.type, ce.creator))
             continue;
@@ -1115,7 +1119,7 @@ if ((buf = get_conf_entry(buf, &ce))) {
             }
         n->unreads   = ur;
         n->next      = NULL;		
-		if (ce.type == FTN_CONF) {
+		if (conf_is_ftn(ce.type)) {
     /*
      * Group FTN conferences after local conferences, sorted alphabetically.
      *
@@ -1133,7 +1137,7 @@ if ((buf = get_conf_entry(buf, &ce))) {
         		n->next = p->next;
         		p->next = n;
     		}
-		} else if (ce.type == NEWS_CONF) {
+		} else if (conf_is_news(ce.type)) {
     	/*
      	* Group Usenet conferences last, sorted alphabetically.
      	*
@@ -1182,7 +1186,7 @@ if ((buf = get_conf_entry(buf, &ce))) {
             file_suffix = " (F)";
 
         /* modified on 2026-06-08, PL */
-        if (c->type == FTN_CONF)
+        if (conf_is_ftn(c->type))
             type_suffix = " (FTN)";
 
         output_ansi_fmt(
@@ -1245,10 +1249,14 @@ int
 conf_right(struct USER_LIST * ul, int uid, int type, int cr_num)
 {
     int xit;
+    int access;
 
-    xit = type;
-	if (xit == NEWS_CONF || xit == FTN_CONF) /* modified on 2026-06-11, PL */
-    	xit = OPEN_CONF;
+    access = conf_access_type(type);
+    if (access < 0)
+        return -1;
+
+    xit = access;
+
     if (cr_num == uid) {
         xit = 0;
     } else {
@@ -1260,7 +1268,11 @@ conf_right(struct USER_LIST * ul, int uid, int type, int cr_num)
         }
 
         if (ul && (ul->num == uid)) {
-            if ((type == OPEN_CONF) || (type == NEWS_CONF) || (type == FTN_CONF)) /* modified on 2026-06-11, PL */
+            /*
+             * For open conferences, confrc is a deny list.
+             * For closed/secret conferences, confrc is an allow list.
+             */
+            if (access == OPEN_CONF)
                 xit = 1;
             else
                 xit = 0;

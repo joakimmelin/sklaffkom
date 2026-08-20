@@ -1,2 +1,8 @@
+Arguments:
+  None
+
 Description:
-  Displays last article read again.
+  Displays the text you most recently looked at once again.
+
+  This also applies if you have temporarily jumped to another, older
+  text.

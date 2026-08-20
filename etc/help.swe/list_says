@@ -1,0 +1,6 @@
+Argument:
+  (<Antal>)
+
+Beskrivning:
+  Visar tidigare skickade och mottagna s{gmeddelanden. Om inget antal
+  anges visas de 10 senaste.

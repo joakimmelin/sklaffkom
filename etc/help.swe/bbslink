@@ -1,0 +1,25 @@
+Argument:
+  (<Spel>)
+
+Beskrivning:
+  Detta kommando startar onlinespel via den InterBBS-liknande tj{nsten
+  BBSLink.net, en plattform som i skrivande stund anv{nds av drygt 140
+  aktiva BBS:er. Om kommandot ges utan argument visas en lista |ver alla
+  tillg{ngliga spel.
+
+Observera:
+  Denna funktion kr{ver en hel del konfiguration fr}n SysOps sida.
+  En bra b|rjan {r att l{sa f|ljande dokumentation:
+
+  https://github.com/loppanloppis/sklaffkom-dev/wiki/BBSLink
+
+Bakgrund:
+  L}t oss vara {rliga - oavsett hur bra Unix {r, n{r det g{ller
+  speld|rrar i BBS-v{rlden {r DOS fortfarande kung. Vi kan naturligtvis
+  anv{nda dosemu f|r detta {ndam}l och anropa l{mpliga DOS-spel som
+  externa kommandon fr}n v}r BBS, men sannolikt skulle det i dessa tider
+  vara sv}rt att sammanf|ra mer {n en handfull spelare.
+
+  Med BBSLink kan vi ist{llet spela tillsammans med anv{ndare p} |ver
+  100 andra system fr}n hela v{rlden. Det kunde man inte f|rest{lla sig
+  1993, eller hur? ;)

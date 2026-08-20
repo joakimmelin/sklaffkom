@@ -116,6 +116,10 @@ struct export_netmail_job_args {
     const char *jobfile;
 }; /* modified on 2026-07-11, PL */
 
+struct export_ibol_job_args {
+    const char *jobfile;
+}; /* modified on 2026-08-13, PL */
+
 struct netmail_job {
     int fromuid;
     char toname[128];
@@ -126,6 +130,13 @@ struct netmail_job {
     char *body;
 }; /* modified on 2026-07-11, PL */
 
+struct ibol_job {
+    int fromuid;
+    char author[128];
+    long created;
+    char text[IBOL_ONELINER_MAX + 1];
+}; /* modified on 2026-08-13, PL */
+
 struct netmail_destination {
     struct ftn_address address;
     char domain[FTN_DOMAIN_LEN];
@@ -135,6 +146,9 @@ struct netmail_destination {
 static int run_export_netmail_job_locked(void *arg); /* modified on 2026-07-11, PL */
 static int export_netmail_job(const char *jobfile); /* modified on 2026-07-11, PL */
 static int read_netmail_job(const char *path, struct netmail_job *job); /* modified on 2026-07-11, PL */
+static int run_export_ibol_job_locked(void *arg); /* modified on 2026-08-13, PL */
+static int export_ibol_job(const char *jobfile); /* modified on 2026-08-13, PL */
+static int read_ibol_job(const char *path, struct ibol_job *job); /* modified on 2026-08-13, PL */
 static void free_netmail_job(struct netmail_job *job); /* modified on 2026-07-11, PL */
 static int parse_ftn_addr_5d(const char *addr,
     struct netmail_destination *destination); /* modified on 2026-07-16, PL */
@@ -181,6 +195,10 @@ static int load_echomail_area(const char *fallback_tag,
     const struct ftn_conf_info *ce, struct ftn_config *config,
     const struct ftn_area **out_area,
     const struct ftn_link **out_feed); /* modified on 2026-07-15, PL */
+static int load_echomail_area_by_identity(const char *domain,
+    const char *tag, struct ftn_config *config,
+    const struct ftn_area **out_area,
+    const struct ftn_link **out_feed); /* modified on 2026-08-13, PL */
 
 static int find_ftn_conf(const char *name, struct ftn_conf_info *out_ce);
 static int find_ftn_conf_num(int confnum, struct ftn_conf_info *out_ce); /* modified on 2026-08-11, PL */
@@ -1630,6 +1648,226 @@ cleanup:
     return rc;
 }
 
+/*
+ * read_ibol_job - read one queued InterBBS Oneliner job
+ * args: queue path, output job
+ * ret: success (0) or error (-1)
+ *
+ * Queue text is SklaffKOM SF7.  Conversion to UTF-8 happens only at the
+ * FTN export boundary.
+ *
+ * modified on 2026-08-13, PL
+ */
+static int
+read_ibol_job(const char *path, struct ibol_job *job)
+{
+    FILE *fp;
+    char line[1024];
+    int in_body;
+    int seen_type;
+    int seen_text;
+
+    if (path == NULL || job == NULL)
+        return -1;
+
+    memset(job, 0, sizeof(*job));
+
+    fp = fopen(path, "r");
+    if (fp == NULL) {
+        perror(path);
+        return -1;
+    }
+
+    in_body = 0;
+    seen_type = 0;
+    seen_text = 0;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        strip_eol(line);
+
+        if (!in_body) {
+            char *v;
+
+            if (line[0] == '\0') {
+                in_body = 1;
+                continue;
+            }
+
+            if (strncmp(line, "TYPE:", 5) == 0) {
+                v = line + 5;
+                while (*v == ' ' || *v == '\t')
+                    v++;
+
+                if (strcmp(v, "IBOL") != 0) {
+                    fclose(fp);
+                    return -1;
+                }
+                seen_type = 1;
+            } else if (strncmp(line, "FROMUID:", 8) == 0) {
+                v = line + 8;
+                while (*v == ' ' || *v == '\t')
+                    v++;
+                job->fromuid = atoi(v);
+            } else if (strncmp(line, "AUTHOR:", 7) == 0) {
+                v = line + 7;
+                while (*v == ' ' || *v == '\t')
+                    v++;
+                strlcpy(job->author, v, sizeof(job->author));
+            } else if (strncmp(line, "CREATED:", 8) == 0) {
+                v = line + 8;
+                while (*v == ' ' || *v == '\t')
+                    v++;
+                job->created = atol(v);
+            }
+
+            continue;
+        }
+
+        /*
+         * A SklaffKOM IBOL post is deliberately one physical line.
+         * Ignore trailing blank lines from the queue file, but reject a
+         * second non-empty line rather than silently creating a multi-liner.
+         */
+        if (line[0] == '\0')
+            continue;
+
+        if (seen_text) {
+            fclose(fp);
+            return -1;
+        }
+
+        if (strlen(line) > IBOL_ONELINER_MAX) {
+            fclose(fp);
+            return -1;
+        }
+
+        strlcpy(job->text, line, sizeof(job->text));
+        seen_text = 1;
+    }
+
+    fclose(fp);
+
+    if (!seen_type || job->fromuid <= 0 || job->author[0] == '\0' ||
+        job->created <= 0 || !seen_text || job->text[0] == '\0')
+        return -1;
+
+    return 0;
+}
+
+/*
+ * export_ibol_job - turn one queued SklaffKOM oneliner into FSX_DAT .MSG
+ * args: queue job path
+ * ret: success (0) or error (-1)
+ *
+ * The target spool path, local AKA and feed are resolved from
+ * crashmail.prefs using IBOL_FTN_AREA@IBOL_FTN_DOMAIN.  No spool path or
+ * node address is hard-coded here.
+ *
+ * modified on 2026-08-13, PL
+ */
+static int
+export_ibol_job(const char *jobfile)
+{
+    struct ibol_job job;
+    struct ftn_config config;
+    const struct ftn_area *ftn_area;
+    const struct ftn_link *feed;
+    char path[PATH_MAX];
+    char msgid[128];
+    char aka[64];
+    char feedaddr[64];
+    char body[1024];
+    char *utf8_author;
+    char *utf8_source;
+    char *utf8_text;
+    long msgnum;
+    unsigned long serial;
+    int rc;
+
+    if (jobfile == NULL)
+        return -1;
+
+    memset(&job, 0, sizeof(job));
+    ftn_config_init(&config);
+    ftn_area = NULL;
+    feed = NULL;
+    utf8_author = NULL;
+    utf8_source = NULL;
+    utf8_text = NULL;
+    rc = -1;
+
+    if (read_ibol_job(jobfile, &job) != 0) {
+        fprintf(stderr, "[ERROR] Could not read IBOL job: %s\n", jobfile);
+        goto cleanup;
+    }
+
+    if (load_echomail_area_by_identity(IBOL_FTN_DOMAIN, IBOL_FTN_AREA,
+            &config, &ftn_area, &feed) != 0)
+        goto cleanup;
+
+    /*
+     * Interactive SklaffKOM input and user names are stored as SF7.
+     * IBOL .MSG files advertise UTF-8, so convert both at the boundary.
+     */
+    utf8_author = sf7_to_utf8_dup(job.author);
+    utf8_source = sf7_to_utf8_dup(SKLAFF_ID);
+    utf8_text = sf7_to_utf8_dup(job.text);
+
+    if (utf8_author == NULL || utf8_source == NULL || utf8_text == NULL) {
+        fprintf(stderr,
+            "[ERROR] Could not convert outgoing IBOL text from SF7 to UTF-8\n");
+        goto cleanup;
+    }
+
+    if (next_msg_path(ftn_area->path, path, sizeof(path), &msgnum) != 0)
+        goto cleanup;
+
+    serial = (((unsigned long)job.created & 0xffffUL) << 16) |
+        ((unsigned long)msgnum & 0xffffUL);
+    make_ftn_msgid_for_aka(msgid, sizeof(msgid), &ftn_area->aka, serial);
+
+    if (snprintf(body, sizeof(body),
+            "Author: %s\n"
+            "Source: %s\n"
+            "\n"
+            "Oneliner: %s",
+            utf8_author, utf8_source, utf8_text) >= (int)sizeof(body)) {
+        fprintf(stderr, "[ERROR] IBOL message body too long\n");
+        goto cleanup;
+    }
+
+    ftn_address_format(&ftn_area->aka, aka, sizeof(aka));
+    ftn_address_format(&feed->address, feedaddr, sizeof(feedaddr));
+
+    printf("IBOL export setup\n");
+    printf("-----------------\n");
+    printf("Domain:     %s\n", ftn_area->domain);
+    printf("Area:       %s\n", ftn_area->tag);
+    printf("AKA:        %s\n", aka);
+    printf("Feed:       %s\n", feedaddr);
+    printf("Spool:      %s\n", ftn_area->path);
+    printf("Msg no:     %ld\n", msgnum);
+    printf("Author:     %s\n", utf8_author);
+    printf("Source:     %s\n", utf8_source);
+    printf("MSGID:      %s\n", msgid);
+    printf("Output:     %s\n\n", path);
+
+    rc = write_fido_msg_out(path, ftn_area, feed,
+        utf8_author,
+        "IBBS1LINE",
+        "InterBBS Oneliner",
+        body,
+        NULL,
+        msgid);
+
+cleanup:
+    free(utf8_author);
+    free(utf8_source);
+    free(utf8_text);
+    ftn_config_free(&config);
+    return rc;
+}
+
 static void
 print_unsafe_reason(const char *filename, const struct fido_msg *msg,
     const char *reason)
@@ -1768,6 +2006,11 @@ find_ftn_conf(const char *name, struct ftn_conf_info *out_ce)
     FILE *fp;
     LONG_LINE line;
     struct ftn_conf_info ce;
+    struct ftn_conf_info tag_match;
+    size_t tag_matches;
+
+    if (name == NULL || *name == '\0' || out_ce == NULL)
+        return -1;
 
     printf("Checking the SklaffKOM CONF_FILE: %s... ", CONF_FILE);
     fflush(stdout);
@@ -1783,6 +2026,12 @@ find_ftn_conf(const char *name, struct ftn_conf_info *out_ce)
     printf("Checking conference: %s... ", name);
     fflush(stdout);
 
+    /*
+     * Preserve the old behaviour first: an exact SklaffKOM conference
+     * name always wins over an FTN echotag.
+     *
+     * modified on 2026-08-15, PL
+     */
     while (fgets(line, sizeof(line), fp) != NULL) {
         if (parse_conf_line(line, &ce) != 0)
             continue;
@@ -1795,8 +2044,63 @@ find_ftn_conf(const char *name, struct ftn_conf_info *out_ce)
         }
     }
 
+    /*
+     * New conference layout: the FTN tag is stored in
+     *   SKLAFF_DB/<confnum>/ftnconf
+     * rather than being required to equal the SklaffKOM conference name.
+     * If no conference name matched, resolve the supplied value as an
+     * echotag.  Tags are case-insensitive in FTN configuration.
+     *
+     * modified on 2026-08-15, PL
+     */
+    rewind(fp);
+    tag_matches = 0;
+    memset(&tag_match, 0, sizeof(tag_match));
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        struct meeting_ftn_config meeting;
+        int has_ftnconf;
+
+        if (parse_conf_line(line, &ce) != 0)
+            continue;
+
+        if (!conf_is_ftn(ce.type))
+            continue;
+
+        has_ftnconf = 0;
+        if (load_meeting_ftnconf(&ce, &meeting, &has_ftnconf) != 0) {
+            fclose(fp);
+            return -1;
+        }
+
+        if (!has_ftnconf)
+            continue;
+
+        if (strcasecmp(name, meeting.tag) != 0)
+            continue;
+
+        tag_match = ce;
+        tag_matches++;
+    }
+
     fclose(fp);
-    fprintf(stderr, "\n[ERROR] Conference '%s' not found in %s\n", name, CONF_FILE);
+
+    if (tag_matches == 1) {
+        *out_ce = tag_match;
+        printf("OK! (%s, echotag)\n", tag_match.name);
+        return 0;
+    }
+
+    if (tag_matches > 1) {
+        fprintf(stderr,
+            "\n[ERROR] Echotag '%s' matches more than one FTN conference\n",
+            name);
+        return -1;
+    }
+
+    fprintf(stderr,
+        "\n[ERROR] Conference or FTN echotag '%s' not found in %s\n",
+        name, CONF_FILE);
     return -1;
 }
 
@@ -2639,6 +2943,102 @@ strip_eol(char *s)
     }
 }
 
+/*
+ * load_user_signature - read ![sig] directly from user's sklaffrc
+ * args: user id
+ * ret: malloced signature or NULL if none
+ *
+ * modified on 2026-08-12, PL
+ */
+static char *
+load_user_signature(int uid)
+{
+    FILE *fp;
+    char path[PATH_MAX];
+    char line[4096];
+    char *sig;
+    size_t len;
+    size_t cap;
+    int in_sig;
+
+    if (uid <= 0)
+        return NULL;
+
+    if (snprintf(path, sizeof(path), "%s/%d%s",
+            USER_DB, uid, SKLAFFRC_FILE) >= (int)sizeof(path))
+        return NULL;
+
+    fp = fopen(path, "r");
+    if (fp == NULL)
+        return NULL;
+
+    sig = NULL;
+    len = 0;
+    cap = 0;
+    in_sig = 0;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        size_t line_len;
+
+        if (strncmp(line, "![", 2) == 0) {
+            char heading[4096];
+
+            strlcpy(heading, line, sizeof(heading));
+            strip_eol(heading);
+
+            if (in_sig)
+                break;
+
+            if (strcmp(heading, "![sig]") == 0)
+                in_sig = 1;
+
+            continue;
+        }
+
+        if (!in_sig)
+            continue;
+
+        line_len = strlen(line);
+
+        if (len + line_len + 1 > cap) {
+            char *new_sig;
+            size_t new_cap;
+
+            new_cap = cap ? cap * 2 : 4096;
+            while (new_cap < len + line_len + 1)
+                new_cap *= 2;
+
+            new_sig = realloc(sig, new_cap);
+            if (new_sig == NULL) {
+                free(sig);
+                fclose(fp);
+                return NULL;
+            }
+
+            sig = new_sig;
+            cap = new_cap;
+        }
+
+        memcpy(sig + len, line, line_len);
+        len += line_len;
+        sig[len] = '\0';
+    }
+
+    fclose(fp);
+
+    if (sig == NULL)
+        return NULL;
+
+    strip_eol(sig);
+
+    if (sig[0] == '\0') {
+        free(sig);
+        return NULL;
+    }
+
+    return sig;
+}
+
 static int
 ftntoss_get_sklaff_ids(uid_t *uid, gid_t *gid)
 {
@@ -3095,7 +3495,7 @@ export_test_ftn(const char *area)
 
     printf("OK!\n");
 
-    if (ce.type != FTN_CONF) {
+    if (!conf_is_ftn(ce.type)) {
         fprintf(stderr,
             "[ERROR] Conference '%s' exists, but is not FTN_CONF "
             "(type=%d)\n", area, ce.type);
@@ -3266,7 +3666,7 @@ export_one_ftn_loaded(const struct ftn_conf_info *source_ce, long textnum)
     printf("ftntoss export-one starting\n");
     printf("===========================\n\n");
 
-    if (ce.type != FTN_CONF) {
+    if (!conf_is_ftn(ce.type)) {
         fprintf(stderr,
             "[ERROR] Conference '%s' exists, but is not FTN_CONF "
             "(type=%d)\n", ce.name, ce.type);
@@ -3293,6 +3693,63 @@ export_one_ftn_loaded(const struct ftn_conf_info *source_ce, long textnum)
         fprintf(stderr,
             "[ERROR] Could not convert outgoing FTN text from SF7 to UTF-8\n");
         goto cleanup;
+    }
+
+    /*
+     * Add the user's SklaffKOM signature to outgoing FTN echomail.
+     * The signature is stored as SF7 and must therefore be converted
+     * to UTF-8 before being appended to the outgoing body.
+     *
+     * modified on 2026-08-12, PL
+     */
+    /*
+     * Add the user's SklaffKOM signature to outgoing FTN echomail.
+     *
+     * modified on 2026-08-12, PL
+     */
+    if (uid > 0) {
+        char *sig;
+        char *utf8_sig;
+
+        sig = load_user_signature((int)uid);
+        if (sig != NULL) {
+            char *new_body;
+            size_t body_len;
+            size_t sig_len;
+
+            utf8_sig = sf7_to_utf8_dup(sig);
+            free(sig);
+
+            if (utf8_sig == NULL) {
+                fprintf(stderr,
+                    "[ERROR] Could not convert outgoing FTN "
+                    "signature from SF7 to UTF-8\n");
+                goto cleanup;
+            }
+
+            strip_eol(utf8_body);
+            strip_eol(utf8_sig);
+
+            body_len = strlen(utf8_body);
+            sig_len = strlen(utf8_sig);
+
+            new_body = realloc(utf8_body,
+                body_len + sig_len + 3);
+            if (new_body == NULL) {
+                free(utf8_sig);
+                fprintf(stderr,
+                    "[ERROR] Could not allocate outgoing "
+                    "FTN message with signature\n");
+                goto cleanup;
+            }
+
+            utf8_body = new_body;
+            memcpy(utf8_body + body_len, "\n\n", 2);
+            memcpy(utf8_body + body_len + 2,
+                utf8_sig, sig_len + 1);
+
+            free(utf8_sig);
+        }
     }
 
     make_skom_from_name(uid, from, sizeof(from));
@@ -3428,7 +3885,7 @@ import_one_ftn(const char *area, const char *filename)
     if (find_ftn_conf(area, &ce) != 0)
         goto cleanup;
 
-    if (ce.type != FTN_CONF) {
+    if (!conf_is_ftn(ce.type)) {
         fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
             ce.name, ce.type);
         goto cleanup;
@@ -3625,7 +4082,7 @@ import_all_ftn(const char *area, int include_unsafe)
     if (find_ftn_conf(area, &ce) != 0)
         goto cleanup;
 
-    if (ce.type != FTN_CONF) {
+    if (!conf_is_ftn(ce.type)) {
         fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
             ce.name, ce.type);
         goto cleanup;
@@ -3867,7 +4324,7 @@ import_all_areas_ftn(int include_unsafe)
         if (parse_conf_line(line, &ce) != 0)
             continue;
 
-        if (ce.type != FTN_CONF)
+        if (!conf_is_ftn(ce.type))
             continue;
 
         areas++;
@@ -3938,7 +4395,7 @@ diagnose_ftn(const char *area, int include_unsafe)
     if (find_ftn_conf(area, &ce) != 0)
         goto cleanup;
 
-    if (ce.type != FTN_CONF) {
+    if (!conf_is_ftn(ce.type)) {
         fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
             ce.name, ce.type);
         goto cleanup;
@@ -4082,7 +4539,7 @@ dump_one_import(const char *area, const struct ftn_conf_info *ce,
     if (area == NULL || ce == NULL || filename == NULL)
         goto cleanup;
 
-    if (ce->type != FTN_CONF) {
+    if (!conf_is_ftn(ce->type)) {
         fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
             ce->name, ce->type);
         goto cleanup;
@@ -4100,7 +4557,7 @@ dump_one_import(const char *area, const struct ftn_conf_info *ce,
     printf("Conf name:   %s\n", ce->name);
     printf("Conf num:    %d\n", ce->num);
     printf("Conf type:   %d", ce->type);
-    if (ce->type == FTN_CONF)
+    if (conf_is_ftn(ce->type))
         printf(" (FTN_CONF)");
     printf("\n");
     printf("Last text:   %ld\n", ce->last_text);
@@ -4508,7 +4965,7 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
     if (area == NULL || ce == NULL)
         return -1;
 
-    if (ce->type != FTN_CONF) {
+    if (!conf_is_ftn(ce->type)) {
         fprintf(stderr, "[ERROR] Conference '%s' exists, but is not FTN_CONF (type=%d)\n",
             ce->name, ce->type);
         ftn_config_free(&config);
@@ -4527,7 +4984,7 @@ scan_ftn_area(const char *area, const struct ftn_conf_info *ce)
     printf("Conf name:   %s\n", ce->name);
     printf("Conf num:    %d\n", ce->num);
     printf("Conf type:   %d", ce->type);
-    if (ce->type == FTN_CONF)
+    if (conf_is_ftn(ce->type))
         printf(" (FTN_CONF)");
     printf("\n");
     printf("Last text:   %ld\n", ce->last_text);
@@ -4928,6 +5385,17 @@ run_export_netmail_job_locked(void *arg)
 }
 
 static int
+run_export_ibol_job_locked(void *arg)
+{
+    struct export_ibol_job_args *a = arg;
+
+    if (a == NULL || a->jobfile == NULL)
+        return -1;
+
+    return export_ibol_job(a->jobfile);
+}
+
+static int
 load_meeting_ftnconf(const struct ftn_conf_info *ce,
     struct meeting_ftn_config *meeting, int *out_found)
 {
@@ -5300,6 +5768,133 @@ load_echomail_area(const char *fallback_tag,
     return 0;
 }
 
+/*
+ * load_echomail_area_by_identity - resolve a non-conference echomail target
+ * args: FTN domain, echo tag, loaded-config output, area output, feed output
+ * ret: success (0) or error (-1)
+ *
+ * IBOL lives in a data echo rather than a normal SklaffKOM conference.
+ * Resolve it directly from CrashMail configuration while keeping the same
+ * unique-feed rules as normal FTN conference export.
+ *
+ * modified on 2026-08-13, PL
+ */
+static int
+load_echomail_area_by_identity(const char *domain, const char *tag,
+    struct ftn_config *config, const struct ftn_area **out_area,
+    const struct ftn_link **out_feed)
+{
+    const struct ftn_area *found;
+    const struct ftn_link *feed;
+    char error[512];
+    size_t i;
+    size_t matches;
+    size_t primary_feeds;
+
+    if (domain == NULL || *domain == '\0' ||
+        tag == NULL || *tag == '\0' ||
+        config == NULL || out_area == NULL || out_feed == NULL)
+        return -1;
+
+    *out_area = NULL;
+    *out_feed = NULL;
+    found = NULL;
+    feed = NULL;
+    matches = 0;
+    primary_feeds = 0;
+
+    ftn_config_init(config);
+
+    if (ftn_config_load_crashmail(CRASHMAIL_PREFS_FILE, config,
+            error, sizeof(error)) != 0) {
+        fprintf(stderr, "[ERROR] ftntoss: %s\n", error);
+        return -1;
+    }
+
+    for (i = 0; i < config->area_count; i++) {
+        const struct ftn_area *candidate;
+
+        candidate = &config->areas[i];
+
+        if (candidate->type != FTN_AREA_ECHOMAIL)
+            continue;
+        if (strcasecmp(candidate->tag, tag) != 0)
+            continue;
+        if (strcasecmp(candidate->domain, domain) != 0)
+            continue;
+
+        found = candidate;
+        matches++;
+    }
+
+    if (matches == 0) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: echomail area %s@%s was not found in %s\n",
+            tag, domain, CRASHMAIL_PREFS_FILE);
+        ftn_config_free(config);
+        return -1;
+    }
+
+    if (matches > 1) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: more than one echomail area matches %s@%s "
+            "in %s\n",
+            tag, domain, CRASHMAIL_PREFS_FILE);
+        ftn_config_free(config);
+        return -1;
+    }
+
+    if (found->messagebase[0] == '\0' ||
+        strcasecmp(found->messagebase, "MSG") != 0) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: area '%s' uses unsupported messagebase '%s'; "
+            "only MSG is currently supported\n",
+            found->tag,
+            found->messagebase[0] ? found->messagebase : "(missing)");
+        ftn_config_free(config);
+        return -1;
+    }
+
+    if (found->path[0] == '\0') {
+        fprintf(stderr,
+            "[ERROR] ftntoss: area '%s' has no messagebase path in %s\n",
+            found->tag, CRASHMAIL_PREFS_FILE);
+        ftn_config_free(config);
+        return -1;
+    }
+
+    for (i = 0; i < found->link_count; i++) {
+        if (found->links[i].modifier != '%')
+            continue;
+
+        feed = &found->links[i];
+        primary_feeds++;
+    }
+
+    if (primary_feeds == 0 && found->link_count == 1)
+        feed = &found->links[0];
+
+    if (primary_feeds > 1) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: area '%s' has more than one %% feed in %s\n",
+            found->tag, CRASHMAIL_PREFS_FILE);
+        ftn_config_free(config);
+        return -1;
+    }
+
+    if (feed == NULL) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: area '%s' has no unique CrashMail feed\n",
+            found->tag);
+        ftn_config_free(config);
+        return -1;
+    }
+
+    *out_area = found;
+    *out_feed = feed;
+    return 0;
+}
+
 static int
 dump_ftn_config_file(const char *path)
 {
@@ -5466,6 +6061,14 @@ main(int argc, char **argv)
         return run_with_lock(run_import_netmail_locked, &a) == 0 ? 0 : 1;
     }
 
+    if (argc == 3 && strcmp(argv[1], "--export-ibol-job") == 0) {
+        struct export_ibol_job_args a;
+
+        a.jobfile = argv[2];
+
+        return run_with_lock(run_export_ibol_job_locked, &a) == 0 ? 0 : 1;
+    }
+
     if (argc == 3 && strcmp(argv[1], "--export-netmail-job") == 0) {
         struct export_netmail_job_args a;
 
@@ -5488,6 +6091,7 @@ main(int argc, char **argv)
         fprintf(stderr, "       %s --export-one <FTN-area> <textnum>\n", argv[0]);
         fprintf(stderr, "       %s --export-one-conf <confnum> <textnum>\n", argv[0]);
         fprintf(stderr, "       %s --export-netmail-job <jobfile>\n", argv[0]);
+        fprintf(stderr, "       %s --export-ibol-job <jobfile>\n", argv[0]);
         fprintf(stderr, "       %s --import-netmail <crashmail.prefs>\n", argv[0]);
         fprintf(stderr, "       %s --dump-ftn-config\n", argv[0]);
         fprintf(stderr, "       %s --dump-ftn-config <crashmail.prefs>\n\n", argv[0]);

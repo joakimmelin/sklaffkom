@@ -1,0 +1,13 @@
+Arguments:
+  <Survey number>
+
+Description:
+  Displays the complete result, or raw data, from a survey that has
+  already been reported.
+
+  This can for example be used to compare answers to several questions
+  and look for relationships between them.
+
+Please note:
+  The result cannot be displayed before the survey's reporting time has
+  passed.

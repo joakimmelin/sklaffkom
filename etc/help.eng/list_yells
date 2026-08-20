@@ -1,0 +1,6 @@
+Arguments:
+  (<Number>)
+
+Description:
+  Displays previous global messages, such as yell, I and my messages.
+  If no number is given, the 10 most recent messages are shown.

@@ -1,0 +1,9 @@
+Argument:
+  (<Anv{ndare>)
+
+Beskrivning:
+  Markerar alla ol{sta texter av en viss anv{ndare i aktuellt m|te som
+  l{sta.
+
+  Om inget anv{ndarnamn anges anv{nds f|rfattaren till den senast l{sta
+  texten.

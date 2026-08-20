@@ -103,7 +103,7 @@ display_header(struct TEXT_HEADER * th, int edit_subject, int type, int dtype, c
 
 int used_news_date = 0;
 struct CONF_ENTRY *ce = get_conf_struct(Current_conf);
-if (ce && ce->type == NEWS_CONF) {
+if (ce && conf_is_news(ce->type)) {
     /* open the stored article and scan headers for "Date:" */
     LINE fname;
     int fd;

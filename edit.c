@@ -484,7 +484,7 @@ if (c == 0xC3) {
 #ifndef POSTING_OK
                 if (nc) {
                     ce = get_conf_struct(*nc);
-                    if (ce->type == NEWS_CONF || ce->type == FTN_CONF) {
+                    if (conf_is_external(ce->type)) {
                         output("\n\n%s\n", MSG_NOSAVE);
                         ptr->line[len] = '\0';
                         output("\n%3d:%s", numlines, ptr->line);
@@ -797,7 +797,7 @@ if (c == 0xC3) {
                             newconf = conf_num(confname);
 #ifndef POSTING_OK
                             ce = get_conf_struct(newconf);
-                            if (ce->type == NEWS_CONF || ce->type == FTN_CONF) {
+                            if (conf_is_external(ce->type)) {
                                 newconf = -1;
                             }
 #endif
@@ -849,7 +849,7 @@ if (c == 0xC3) {
 #ifndef POSTING_OK
                     if (nc) {
                         ce = get_conf_struct(*nc);
-                        if (ce->type == NEWS_CONF || ce->type == FTN_CONF) {
+                        if (conf_is_external(ce->type)) {
                             output("\n%s\n\n", MSG_NOSAVE);
                             marcel = 0;
                         }

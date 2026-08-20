@@ -409,6 +409,106 @@ queue_ftn_export(int confnum, long textnum)
     return 0;
 }
 
+/*
+ * queue_ibol_oneliner - queue one InterBBS Oneliner for FTN export
+ * args: local uid, SklaffKOM display name (SF7), one-line text (SF7)
+ * ret: success (0) or error (-1)
+ *
+ * IBOL is transported through the ordinary FTN export runner, but uses a
+ * typed queue job because it is not a normal SklaffKOM conference text.
+ * The job is written atomically into the existing echomail queue so no new
+ * queue-directory permissions are required.
+ *
+ * modified on 2026-08-13, PL
+ */
+int
+queue_ibol_oneliner(int fromuid, const char *author, const char *text)
+{
+    static unsigned long sequence;
+    char tmpfile[4096];
+    char pendingfile[4096];
+    long now;
+    unsigned long seq;
+    FILE *fp;
+    int n;
+
+    if (fromuid <= 0 || author == NULL || *author == '\0' ||
+        text == NULL || *text == '\0')
+        return -1;
+
+    if (strlen(text) > IBOL_ONELINER_MAX) {
+        dlog(2, "queue_ibol_oneliner: text longer than %d characters",
+            IBOL_ONELINER_MAX);
+        return -1;
+    }
+
+    if (!is_safe_ftn_queue_header_value(author) ||
+        !is_safe_ftn_queue_header_value(text)) {
+        dlog(2, "queue_ibol_oneliner: embedded newline in job value");
+        return -1;
+    }
+
+    now = (long)time(NULL);
+    seq = ++sequence;
+
+    n = snprintf(tmpfile, sizeof(tmpfile),
+        "%s/@ibol.%d.%ld.%ld.%lu.tmp",
+        FTNQUEUE_TMP, fromuid, now, (long)getpid(), seq);
+    if (n < 0 || (size_t)n >= sizeof(tmpfile)) {
+        dlog(2, "queue_ibol_oneliner: tmp filename too long");
+        return -1;
+    }
+
+    n = snprintf(pendingfile, sizeof(pendingfile),
+        "%s/@ibol.%d.%ld.%ld.%lu",
+        FTNQUEUE_PENDING, fromuid, now, (long)getpid(), seq);
+    if (n < 0 || (size_t)n >= sizeof(pendingfile)) {
+        dlog(2, "queue_ibol_oneliner: pending filename too long");
+        return -1;
+    }
+
+    fp = fopen(tmpfile, "w");
+    if (fp == NULL) {
+        dlog(2, "queue_ibol_oneliner: fopen failed for uid %d, errno=%d",
+            fromuid, errno);
+        return -1;
+    }
+
+    if (fprintf(fp,
+            "TYPE: IBOL\n"
+            "FROMUID: %d\n"
+            "AUTHOR: %s\n"
+            "CREATED: %ld\n"
+            "\n"
+            "%s\n",
+            fromuid, author, now, text) < 0) {
+        dlog(2, "queue_ibol_oneliner: write failed for uid %d, errno=%d",
+            fromuid, errno);
+        fclose(fp);
+        unlink(tmpfile);
+        return -1;
+    }
+
+    if (fclose(fp) != 0) {
+        dlog(2, "queue_ibol_oneliner: fclose failed for uid %d, errno=%d",
+            fromuid, errno);
+        unlink(tmpfile);
+        return -1;
+    }
+
+    if (rename(tmpfile, pendingfile) != 0) {
+        dlog(2, "queue_ibol_oneliner: rename failed for uid %d, errno=%d",
+            fromuid, errno);
+        unlink(tmpfile);
+        return -1;
+    }
+
+    dlog(6, "queue_ibol_oneliner: queued IBOL uid %d [%s]",
+        fromuid, author);
+
+    return 0;
+}
+
 int
 queue_ftn_netmail(int fromuid, const char *toname, const char *toaddr,
     const char *subject, const char *body)
@@ -551,7 +651,7 @@ export_ftn_post_if_needed(struct CONF_ENTRY *ce, long textnum)
     if (ce == NULL || textnum <= 0)
         return;
 
-    if (ce->type != FTN_CONF)
+    if (!conf_is_ftn(ce->type))
         return;
 
     if (ce->num <= 0) {

@@ -53,7 +53,9 @@ OBJS = \
 	file.o \
 	footnote.o \
 	flag.o \
-	msg.o \
+    iboldb.o \
+    ibolview.o \
+    msg.o \
 	newsparse.o \
 	parse.o\
 	praise.o\
@@ -156,18 +158,19 @@ install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss ftntoss
 	chmod u+s $(SKLAFFBIN)/sklaffkom $(SKLAFFBIN)/sklaffacct $(SKLAFFBIN)/sklaffwho
 	chmod og-rxw $(SKLAFFBIN)/sklaffadm
 	-chmod 4755   $(SKLAFFBIN)/srep
-	cp newstoss mailtoss ftntoss $(SKLAFFDIR)/etc
+	cp newstoss mailtoss ftntoss ibolimport $(SKLAFFDIR)/etc
 	cp newstoss $(SKLAFFDIR)/etc/ntoss
 	cp mailtoss $(SKLAFFDIR)/etc/mtoss
 	# Better copy mailtoss and newstoss to sklaffbin also
 	cp mailtoss $(SKLAFFBIN)
 	cp newstoss $(SKLAFFBIN)
 	cp ftntoss $(SKLAFFBIN)
+	cp ibolimport $(SKLAFFBIN)
 	cp etc/ftnqueue-runner $(SKLAFFBIN)/ftnqueue-runner
 	chown root $(SKLAFFBIN)/ftnqueue-runner
 	chmod 755 $(SKLAFFBIN)/ftnqueue-runner
-	-chown root $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss
-	-chmod og-rxw $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss
+	-chown root $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss $(SKLAFFDIR)/etc/ibolimport
+	-chmod og-rxw $(SKLAFFDIR)/etc/newstoss $(SKLAFFDIR)/etc/ntoss $(SKLAFFDIR)/etc/mailtoss $(SKLAFFDIR)/etc/mtoss $(SKLAFFDIR)/etc/ftntoss $(SKLAFFDIR)/etc/ibolimport
 installdb:
 	@echo Installing datafiles
 	-mkdir $(SKLAFFDIR)

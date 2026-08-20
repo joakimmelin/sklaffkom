@@ -15,6 +15,21 @@ trap 'rmdir "$LOCK"' EXIT HUP INT TERM
 for job in "$PENDING"/*; do
     [ -f "$job" ] || continue
 
+    #
+    # IBOL jobs share the ordinary echomail queue, but are identified by
+    # filename and contain a typed multi-line job rather than conf:text:time.
+    #
+    # modified on 2026-08-13, PL
+    #
+    case "${job##*/}" in
+        @ibol.*)
+            if "$SKLAFFBIN/ftntoss" --export-ibol-job "$job" >/dev/null 2>&1; then
+                rm -f "$job"
+            fi
+            continue
+            ;;
+    esac
+
     IFS=: read conf_or_area textnum created < "$job" || continue
 
     case "$textnum" in

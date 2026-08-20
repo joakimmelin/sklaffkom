@@ -1,2 +1,31 @@
 Description:
   List all your flags and their current value.
+
+  The first four flags select the character set used by your terminal:
+
+  UTF-8 (character set) - For most modern terminals.
+  IBM-PC (character set) - IBM CP437, common in DOS terminals.
+  ISO 8859-1 (character set) - Latin-1, commonly used with Amiga terminals.
+  Macintosh (character set) - For older Macintosh terminals.
+
+  The remaining flags control other SklaffKOM behaviour:
+
+  (Show) presence messages - Shows when users log in or out.
+  (Allow) shouting - Allows messages sent to all logged-in users.
+  Logout (suggested when caught up) - Suggests Logout when there is nothing to read.
+  (Allow) tell - Allows personal messages from other users.
+  Subject change (when replying) - Allows changing the subject when replying.
+  Space (equals CR) - Space works like Enter at the prompt.
+  Copy (of mail sent) - Saves a copy of sent mail in your mailbox.
+  Author (always shown after text) - Always shows the author after an article.
+  Date (always absolute in text header) - Always shows the full date.
+  (Allow) beeps - Allows the terminal bell (BEL).
+  Clear (screen before textdisplay) - Clears the screen before each article.
+  Header (when reading e-mail/Usenet/FTN) - Shows raw header fields.
+  Compatibility (mode for special clients) - Compatibility mode for older clients.
+  Bell (with presence messages) - Beeps when users log in or out.
+  Old (who-list sort order) - Shows users logged in longest first.
+  ANSI colors - Displays some elements using ANSI colors.
+  Alternate (login screen) - Uses the alternate login screen.
+  Rookie mode - Shows beginner tips and adapted help.
+  (Always start in) Mailbox - Starts each session in your mailbox.

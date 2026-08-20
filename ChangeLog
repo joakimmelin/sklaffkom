@@ -1,3 +1,9 @@
+v1.33-rc2 Thursday 13 August 2026
+
+* Time for a version bump. New command "Wall" / "Väggen" displays InterBBS
+  OneLiners if configured correctly. Supposed to be at logout eventually
+  (optional, behind a flag setting).
+
 v1.33-rc1 Sunday 02 August 2026 PL
 
 * Numerous small fixes. Code cleanup. Praise / Unpraise blocked in ftn, as
@@ -25,6 +31,13 @@ v1.33-rc1 Sunday 02 August 2026 PL
 
 * Character set "handshake" during login for users who did not yet pick a
   charset flag. Only displayed once. Meant for new users.
+
+* New command "Edit conference (settings) / "Ändra möte". Also "Create 
+  conference" got some new features.
+
+* Laid the groundwork for separate transport / access settings in all
+  conferences, to allow for secret or hidden usenet and FTN meetings. Nothing
+  in the UI indicates this yet, still in early testing phase.
 
 v1.33-rc1 Saturday 06 June 2026 JM
 

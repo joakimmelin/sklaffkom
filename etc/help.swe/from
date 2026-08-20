@@ -1,0 +1,9 @@
+Argument:
+  (<Plats>)
+
+Beskrivning:
+  Anger varifr}n du {r inloggad. Texten visas f|r andra anv{ndare i
+  Vilka-listan och i din anv{ndarstatus.
+
+  Om kommandot ges utan argument }terst{lls v{rdet till systemets
+  hostname.

@@ -1,0 +1,10 @@
+Arguments:
+  (<User>)
+
+Description:
+  Marks all unread texts written by a certain user in the current
+  conference as read.
+
+  If no user name is given, the author of the most recently read text
+  is used.
+

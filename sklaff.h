@@ -41,6 +41,14 @@
 #define ENABLE_CHARSET_HANDSHAKE 1
 #endif
 
+/* Number of InterBBS Oneliners displayed at checkout. 0 to disable. */
+#define IBOL_LOGOUT_COUNT 0
+
+/* InterBBS Oneliner (IBOL) transport settings. */
+#define IBOL_ONELINER_MAX 65
+#define IBOL_FTN_DOMAIN   "fsxnet"
+#define IBOL_FTN_AREA     "FSX_DAT"
+
 /* Define full path to crashmail.prefs */
 #ifndef CRASHMAIL_PREFS_FILE
 #define CRASHMAIL_PREFS_FILE "/ftn/etc/crashmail.prefs"
@@ -320,6 +328,120 @@ https://github.com/joakimmelin/sklaffkom/wiki/Install-Instructions */
 #define NEWS_CONF	3
 #define FTN_CONF	4
 
+#define NEWS_CLOSED_CONF	5
+#define NEWS_SECRET_CONF	6
+#define FTN_CLOSED_CONF	7
+#define FTN_SECRET_CONF	8
+
+/*
+ * Conference type is stored as one integer for backwards compatibility.
+ *
+ * Values 0..4 retain their historic meaning.  The helpers below separate
+ * the two concepts that are encoded in that integer:
+ *
+ *   transport: local / news / FTN
+ *   access:    open / closed / secret
+ */
+static inline int
+conf_access_type(int type)
+{
+    switch (type) {
+    case OPEN_CONF:
+    case NEWS_CONF:
+    case FTN_CONF:
+        return OPEN_CONF;
+
+    case CLOSED_CONF:
+    case NEWS_CLOSED_CONF:
+    case FTN_CLOSED_CONF:
+        return CLOSED_CONF;
+
+    case SECRET_CONF:
+    case NEWS_SECRET_CONF:
+    case FTN_SECRET_CONF:
+        return SECRET_CONF;
+
+    default:
+        return -1;
+    }
+}
+
+static inline int
+conf_is_news(int type)
+{
+    return type == NEWS_CONF ||
+           type == NEWS_CLOSED_CONF ||
+           type == NEWS_SECRET_CONF;
+}
+
+static inline int
+conf_is_ftn(int type)
+{
+    return type == FTN_CONF ||
+           type == FTN_CLOSED_CONF ||
+           type == FTN_SECRET_CONF;
+}
+
+static inline int
+conf_is_external(int type)
+{
+    return conf_is_news(type) || conf_is_ftn(type);
+}
+
+
+/*
+ * Return the canonical transport for a combined conference type.
+ * OPEN_CONF represents local transport here.
+ */
+static inline int
+conf_transport_type(int type)
+{
+    if (conf_is_news(type))
+        return NEWS_CONF;
+
+    if (conf_is_ftn(type))
+        return FTN_CONF;
+
+    if (conf_access_type(type) >= 0)
+        return OPEN_CONF;
+
+    return -1;
+}
+
+/*
+ * Combine transport and access into the single integer stored in CONF_FILE.
+ */
+static inline int
+conf_make_type(int transport, int access)
+{
+    if (access != OPEN_CONF &&
+        access != CLOSED_CONF &&
+        access != SECRET_CONF)
+        return -1;
+
+    switch (transport) {
+    case OPEN_CONF:
+        return access;
+
+    case NEWS_CONF:
+        if (access == CLOSED_CONF)
+            return NEWS_CLOSED_CONF;
+        if (access == SECRET_CONF)
+            return NEWS_SECRET_CONF;
+        return NEWS_CONF;
+
+    case FTN_CONF:
+        if (access == CLOSED_CONF)
+            return FTN_CLOSED_CONF;
+        if (access == SECRET_CONF)
+            return FTN_SECRET_CONF;
+        return FTN_CONF;
+
+    default:
+        return -1;
+    }
+}
+
 /* Defines for text types */
 
 #define TYPE_TEXT		0
@@ -410,6 +532,7 @@ int  detect_terminal_lines(void);														/* 2025-08-10 PL */
 /* lib/ui.c */
 
 int  output_ansi_fmt(const char *ansi_fmt, const char *plain_fmt, ...); 				/* 2025-07-30 PL */
+int output_ansi_raw_fmt(const char *ansi_fmt, const char *plain_fmt, ...);				/* 2026-08-13 PL */
 void clear_prompt(int num); 															/* Little helper to avoid extra '(') 2025-08-26 PL */
 void clear_prompt_cols(int cols);														/* 2025-08-30 PL */
 void clear_screen(void);                                                                     /* More sophisticated cls to use outside of commands.c */
@@ -549,6 +672,7 @@ int cmd_version(char *args); /*2026-06-02 PL */
 int cmd_block_user(char *args); /* 2026-06-16, PL */
 int cmd_change_charset(char *); /* 2026-08-07 PL */
 int cmd_mod_conf(char *); /* 2026-08-09 PL */
+int cmd_wall(char *args); /* 2026-08-12 PL */
 
 /* admin.c */
 
@@ -658,6 +782,11 @@ int save_flags(void);	/* PL 2026-08-05 improved save_flags procedure */
 /* footnote.c */
 
 void show_footnote_block(int conf, long num, char *home, int has_comments);					/* 2025-10-15 helper to render the footnote (if there is one) */
+
+/* ibolview.c */
+int display_ibol_entries(int count);
+int prompt_ibol_oneliner(void); /* 2026-08-13 PL */
+int queue_ibol_oneliner(int fromuid, const char *author, const char *text); /* 2026-08-13 PL */
 
 /* mailparse.c */
 

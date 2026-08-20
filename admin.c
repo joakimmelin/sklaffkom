@@ -1310,31 +1310,41 @@ if (st_type == STATUS_EXTERNAL)
 			}
 			free(desc);
 			output(MSG_CONFTYPE);
-            switch (ce->type) {
-            case OPEN_CONF:
-                output("%s\n", MSG_CONFDEFAULT);
-                break;
-            case CLOSED_CONF:
-                output("%s\n", MSG_CLOSED2);
-                break;
-            case SECRET_CONF:
-                output("%s\n", MSG_SECRET2);
-                break;
-            case NEWS_CONF:
-                output("%s\n", MSG_NEWS2);
-                break;
-            case FTN_CONF:
-                output("%s\n", MSG_FTN);
-                break;
-            default:
-                output("%s\n", MSG_UNKNOWNU);
-                break;
+            if (conf_is_news(ce->type)) {
+                output("%s", MSG_NEWS2);
+                if (conf_access_type(ce->type) == CLOSED_CONF)
+                    output(" / %s", MSG_CLOSED2);
+                else if (conf_access_type(ce->type) == SECRET_CONF)
+                    output(" / %s", MSG_SECRET2);
+                output("\n");
+            } else if (conf_is_ftn(ce->type)) {
+                output("%s", MSG_FTN);
+                if (conf_access_type(ce->type) == CLOSED_CONF)
+                    output(" / %s", MSG_CLOSED2);
+                else if (conf_access_type(ce->type) == SECRET_CONF)
+                    output(" / %s", MSG_SECRET2);
+                output("\n");
+            } else {
+                switch (conf_access_type(ce->type)) {
+                case OPEN_CONF:
+                    output("%s\n", MSG_CONFDEFAULT);
+                    break;
+                case CLOSED_CONF:
+                    output("%s\n", MSG_CLOSED2);
+                    break;
+                case SECRET_CONF:
+                    output("%s\n", MSG_SECRET2);
+                    break;
+                default:
+                    output("%s\n", MSG_UNKNOWNU);
+                    break;
+                }
             }
             /*
              * Show FTN routing information when this is an FTN conference
              * with a valid ftnconf file.
              */
-            if (ce->type == FTN_CONF) {
+            if (conf_is_ftn(ce->type)) {
                 ftn_found = 0;
 
                 if (conf_load_ftnconf(c_num, &ftnconf, &ftn_found) == 0 &&

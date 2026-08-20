@@ -92,6 +92,7 @@ const struct COMMAND_ENTRY command_list[] = {
     { "cmd_unsubscribe", cmd_unsubscribe, },
     { "cmd_upload", cmd_upload, },
 	{ "cmd_version", cmd_version, },
+    { "cmd_wall", cmd_wall, },
     { "cmd_where", cmd_where, },
     { "cmd_who", cmd_who, },
     { "cmd_whole_text", cmd_whole_text, },

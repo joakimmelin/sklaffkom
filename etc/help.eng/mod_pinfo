@@ -1,0 +1,8 @@
+Arguments:
+  None
+
+Description:
+  Lets you change your personal information, currently your email
+  address, website and location.
+
+  You will be asked to confirm the information before it is saved.
