@@ -7151,6 +7151,7 @@ cmd_alias(char *args)
                 strcpy(Par_ent[j].func, Par_ent[i].func);
                 strcpy(Par_ent[j].cmd, cmd);
                 strcpy(Par_ent[j].help, Par_ent[i].help);
+                Par_ent[j].group = Par_ent[i].group;
                 Par_ent[j].addr = Par_ent[i].addr;
                 if (!Logging_in) {
                     output("\n%s %s %s %s.\n\n",

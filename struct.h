@@ -82,6 +82,7 @@ struct PARSE_ENTRY {
     LINE func;                  /* name of function to call */
     LINE cmd;                   /* specification of the command */
     LINE help;                  /* a short description of what it does */
+    char group;                 /* command group, e.g. T, C, F, ... */
     cmd_func_t *addr;           /* address of the function to call */
 };
 

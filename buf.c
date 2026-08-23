@@ -132,25 +132,55 @@ get_conf_entry(char *buf, struct CONF_ENTRY * ce)
  * args: buffer (buf), pointer to PARSE_ENTRY (pe)
  * ret: next position in buffer or NULL
  */
+
 char *
-get_parse_entry(char *buf, struct PARSE_ENTRY * pe)
+get_parse_entry(char *buf, struct PARSE_ENTRY *pe)
 {
     int res;
+    LINE group;
 
-    memset(pe->cmd, 0, LINE_LEN);
-    memset(pe->func, 0, LINE_LEN);
-    memset(pe->help, 0, LINE_LEN);
+    memset(pe->cmd, 0, sizeof(pe->cmd));
+    memset(pe->func, 0, sizeof(pe->func));
+    memset(pe->help, 0, sizeof(pe->help));
+
+    /*
+     * Backwards compatibility:
+     * old three-field parse entries default to Other.
+     */
+    pe->group = 'O';
+
     for (;;) {
-        res = sscanf(buf, "%[^:#\n]:%[^#:\n]:%[^#:\n]'", pe->cmd,
-            pe->func, pe->help);
+        memset(group, 0, sizeof(group));
+
+        res = sscanf(buf,
+            "%[^:#\n]:%[^#:\n]:%[^#:\n]:%[^#:\n]",
+            pe->cmd, pe->func, pe->help, group);
+
         if (res == -1)
             return NULL;
+
         rtrim(pe->cmd);
         rtrim(pe->func);
         rtrim(pe->help);
+
+        /*
+         * Fourth field is optional while the parse files
+         * are being converted.
+         */
+        if (res >= 4) {
+            ltrim(group);
+            rtrim(group);
+
+            if (*group)
+                pe->group =
+                    (char)toupper((unsigned char)group[0]);
+        }
+
         buf = strchr(buf, '\n');
+
         while (buf && (*buf == '\n'))
             buf++;
+
         if (res || (buf == NULL))
             return buf;
     }

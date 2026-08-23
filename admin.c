@@ -393,6 +393,29 @@ wait_for_intro_continue(void)
     input("", answer, LINE_LEN, 0, 0, 1);
 }
 
+/*
+ * news_file_available - check whether there is a news file that
+ * this language version of SklaffKOM can display.
+ */
+static int
+news_file_available(void)
+{
+#ifdef SWEDISH
+    if (file_exists(NEWS_FILE_SWE) != -1)
+        return 1;
+#else
+    if (file_exists(NEWS_FILE_ENG) != -1)
+        return 1;
+#endif
+
+    /*
+     * The generic news file is the fallback.
+     */
+    if (file_exists(NEWS_FILE) != -1)
+        return 1;
+
+    return 0;
+}
 
 /*
  * display_alternative_intro_user - display rookie information, news,
@@ -405,25 +428,35 @@ display_alternative_intro_user(void)
     LINE name;
     struct USER_ENTRY *ue;
 
+    int intro_shown = 0;
+    int news_shown = 0;
+
     /*
      * Rookie information is only shown while Rookie mode is enabled.
      */
-    if (Rookie_mode)
+    if (Rookie_mode) {
         display_intro();
+        intro_shown = 1;
+    }
 
     /*
      * TODO: Later, only display news when the file has changed since
      * the user last saw it.
      */
-    dlog(6, "We try to display news-file");
-    display_news();
+    if (news_file_available()) {
+        dlog(6, "We try to display news-file");
+        display_news();
+        news_shown = 1;
+    }
 
     /*
-     * For now the alternative intro always pauses here. Once the news
-     * tracking is implemented, only pause if intro or news was shown.
+     * Only pause and clear the screen if we actually displayed
+     * rookie information or news.
      */
-    wait_for_intro_continue();
-    clear_screen();
+    if (intro_shown || news_shown) {
+        wait_for_intro_continue();
+        clear_screen();
+    }
 
     /*
     * Sklaff version goes here for now
