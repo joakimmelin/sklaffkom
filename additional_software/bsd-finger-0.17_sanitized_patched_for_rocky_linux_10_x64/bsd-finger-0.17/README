@@ -1,6 +1,6 @@
 This is bsd-finger-0.17 for Linux.
 
-Please read [install instructions](https://github.com/joakimmelin/sklaffkom/wiki/Install-fingerd-on-modern-linux) for Rocky Linux 10 [here](https://github.com/joakimmelin/sklaffkom/wiki/Install-fingerd-on-modern-linux). 
+Please read (install instructions)[https://github.com/joakimmelin/sklaffkom/wiki/Install-fingerd-on-modern-linux] for Rocky Linux 10 [here](https://github.com/joakimmelin/sklaffkom/wiki/Install-fingerd-on-modern-linux). 
 
 
 This package updates bsd-finger-0.16.
