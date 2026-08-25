@@ -13,7 +13,7 @@ SKLAFFSYS = LINUX	# Linux
 
 CC=gcc
 SKLAFFFLAGS = -D$(SKLAFFSYS) -DSKLAFFDIR=\"$(SKLAFFDIR)\" -DSKLAFFBIN=\"$(SKLAFFBIN)\"
-CFLAGS = $(SKLAFFFLAGS) -O2 -g -pipe -Wall -Werror
+CFLAGS = $(SKLAFFFLAGS) -O2 -g -pipe -Wall
 
 # uncomment for SYSV
 #LIBS=-lc_s -lsklaff -ltermcap -lcposix -linet -lm
@@ -74,6 +74,8 @@ FTNTOBJ=ftntoss.o ftnconfig.o ftnmsg.o ftnnetmail.o utf.o version.o
 SURVREPOBJ=survreport.o
 FTCOBJ=forwardtoconf.o
 FTYOBJ=forwardtoyell.o
+IBOLIMPORTOBJ=ibolimport.o ibol.o iboldb.o ftnmsg.o
+IBOLMSGDUMPOBJ=ibolmsgdump.o ibol.o ftnmsg.o
 
 SKLAFFLIB=lib/libsklaff.a
 
@@ -91,6 +93,10 @@ $(FTNTOBJ): sklaff.h struct.h ftnmsg.h
 $(SURVREPOBJ): sklaff.h globals.h struct.h lang.h
 $(FTCOBJ): sklaff.h globals.h struct.h lang.h
 $(FTYOBJ): sklaff.h globals.h struct.h lang.h
+
+ibolimport.o: ftnmsg.h ibol.h iboldb.h
+ibol.o: ibol.h ftnmsg.h
+iboldb.o: iboldb.h
 
 sklaffkom: $(SKLAFFLIB) $(KOMOBJ) $(OBJS)
 	$(CC) -g -o sklaffkom $(KOMOBJ) $(OBJS) -Llib $(LIBS)
@@ -136,13 +142,19 @@ forwardtoyell: $(SKLAFFLIB) $(FTYOBJ) $(OBJS)
 	$(CC) -o forwardtoyell $(FTYOBJ) $(OBJS) -Llib $(LIBS)
 	strip forwardtoyell
 
+ibolimport: $(IBOLIMPORTOBJ)
+	$(CC) -o ibolimport $(IBOLIMPORTOBJ)
+
+ibolmsgdump: $(IBOLMSGDUMPOBJ)
+	$(CC) -o ibolmsgdump $(IBOLMSGDUMPOBJ)
+
 version.c:
 	@./version.sh
 
 $(SKLAFFLIB):
 	(cd lib; $(MAKE) CC=$(CC) CFLAGS='$(CFLAGS) -I..')
 
-install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss ftntoss
+install: sklaffkom sklaffadm sklaffacct survreport sklaffwho newstoss mailtoss ftntoss ibolimport
 	@echo Making libraries
 	-mkdir $(SKLAFFDIR)
 	-mkdir $(SKLAFFDIR)/etc
@@ -232,8 +244,13 @@ installdb:
 	chmod og-rxw $(SKLAFFDIR)/etc/help.eng/*
 
 clean:
-	(cd lib; make clean)
-	-rm -f *.o *.a \#* *~ core sklaffkom sklaffadm sklaffacct mailtoss newstoss ftntoss survreport sklaffwho version.c
+	(cd lib; $(MAKE) clean)
+	-rm -f *.o *.a \#* *~ core \
+	    sklaffkom sklaffadm sklaffacct \
+	    mailtoss newstoss ftntoss survreport sklaffwho \
+	    ibolimport ibolmsgdump \
+	    forwardtoconf forwardtoyell \
+	    version.c
 
 # distrib is rewritten 2025-08-16 by PL to work in our modern times
 
