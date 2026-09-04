@@ -30,8 +30,7 @@
 #include <pwd.h>
 #include <sys/stat.h>
 #include <signal.h>
-#include <errno.h>
-#include <limits.h>	/* for safer handling of .plan */
+#include <unistd.h>
 #include <sys/time.h>   /* for utimes() */
 #if defined(LINUX) || defined(__linux__)
 #include <bsd/string.h>  // Required for strlcpy on Linux via libbsd
@@ -509,6 +508,13 @@ setup_new_user()
         return -1;
     }
     non_critical();
+
+    /*
+     * Create the Unix ~/.plan file as the real login user.
+     * Finger/.plan support is best-effort and must never prevent login.
+     */
+    (void) plan_ensure(Uid);
+
     return 0;
 }
 
@@ -1471,41 +1477,15 @@ write_sklaffrc(int uid, struct SKLAFFRC *kaffer)
 
     non_critical();
 
+    /*
+     * Mirror the SklaffKOM signature to the Unix ~/.plan file.
+     * plan_write() performs the filesystem work as the real login user.
+     *
+     * Failure is non-fatal: sklaffrc has already been saved.
+     */
+    (void) plan_write(uid, out2);
 
-#ifndef LINUX
-/* Mirror sig to ~/.plan (at our best efforts)
- * We only update if the file already exists and is writable.
- * Failures are logged and non-fatal. 2025-08-10 PL
- */
-{
-   /* struct passwd *p = getpwuid(Uid); */
-    struct passwd *p = getpwuid(uid); /* Minor typo since ages ago 2025-05-18 PL */
-    if (!p || !p->pw_dir || !*p->pw_dir) {
-        debuglog("Skipping .plan: getpwuid() failed or empty home", 20);
-    } else {
-        char plan[PATH_MAX];
-        snprintf(plan, sizeof(plan), "%s/.plan", p->pw_dir);
+    free(out2);
 
-        /* Only proceed if file exists and is writable by sklaffuser */
-        if (access(plan, F_OK) != 0) {
-            debuglog("Skipping .plan: file does not exist", 20);
-        } else if (access(plan, W_OK) != 0) {
-            debuglog("Skipping .plan: file not writable", 20);
-        } else {
-            int fd2 = create_file(plan);
-            if (fd2 < 0) {
-                sys_error(function_name, 1, "create_file(.plan)");
-            } else {
-                critical();
-                if (write_file(fd2, out2) == -1) {
-                    sys_error(function_name, 2, "write_file(.plan)");
-                }
-                close_file(fd2);
-                non_critical();
-            }
-        }
-    }
-}
-#endif
-return 0;
+    return 0;
 }

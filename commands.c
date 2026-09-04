@@ -773,27 +773,120 @@ out:
 
 
 /*
- * cmd_help - list all commands
+ * cmd_help - list all commands, grouped by category
  * args: user arguments (args)
  * ret: ok (0) or error (-1)
  */
 
-int
-cmd_help(char *args)
-{
-    int i;
+struct cmd_help_group {
+    char group;
+    const char *title;
+};
 
-    i = 0;
-    output("\n%s\n", MSG_LISTCOM);
-    while (Par_ent[i].func[0] != '\0') {
-        if (output("%-20s %s\n", Par_ent[i].cmd, Par_ent[i].help) == -1)
-            break;
-        i++;
-    }
-    output("\n");
+static const struct cmd_help_group Cmd_help_groups[] = {
+    { 'T', MSG_CMDGROUP_T },
+    { 'C', MSG_CMDGROUP_C },
+    { 'F', MSG_CMDGROUP_F },
+    { 'M', MSG_CMDGROUP_M },
+    { 'P', MSG_CMDGROUP_P },
+    { 'I', MSG_CMDGROUP_I },
+    { 'X', MSG_CMDGROUP_X },
+    { 'A', MSG_CMDGROUP_A },
+    { 'O', MSG_CMDGROUP_O },
+    { 'Y', MSG_CMDGROUP_Y }
+};
+
+
+/*
+ * Match a parse entry against a help group.
+ *
+ * Unknown or missing groups are displayed under Other. This is
+ * intentional: a typo in parse.swe/parse.eng must never make a
+ * command disappear from "List commands".
+ */
+static int
+cmd_help_group_match(char entry_group, char display_group)
+{
+    if (display_group != 'O')
+        return entry_group == display_group;
+
+    if (entry_group == 'O' || entry_group == '\0')
+        return 1;
+
+    if (strchr("TCFMPIXAOY", entry_group) == NULL)
+        return 1;
+
     return 0;
 }
 
+
+int
+cmd_help(char *args)
+{
+    int i, g;
+    int found;
+    size_t len;
+    char underline[80];
+
+    output("\n%s\n\n", MSG_LISTCOM);
+
+    for (g = 0;
+         g < (int)(sizeof(Cmd_help_groups) /
+                   sizeof(Cmd_help_groups[0]));
+         g++) {
+
+        /*
+         * Do not display empty groups.
+         */
+        found = 0;
+
+        for (i = 0; Par_ent[i].func[0] != '\0'; i++) {
+            if (cmd_help_group_match(Par_ent[i].group,
+                                     Cmd_help_groups[g].group)) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found)
+            continue;
+
+        /*
+         * Build an underline matching the heading length.
+         */
+        len = strlen(Cmd_help_groups[g].title);
+
+        if (len >= sizeof(underline))
+            len = sizeof(underline) - 1;
+
+        memset(underline, '-', len);
+        underline[len] = '\0';
+
+        if (output("%s\n%s\n\n",
+                   Cmd_help_groups[g].title,
+                   underline) == -1)
+            goto out;
+
+        /*
+         * Preserve the ordering from the parse file within
+         * each category.
+         */
+        for (i = 0; Par_ent[i].func[0] != '\0'; i++) {
+            if (!cmd_help_group_match(Par_ent[i].group,
+                                      Cmd_help_groups[g].group))
+                continue;
+
+            if (output("%s\n    %s\n\n",
+                       Par_ent[i].cmd,
+                       Par_ent[i].help) == -1)
+                goto out;
+        }
+    }
+
+out:
+    output("\n");
+    return 0;
+}
 /*
  * cmd_where - show current conf and number of unread texts
  * args: user arguments (args)

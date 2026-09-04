@@ -41,7 +41,7 @@
 #define ENABLE_CHARSET_HANDSHAKE 1
 #endif
 
-/* Number of InterBBS Oneliners displayed at checkout. 0 to disable. */
+/* Number of InterBBS Oneliners displayed at logout. 0 to disable. */
 #define IBOL_LOGOUT_COUNT 0
 
 /* InterBBS Oneliner (IBOL) transport settings. */
@@ -870,6 +870,11 @@ long save_mailcopy(char *, char *, char *);
 void cnvnat(char *, int);
 void int2ms(int, char[4]);  /* modified on 2025-07-12, PL */
 long age_to_textno(long);
+
+/* plan.c */
+
+int plan_ensure(int);
+int plan_write(int, const char *);
 
 /* user.c */
 

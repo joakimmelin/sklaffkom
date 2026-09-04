@@ -58,6 +58,7 @@ OBJS = \
     msg.o \
 	newsparse.o \
 	parse.o\
+    plan.o\
 	praise.o\
 	survey.o \
 	text.o \

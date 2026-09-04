@@ -1,114 +1,126 @@
 #
 # etc/parse.eng
 # 
-# <command>:<function name>:<short help string>
+# <command>:<function name>:<short help string>:<group>
 #
-Add permissions:cmd_add_rights:Add permissions for user in current conference 
-(Display article) again:cmd_display_last:Redisplay last article read
-(Define) alias:cmd_alias:Defines an alias for a command
-(Read) all (texts):cmd_readall:Displays all your unread articles
-Answer:cmd_answermsg:Answer a say-message
-Back:cmd_back_text:Unreads latest read <number of articles> articles
-Block:cmd_block_user:Edit your list of blocked users
-Clear:cmd_cls:Clear screen
-Cls:cmd_cls:Same as Clear (clear screen)
-Change character set:cmd_change_charset:Change the character set used by your terminal
-Change loginscript:cmd_mod_login:Change commands executed at login
-Change note:cmd_mod_note:Change your "note"
-Change password:cmd_change_passwd:Change your password
-Change conference:cmd_mod_conf:Edit conference settings
-#Change conferencedescription:cmd_change_cdesc:Change conference description
-#Change conferencename:cmd_change_cname:Edit conference settings
-Change replyconference:cmd_change_comc:Change reply conference
-Change personal (information):cmd_mod_pinfo:Change personal information
-Change plan:cmd_mod_sig:Change your plan file
-Change rows:cmd_mod_numlines:Set number of rows
-Change screen (length):cmd_mod_numlines:Change number of screen rows
-Change signature:cmd_mod_sig:Change your signature
-Change timeout:cmd_mod_timeout:Change timeout period
-Create conference:cmd_create_conf:Create a new conference
-Delete article:cmd_delete_text:Delete a specific article
-Delete conference:cmd_delete_conf:Deletes a conference
-Delete file:cmd_unlink:Deletes a file from current conference
-Describe (file):cmd_describe:Describe a file in current conference
-Display (article):cmd_read_text:Displays a specific article
-Download (file):cmd_download:Download a file from current conference
-Enter (article):cmd_post_text:Same as 'Write (article)'
-Find:cmd_grep:Search for a string in conference
-Footnote:cmd_footnote:Adds a footnote to a text
-Follow-up:cmd_comment:Post a follow-up to an article
-From:cmd_from:Show where you are from
-Get (QWK-packet):cmd_sendbatch:Send all your unread texts in QWK-format
-Globalfind:cmd_global_grep:Search for a string among all conferences
-Goto (conference):cmd_change_conf:Goto another conference
-Help:cmd_long_help:Display help about a specific command
-High (priority) (conference):cmd_prio:Give high priority to conference
-I:cmd_I:Tell others how you are
-(Show) information:cmd_info:Display information about the system
-Last (logged in):cmd_list_last:Show last logged in users
-List commands:cmd_help:List all commands
-List conferences:cmd_list_confs:List all conferences
-List files:cmd_list_files:List all files in current conference
-List flags:cmd_list_flags:List all flags
-List news:cmd_list_news:Count new articles in all conferences
-List permissions:cmd_list_rights:Show permissions for users in conference
-List subjects:cmd_list_subj:List subjects in current conference
-List subscribers:cmd_list_member:List all subscribers to a conference
-List tells:cmd_list_says:List received tell-messages
-List users:cmd_list_users:List all users
-List yells:cmd_list_yells:List received yell and I-messages
-Logout:cmd_end_session:End session
-Low (priority) (conference):cmd_deprio:Give low priority to conference
-Mail:cmd_mail:Send mail
-Me:cmd_my:Tell others how you are, genitive case
-New:cmd_only:Specify number of new articles in current conference
-(Goto) next conference:cmd_next_conf:Goto next conference with new articles
-(Display) next follow-up:cmd_next_comment:Displays next follow-up in current conference
-(Display) next article:cmd_next_text:Displays next new article in current conference
-Only:cmd_only:Same as 'New'
-Play (online games):cmd_bbslink:Calls games via the InterBBS-like service BBSLink
-Post (article):cmd_post_text:Same as 'Write (article)'
-Praise (article):cmd_like:Praise an article
-(Read) previous new (article):cmd_read_last_text:Return to the most recently read new article
-Reply:cmd_personal:Write a personal reply (mail) to article author
-Restart:cmd_restart:Restart program and login again
-(Report survey) result:cmd_survey_result:Report full survey result
-Read (article):cmd_read_text:Same as 'Display (article)'
-Restore unread:cmd_reclaim_unread:Immediately restore articles marked unread for the next session
-Rot13:cmd_display_rot13:Read last text read with rot13 conversion
-Shout:cmd_yell:Send message to all logged in users
-Show license:cmd_licens:Show SklaffKOM license information
-Skip branch:cmd_jump_over:Skip all articles in branch
-Skip tree:cmd_jump_tree:Skip all articles in tree
-Skip subject:cmd_jumpsub:Skip all articles with a certain subject
-Skip user:cmd_jumpuser:Skip all articles written by a certain user
-(Read) some (texts):cmd_readsome:Displays all unread articles in current conf
-(Show) status:cmd_show_status:Show information about a user or a conference
-Subscribe (to):cmd_subscribe:Subscribe to a conference
-Subtract permission:cmd_sub_rights:Subtract permissions for a user in a conference
-Tell:cmd_say:Send message to a logged in user
-(Show) time:cmd_display_time:Show current time
-Turn off (flag):cmd_off_flag:Turn off a flag
-Turn on (flag):cmd_on_flag:Turn on a flag
-Unread article:cmd_unread_text:Unread a specific article at logout-time
-Unread branch:cmd_goto_text:Unread all articles below a specific article
-Unread tree:cmd_unread_tree:Unread all articles in current tree
-Unread subject:cmd_unreadsub:Unread all articles with a certain subject
-Unpraise:cmd_unlike:Unpraise a text you have praised
-Unsubscribe (to):cmd_unsubscribe:Unsubscribe to a conference
-Upload (file):cmd_upload:Upload a file to current conference
-Version:cmd_version:Show current SklaffKOM version
-Wall:cmd_wall:Show the InterBBS-wall
-Where (am I):cmd_where:Show current conference
-Who (is online):cmd_who:Show logged in users
-(Show) entire (text):cmd_whole_text:Show text with absolute date
-Write (article):cmd_post_text:Write a new article in a conference
-Yell:cmd_yell:Same as 'shout'
-I:cmd_I:Tell everyone how you are
-(Make) survey:cmd_post_survey:Make a survey in the current conference
-Nethack:cmd_nethack:Play Nethack
-Zork:cmd_zork:Play Zork 1,2 or 3
+# Groups:
+# T - Texts / articles and mail
+# C - Conferences
+# F - Files
+# M - Messaging and communication
+# P - Personal settings
+# I - Information and listings
+# X - Games and external services
+# A - Administration / Sysop
+# O - Other / miscellaneous
+# Y - Synonyms and aliases
+#
+Add permissions:cmd_add_rights:Add permissions for user in current conference:C
+(Display article) again:cmd_display_last:Redisplay last article read:T
+(Define) alias:cmd_alias:Defines an alias for a command:P
+(Read) all (texts):cmd_readall:Displays all your unread articles:T
+Answer:cmd_answermsg:Answer a say-message:M
+Back:cmd_back_text:Unreads latest read <number of articles> articles:T
+Block:cmd_block_user:Edit your list of blocked users:P
+Clear:cmd_cls:Clear screen:O
+Cls:cmd_cls:Same as Clear (clear screen):Y
+Change character set:cmd_change_charset:Change the character set used by your terminal:P
+Change loginscript:cmd_mod_login:Change commands executed at login:P
+Change note:cmd_mod_note:Change your "note":P
+Change password:cmd_change_passwd:Change your password:P
+Change conference:cmd_mod_conf:Edit conference settings:C
+#Change conferencedescription:cmd_change_cdesc:Change conference description:C
+#Change conferencename:cmd_change_cname:Edit conference settings:C
+Change replyconference:cmd_change_comc:Change reply conference:C
+Change personal (information):cmd_mod_pinfo:Change personal information:P
+Change plan:cmd_mod_sig:Change your plan file:P
+Change rows:cmd_mod_numlines:Set number of rows:Y
+Change screen (length):cmd_mod_numlines:Change number of screen rows:P
+Change signature:cmd_mod_sig:Change your signature:P
+Change timeout:cmd_mod_timeout:Change timeout period:P
+Create conference:cmd_create_conf:Create a new conference:C
+Delete article:cmd_delete_text:Delete a specific article:T
+Delete conference:cmd_delete_conf:Deletes a conference:C
+Delete file:cmd_unlink:Deletes a file from current conference:F
+Describe (file):cmd_describe:Describe a file in current conference:F
+Display (article):cmd_read_text:Displays a specific article:T
+Display followed-up:cmd_display_commented:Displays commented article:T
+Download (file):cmd_download:Download a file from current conference:F
+Enter (article):cmd_post_text:Same as 'Write (article)':Y
+Find:cmd_grep:Search for a string in conference:T
+Footnote:cmd_footnote:Adds a footnote to a text:T
+Follow-up:cmd_comment:Post a follow-up to an article:T
+From:cmd_from:Show where you are from:P
+Get (QWK-packet):cmd_sendbatch:Send all your unread texts in QWK-format:T
+Globalfind:cmd_global_grep:Search for a string among all conferences:T
+Goto (conference):cmd_change_conf:Goto another conference:C
+Help:cmd_long_help:Display help about a specific command:I
+High (priority) (conference):cmd_prio:Give high priority to conference:C
+I:cmd_I:Tell others how you are:M
+(Show) information:cmd_info:Display information about the system:I
+Last (logged in):cmd_list_last:Show last logged in users:I
+List commands:cmd_help:List all commands:I
+List conferences:cmd_list_confs:List all conferences:C
+List files:cmd_list_files:List all files in current conference:F
+List flags:cmd_list_flags:List all flags:P
+List news:cmd_list_news:Count new articles in all conferences:T
+List permissions:cmd_list_rights:Show permissions for users in conference:C
+List subjects:cmd_list_subj:List subjects in current conference:T
+List subscribers:cmd_list_member:List all subscribers to a conference:C
+List tells:cmd_list_says:List received tell-messages:M
+List users:cmd_list_users:List all users:I
+List yells:cmd_list_yells:List received yell and I-messages:M
+Logout:cmd_end_session:End session:O
+Low (priority) (conference):cmd_deprio:Give low priority to conference:C
+Mail:cmd_mail:Send mail:T
+Me:cmd_my:Tell others how you are, genitive case:M
+New:cmd_only:Specify number of new articles in current conference:T
+(Goto) next conference:cmd_next_conf:Goto next conference with new articles:C
+(Display) next follow-up:cmd_next_comment:Displays next follow-up in current conference:T
+(Display) next article:cmd_next_text:Displays next new article in current conference:T
+Only:cmd_only:Same as 'New':Y
+Play (online games):cmd_bbslink:Calls games via the InterBBS-like service BBSLink:X
+Post (article):cmd_post_text:Same as 'Write (article)':Y
+Praise (article):cmd_like:Praise an article:T
+(Read) previous new (article):cmd_read_last_text:Return to the most recently read new article:T
+Reply:cmd_personal:Write a personal reply (mail) to article author:M
+Restart:cmd_restart:Restart program and login again:O
+(Report survey) result:cmd_survey_result:Report full survey result:T
+Read (article):cmd_read_text:Same as 'Display (article)':Y
+Restore unread:cmd_reclaim_unread:Immediately restore articles marked unread for the next session:T
+Rot13:cmd_display_rot13:Read last text read with rot13 conversion:T
+Shout:cmd_yell:Send message to all logged in users:M
+Show license:cmd_licens:Show SklaffKOM license information:I
+Skip branch:cmd_jump_over:Skip all articles in branch:T
+Skip tree:cmd_jump_tree:Skip all articles in tree:T
+Skip subject:cmd_jumpsub:Skip all articles with a certain subject:T
+Skip user:cmd_jumpuser:Skip all articles written by a certain user:T
+(Read) some (texts):cmd_readsome:Displays all unread articles in current conf:T
+(Show) status:cmd_show_status:Show information about a user or a conference:I
+Subscribe (to):cmd_subscribe:Subscribe to a conference:C
+Subtract permission:cmd_sub_rights:Subtract permissions for a user in a conference:C
+Tell:cmd_say:Send message to a logged in user:M
+(Show) time:cmd_display_time:Show current time:I
+Turn off (flag):cmd_off_flag:Turn off a flag:P
+Turn on (flag):cmd_on_flag:Turn on a flag:P
+Unread article:cmd_unread_text:Unread a specific article at logout-time:T
+Unread branch:cmd_goto_text:Unread all articles below a specific article:T
+Unread tree:cmd_unread_tree:Unread all articles in current tree:T
+Unread subject:cmd_unreadsub:Unread all articles with a certain subject:T
+Unpraise:cmd_unlike:Unpraise a text you have praised:T
+Unsubscribe (to):cmd_unsubscribe:Unsubscribe to a conference:C
+Upload (file):cmd_upload:Upload a file to current conference:F
+Version:cmd_version:Show current SklaffKOM version:I
+Wall:cmd_wall:Show the InterBBS-wall:X
+Where (am I):cmd_where:Show current conference:I
+Who (is online):cmd_who:Show logged in users:I
+(Show) entire (text):cmd_whole_text:Show text with absolute date:T
+Write (article):cmd_post_text:Write a new article in a conference:T
+Yell:cmd_yell:Same as 'shout':Y
+(Make) survey:cmd_post_survey:Make a survey in the current conference:T
+Nethack:cmd_nethack:Play Nethack:X
+Zork:cmd_zork:Play Zork 1,2 or 3:X
 
-?:cmd_long_help:Same as 'Help'
-+:cmd_next_conf:Same as 'Next conference'
--:cmd_display_commented:Same as 'Display followed-up'
+?:cmd_long_help:Same as 'Help':Y
++:cmd_next_conf:Same as 'Next conference':Y
+-:cmd_display_commented:Same as 'Display followed-up':Y

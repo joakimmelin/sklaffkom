@@ -4,6 +4,11 @@ v1.33-rc2 Thursday 13 August 2026
   OneLiners if configured correctly. Supposed to be at logout eventually
   (optional, behind a flag setting).
 
+* Allows secret or hidden news and ftn-conferences, finally.
+
+* UX-improvements : Commands are now grouped after category, making 
+  "List all commands" much easier to read.
+
 v1.33-rc1 Sunday 02 August 2026 PL
 
 * Numerous small fixes. Code cleanup. Praise / Unpraise blocked in ftn, as
