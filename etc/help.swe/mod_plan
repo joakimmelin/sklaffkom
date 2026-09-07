@@ -1,0 +1,23 @@
+Argument:
+  (inga)
+
+Beskrivning:
+  Med detta kommando kan du l{sa och {ndra din Unix .plan-fil.
+
+  .plan {r en klassisk Unix-fil d{r en anv{ndare kan skriva en kort
+  presentation, aktuell information eller annat som man vill visa f|r
+  den som anv{nder programmet finger.
+
+  SklaffKOM skapar din .plan-fil automatiskt om den saknas. Filen
+  redigeras med den vanliga SklaffKOM-editorn.
+
+Observera:
+  .plan {r helt frist}ende fr}n din SklaffKOM-signatur. Signaturen
+  {ndras med kommandot "[ndra signatur".
+
+  Att SklaffKOM kan skapa och redigera .plan inneb{r inte automatiskt
+  att inneh}llet kan l{sas via finger fr}n andra datorer. Det beror p}
+  hur systemoperat|ren har konfigurerat finger-tj{nsten och systemets
+  filr{ttigheter.
+
+  Om du avbryter editorn sparas inga {ndringar.

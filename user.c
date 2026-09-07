@@ -1341,12 +1341,11 @@ write_sklaffrc(int uid, struct SKLAFFRC *kaffer)
 {
     char user_home[255];
     char file1[255];
-    char *outbuf, *out2;
+    char *outbuf;
     char *function_name = "write_sklaffrc";    
     int fd;  /* fd2 moved to bottom - not used on linux PL 2025-08-10 */
 
     outbuf = (char *) malloc(24000);    /* write_buf frees the memory,yes? */
-    out2 = (char *) malloc(24000);      /* write_buf frees the memory,yes? */
 
     (void) user_dir(uid, user_home);
     memcpy(file1, user_home, strlen(user_home) + 1);
@@ -1357,7 +1356,6 @@ write_sklaffrc(int uid, struct SKLAFFRC *kaffer)
         free(kaffer);
         return -1;
     }
-    out2[0] = 0;
 
 #ifdef DEBUG
     printf("rename %s = %s \r\n", file1, file2);
@@ -1425,8 +1423,6 @@ write_sklaffrc(int uid, struct SKLAFFRC *kaffer)
         strcat(outbuf, "![sig]\n");
         strcat(outbuf, kaffer->sig);
         strcat(outbuf, "\n");
-        strcat(out2, kaffer->sig);
-        strcat(out2, "\n");
     }
     if (strlen(kaffer->blocklist) > 0) {
     	strcat(outbuf, "![blocklist]\n");
@@ -1476,16 +1472,6 @@ write_sklaffrc(int uid, struct SKLAFFRC *kaffer)
     close_file(fd);
 
     non_critical();
-
-    /*
-     * Mirror the SklaffKOM signature to the Unix ~/.plan file.
-     * plan_write() performs the filesystem work as the real login user.
-     *
-     * Failure is non-fatal: sklaffrc has already been saved.
-     */
-    (void) plan_write(uid, out2);
-
-    free(out2);
 
     return 0;
 }

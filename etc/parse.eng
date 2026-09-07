@@ -33,7 +33,7 @@ Change conference:cmd_mod_conf:Edit conference settings:C
 #Change conferencename:cmd_change_cname:Edit conference settings:C
 Change replyconference:cmd_change_comc:Change reply conference:C
 Change personal (information):cmd_mod_pinfo:Change personal information:P
-Change plan:cmd_mod_sig:Change your plan file:P
+Change plan:cmd_mod_plan:Change your plan file:P
 Change rows:cmd_mod_numlines:Set number of rows:Y
 Change screen (length):cmd_mod_numlines:Change number of screen rows:P
 Change signature:cmd_mod_sig:Change your signature:P

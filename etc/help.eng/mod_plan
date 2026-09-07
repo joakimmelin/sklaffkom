@@ -1,0 +1,24 @@
+Arguments:
+  (none)
+
+Description:
+  This command lets you read and change your Unix .plan file.
+
+  .plan is a traditional Unix file where a user can write a short
+  presentation, current information, or anything else intended to be
+  displayed through the finger service.
+
+  SklaffKOM automatically creates your .plan file if it does not already
+  exist. The file is edited using the standard SklaffKOM editor.
+
+Note:
+  .plan is completely separate from your SklaffKOM signature. The
+  signature is changed with the "Change signature" command.
+
+  The fact that SklaffKOM can create and edit .plan does not automatically
+  mean that its contents can be read through finger from other computers.
+  This depends on how the SysOp has configured the finger service and the
+  system's file permissions.
+
+  If you cancel the editor, no changes are saved.
+

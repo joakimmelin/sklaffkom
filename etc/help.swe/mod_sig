@@ -1,5 +1,18 @@
-Beskrivning:
-  [ndrar din plan-fil.
+Argument:
+  (inga)
 
-  Inneh}llet i plan-filen visas n{r man g|r finger
-  p} dig fr}n en annan dator. 
+Beskrivning:
+  Med detta kommando {ndrar du din personliga signatur.
+
+  Signaturen kan anv{ndas n{r du skriver texter som skickas vidare till
+  externa n{t, till exempel Usenet och FTN. Den lagras i din personliga
+  SklaffKOM-konfiguration och kan {ndras n{r som helst.
+
+  Den vanliga SklaffKOM-editorn anv{nds f|r att redigera signaturen.
+
+Observera:
+  Signaturen {r inte samma sak som din Unix .plan-fil. .plan anv{nds
+  bland annat av det klassiska Unix-programmet finger och {ndras med
+  kommandot "[ndra plan".
+
+  Om du avbryter editorn sparas inga {ndringar.

@@ -1,0 +1,454 @@
+#!/bin/sh
+#
+# smsimport - import received SMS messages from ModemManager into the
+#             SklaffKOM forwardtoyell spool.
+#
+# Local mode (default):
+#   smsimport
+#
+# Remote mode:
+#   smsimport -r user@host
+#
+# The script:
+#   - finds the modem by IMEI (recommended), never by ModemManager index
+#   - reads received SMS messages with mmcli
+#   - creates files compatible with forwardtoyell
+#   - stores them atomically in the SklaffKOM SMS spool
+#   - optionally transfers them over SSH/SCP
+#   - deletes an SMS from the modem only after the spool copy is safe
+#
+# Configuration is read from:
+#   /usr/local/sklaff/etc/smsimport.conf
+# or from the file specified with -c.
+
+set -u
+
+PROG=${0##*/}
+DEFAULT_CONFIG=/usr/local/sklaff/etc/smsimport.conf
+CONFIG=${SMSIMPORT_CONFIG:-$DEFAULT_CONFIG}
+
+MMCLI=${MMCLI:-mmcli}
+SSH=${SSH:-ssh}
+SCP=${SCP:-scp}
+
+IMEI=${IMEI:-}
+SMS_DIR=${SMS_DIR:-/usr/local/sklaff/db/sms}
+REMOTE_HOST=
+VERBOSE=0
+ERRORS=0
+TMPFILE=
+
+usage()
+{
+    cat <<USAGE
+Usage:
+  $PROG [-v] [-i IMEI] [-c FILE]
+  $PROG -r user@host [-v] [-i IMEI] [-c FILE]
+
+Options:
+  -r user@host  Transfer SMS files to a remote SklaffKOM host.
+                Without -r, local mode is used.
+  -i IMEI       Select modem by IMEI. Overrides the configuration file.
+  -c FILE       Use an alternate configuration file.
+  -v            Verbose output.
+  -h            Show this help.
+
+Configuration:
+  IMEI          Modem IMEI. Strongly recommended.
+  SMS_DIR       SklaffKOM SMS spool root.
+                Default: /usr/local/sklaff/db/sms
+USAGE
+}
+
+log()
+{
+    if [ "$VERBOSE" -eq 1 ]; then
+        printf '%s: %s\n' "$PROG" "$*" >&2
+    fi
+}
+
+warn()
+{
+    printf '%s: %s\n' "$PROG" "$*" >&2
+}
+
+die()
+{
+    warn "$*"
+    exit 1
+}
+
+cleanup()
+{
+    if [ -n "${TMPFILE:-}" ]; then
+        rm -f "$TMPFILE"
+    fi
+}
+
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+# Find -c before loading configuration so command-line options can still
+# override values from the selected configuration file.
+need_config_arg=0
+for arg
+do
+    if [ "$need_config_arg" -eq 1 ]; then
+        CONFIG=$arg
+        need_config_arg=0
+        continue
+    fi
+    case "$arg" in
+        -c)
+            need_config_arg=1
+            ;;
+        -c?*)
+            CONFIG=${arg#-c}
+            ;;
+    esac
+done
+
+if [ -f "$CONFIG" ]; then
+    # Trusted shell syntax.
+    . "$CONFIG"
+fi
+
+IMEI=${IMEI:-}
+SMS_DIR=${SMS_DIR:-/usr/local/sklaff/db/sms}
+
+OPTIND=1
+while getopts "r:i:c:vh" opt
+do
+    case "$opt" in
+        r) REMOTE_HOST=$OPTARG ;;
+        i) IMEI=$OPTARG ;;
+        c) : ;;
+        v) VERBOSE=1 ;;
+        h) usage; exit 0 ;;
+        *) usage >&2; exit 2 ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+[ "$#" -eq 0 ] || {
+    usage >&2
+    exit 2
+}
+
+command -v "$MMCLI" >/dev/null 2>&1 || die "mmcli not found."
+
+if [ -n "$REMOTE_HOST" ]; then
+    command -v "$SSH" >/dev/null 2>&1 || die "ssh not found."
+    command -v "$SCP" >/dev/null 2>&1 || die "scp not found."
+fi
+
+# SMS_DIR is inserted into remote shell commands below. Reject apostrophes
+# instead of trying to support an exotic path syntax here.
+case "$SMS_DIR" in
+    *"'"*) die "SMS_DIR must not contain a single quote." ;;
+esac
+
+INCOMING=$SMS_DIR/incoming
+PROCESSED=$SMS_DIR/processed
+FAILED=$SMS_DIR/failed
+
+kv_get()
+{
+    key=$1
+    data=$2
+
+    printf '%s\n' "$data" |
+        awk -v key="$key" '
+            index($0, key) == 1 {
+                line = $0
+                sub(/^[^:]*:[[:space:]]*/, "", line)
+                print line
+                exit
+            }
+        '
+}
+
+decode_mmcli_string()
+{
+    # mmcli -K emits escaped strings intended for machine parsing.
+    printf '%b' "$1"
+}
+
+find_modem()
+{
+    list=$("$MMCLI" -L -K 2>/dev/null) || die "could not query ModemManager."
+
+    modems=$(printf '%s\n' "$list" |
+        sed -n 's/^modem-list\.value\[[0-9][0-9]*\][[:space:]]*:[[:space:]]*//p')
+
+    [ -n "$modems" ] || die "no modem found."
+
+    count=0
+    only_modem=
+    selected=
+
+    for modem in $modems
+    do
+        count=$((count + 1))
+        only_modem=$modem
+
+        if [ -n "$IMEI" ]; then
+            info=$("$MMCLI" -m "$modem" -K 2>/dev/null) || continue
+            found_imei=$(kv_get "modem.3gpp.imei" "$info")
+            if [ "$found_imei" = "$IMEI" ]; then
+                selected=$modem
+                break
+            fi
+        fi
+    done
+
+    if [ -n "$IMEI" ]; then
+        [ -n "$selected" ] || die "no modem with configured IMEI was found."
+        MODEM=$selected
+    else
+        if [ "$count" -eq 1 ]; then
+            MODEM=$only_modem
+            warn "no IMEI configured; using the only available modem."
+        else
+            die "multiple modems found; configure IMEI or use -i."
+        fi
+    fi
+
+    log "using modem $MODEM"
+}
+
+prepare_spool()
+{
+    if [ -n "$REMOTE_HOST" ]; then
+        log "preparing remote spool on $REMOTE_HOST"
+        "$SSH" "$REMOTE_HOST" \
+            "mkdir -p '$INCOMING' '$PROCESSED' '$FAILED'" \
+            >/dev/null 2>&1 ||
+            die "could not prepare remote SMS spool."
+    else
+        log "preparing local spool $SMS_DIR"
+        mkdir -p "$INCOMING" "$PROCESSED" "$FAILED" ||
+            die "could not prepare local SMS spool."
+    fi
+}
+
+spool_has_file()
+{
+    name=$1
+
+    if [ -n "$REMOTE_HOST" ]; then
+        "$SSH" "$REMOTE_HOST" \
+            "test -f '$INCOMING/$name' || test -f '$PROCESSED/$name' || test -f '$FAILED/$name'" \
+            >/dev/null 2>&1
+    else
+        [ -f "$INCOMING/$name" ] ||
+        [ -f "$PROCESSED/$name" ] ||
+        [ -f "$FAILED/$name" ]
+    fi
+}
+
+deliver_file()
+{
+    src=$1
+    name=$2
+
+    if spool_has_file "$name"; then
+        log "$name already exists in spool; not copying it again"
+        return 0
+    fi
+
+    if [ -n "$REMOTE_HOST" ]; then
+        remote_tmp="$INCOMING/.$name.$$"
+        remote_final="$INCOMING/$name"
+
+        log "transferring $name to $REMOTE_HOST"
+
+        "$SCP" -q "$src" "$REMOTE_HOST:$remote_tmp" >/dev/null 2>&1 || {
+            warn "could not transfer $name."
+            return 1
+        }
+
+        "$SSH" "$REMOTE_HOST" \
+            "chmod 640 '$remote_tmp' && mv -f '$remote_tmp' '$remote_final'" \
+            >/dev/null 2>&1 || {
+            warn "could not finalize remote spool file $name."
+            return 1
+        }
+    else
+        local_tmp="$INCOMING/.$name.$$"
+        local_final="$INCOMING/$name"
+
+        log "storing $name locally"
+
+        cp "$src" "$local_tmp" || {
+            warn "could not write local spool file $name."
+            rm -f "$local_tmp"
+            return 1
+        }
+        chmod 640 "$local_tmp" 2>/dev/null || :
+        mv -f "$local_tmp" "$local_final" || {
+            warn "could not finalize local spool file $name."
+            rm -f "$local_tmp"
+            return 1
+        }
+    fi
+
+    return 0
+}
+
+delete_sms()
+{
+    sms=$1
+
+    if "$MMCLI" -m "$MODEM" --messaging-delete-sms="$sms" >/dev/null 2>&1; then
+        log "deleted $sms from modem"
+        return 0
+    fi
+
+    warn "SMS was spooled safely, but could not delete $sms from modem."
+    warn "It will be recognized as a duplicate on the next run."
+    return 1
+}
+
+make_forwardtoyell_file()
+{
+    number=$1
+    timestamp=$2
+    text=$3
+    outfile=$4
+
+    # Historical forwardtoyell accepts 6-12 consecutive digits as the sender.
+    phone=$(printf '%s' "$number" | tr -cd '0-9')
+    phone_len=${#phone}
+
+    if [ "$phone_len" -lt 6 ] || [ "$phone_len" -gt 12 ]; then
+        warn "sender '$number' cannot be represented by forwardtoyell (needs 6-12 digits)."
+        return 1
+    fi
+
+    # !s / !S is forwardtoyell's internal end marker. Avoid accidental
+    # truncation if somebody sends those characters in an SMS.
+    safe_text=$(printf '%s' "$text" |
+        sed -e 's/!s/! s/g' -e 's/!S/! S/g')
+
+    {
+        printf 'SMS received\n'
+        printf 'Timestamp: %s\n' "$timestamp"
+        printf 'Sender: %s\n' "$number"
+        printf '\n'
+        printf '%s\n' "$safe_text"
+        printf '!s\n'
+        printf '%s\n' "$phone"
+    } >"$outfile"
+}
+
+process_sms()
+{
+    sms=$1
+
+    info=$("$MMCLI" -s "$sms" -K 2>/dev/null) || {
+        warn "could not read $sms."
+        ERRORS=1
+        return
+    }
+
+    state=$(kv_get "sms.properties.state" "$info")
+    pdu_type=$(kv_get "sms.properties.pdu-type" "$info")
+
+    # Ignore outgoing/stored SMS objects.
+    [ "$state" = "received" ] || {
+        log "ignoring $sms (state: $state)"
+        return
+    }
+
+    if [ -n "$pdu_type" ] && [ "$pdu_type" != "deliver" ] && [ "$pdu_type" != "--" ]; then
+        log "ignoring $sms (PDU type: $pdu_type)"
+        return
+    fi
+
+    number_escaped=$(kv_get "sms.content.number" "$info")
+    text_escaped=$(kv_get "sms.content.text" "$info")
+    timestamp_escaped=$(kv_get "sms.properties.timestamp" "$info")
+
+    number=$(decode_mmcli_string "$number_escaped")
+    text=$(decode_mmcli_string "$text_escaped")
+    timestamp=$(decode_mmcli_string "$timestamp_escaped")
+
+    [ -n "$number" ] && [ "$number" != "--" ] || {
+        warn "$sms has no sender number; leaving it on the modem."
+        ERRORS=1
+        return
+    }
+
+    [ "$text_escaped" != "--" ] || {
+        warn "$sms contains no text; leaving it on the modem."
+        ERRORS=1
+        return
+    }
+
+    if [ -z "$timestamp" ] || [ "$timestamp" = "--" ]; then
+        timestamp=$(date '+%Y-%m-%dT%H:%M:%S%z')
+    fi
+
+    TMPFILE=$(mktemp "${TMPDIR:-/tmp}/smsimport.XXXXXX") ||
+        die "could not create temporary file."
+
+    if ! make_forwardtoyell_file "$number" "$timestamp" "$text" "$TMPFILE"; then
+        rm -f "$TMPFILE"
+        TMPFILE=
+        ERRORS=1
+        return
+    fi
+
+    # Deterministic name: retries produce the same filename and therefore
+    # cannot create duplicate yells merely because an SSH acknowledgement
+    # was lost after a successful upload.
+    set -- $(cksum "$TMPFILE")
+    crc=$1
+
+    stamp=$(printf '%s\n' "$timestamp" |
+        sed 's/^\([0-9][0-9][0-9][0-9]\)-\([0-9][0-9]\)-\([0-9][0-9]\)T\([0-9][0-9]\):\([0-9][0-9]\):\([0-9][0-9]\).*/\1\2\3T\4\5\6/')
+    case "$stamp" in
+        [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9])
+            ;;
+        *)
+            stamp=$(date '+%Y%m%dT%H%M%S')
+            ;;
+    esac
+    name="${stamp}-${crc}.sms"
+
+    if deliver_file "$TMPFILE" "$name"; then
+        if ! delete_sms "$sms"; then
+            ERRORS=1
+        fi
+    else
+        # Keep the original SMS on the modem; the next cron run retries it.
+        ERRORS=1
+    fi
+
+    rm -f "$TMPFILE"
+    TMPFILE=
+}
+
+umask 027
+
+find_modem
+prepare_spool
+
+sms_list=$("$MMCLI" -m "$MODEM" --messaging-list-sms -K 2>/dev/null) ||
+    die "could not list SMS messages."
+
+sms_paths=$(printf '%s\n' "$sms_list" |
+    sed -n 's/^modem\.messaging\.sms\.value\[[0-9][0-9]*\][[:space:]]*:[[:space:]]*//p')
+
+if [ -z "$sms_paths" ]; then
+    log "no SMS messages to import"
+    exit 0
+fi
+
+for sms in $sms_paths
+do
+    process_sms "$sms"
+done
+
+exit "$ERRORS"

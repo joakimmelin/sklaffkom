@@ -1,6 +1,19 @@
-Description:
-  Change your news signature.
+Arguments:
+  (none)
 
-  A signature is a short message appended to every usenet news-message
-  you post.  Typically it includes your email adress, organization
-  and full name.  Try to keep your signature as short as possible.
+Description:
+  This command lets you change your personal signature.
+
+  The signature can be used when you write texts that are forwarded to
+  external networks, such as Usenet and FTN. It is stored in your personal
+  SklaffKOM configuration and can be changed at any time.
+
+  The standard SklaffKOM editor is used to edit the signature.
+
+Note:
+  The signature is not the same thing as your Unix .plan file. The .plan
+  file is used by, among other things, the classic Unix finger service and
+  is changed with the "Change plan" command.
+
+  If you cancel the editor, no changes are saved.
+

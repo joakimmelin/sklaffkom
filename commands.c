@@ -4529,7 +4529,6 @@ int
 cmd_mod_note(char *args)
 {
     int u_num, j;
-    char u_name[255];
     struct SKLAFFRC *rc;
     char user_home[255];
     char *ptr, *nbuf;
@@ -4537,53 +4536,110 @@ cmd_mod_note(char *args)
     int fd;
     char *func_name = "cmd_mod_note";
 
+    (void)args;
+
     u_num = Uid;
-    user_name(u_num, u_name);
 
     rc = read_sklaffrc(u_num);
-    if (rc != NULL) {
-        (void) user_dir(u_num, user_home);
-        strcat(user_home, TMP_NOTE);
-        if ((fd = create_file(user_home)) == -1) {
-            sys_error(func_name, 3, "open_file (LOCAL_SKLAFFRC)");
-        }
-        j = strlen(rc->note) + LINE_LEN;
-        if ((nbuf = malloc(j)) == NULL) {
-            sys_error("cmd_mod_note", 1, "malloc");
-            return -1;
-        }
-        memset(nbuf, 0, j);
-        strcpy(nbuf, rc->note);
-        critical();
-        write_file(fd, nbuf);
+    if (rc == NULL)
+        return -1;
+
+    (void) user_dir(u_num, user_home);
+    strcat(user_home, TMP_NOTE);
+
+    if ((fd = create_file(user_home)) == -1) {
+        sys_error(func_name, 3, "create_file");
+        free(rc);
+        return -1;
+    }
+
+    j = strlen(rc->note) + LINE_LEN;
+
+    if ((nbuf = malloc(j)) == NULL) {
+        close_file(fd);
+        free(rc);
+        sys_error(func_name, 1, "malloc");
+        return -1;
+    }
+
+    memset(nbuf, 0, j);
+    strcpy(nbuf, rc->note);
+
+    critical();
+
+    if (write_file(fd, nbuf) == -1) {
         close_file(fd);
         non_critical();
-
-        output("\n");
-        if (line_ed(user_home, &th, 0, 1, 0, NULL, NULL) == 0) {        /* FIX */
-            unlink(user_home);
-            output("\n");
-        } else {
-            if ((fd = open_file(user_home, 0)) == -1) {
-                sys_error(func_name, 4, "haffo");
-            }
-            if ((ptr = read_file(fd)) == NULL) {
-                sys_error("haffo", 3, "baffo");
-                return 0;
-            }
-            close_file(fd);
-            unlink(user_home);
-            strcpy(rc->note, ptr);
-            free(ptr);
-        }
-        write_sklaffrc(Uid, rc);
-
+        free(rc);
+        unlink(user_home);
+        sys_error(func_name, 2, "write_file");
+        return -1;
     }
+
+    if (close_file(fd) == -1) {
+        non_critical();
+        free(rc);
+        unlink(user_home);
+        sys_error(func_name, 3, "close_file");
+        return -1;
+    }
+
+    non_critical();
+
+    output("\n");
+
+    /*
+     * line_ed() == 0 means that editing was cancelled.
+     * Do not rewrite sklaffrc in that case.
+     */
+    if (line_ed(user_home, &th, 0, 1, 0, NULL, NULL) == 0) {
+        unlink(user_home);
+        free(rc);
+        output("\n");
+        return 0;
+    }
+
+    if ((fd = open_file(user_home, 0)) == -1) {
+        unlink(user_home);
+        free(rc);
+        sys_error(func_name, 4, "open_file");
+        return -1;
+    }
+
+    if ((ptr = read_file(fd)) == NULL) {
+        close_file(fd);
+        unlink(user_home);
+        free(rc);
+        sys_error(func_name, 5, "read_file");
+        return -1;
+    }
+
+    close_file(fd);
+    unlink(user_home);
+
+    if (strlen(ptr) >= sizeof(rc->note)) {
+        free(ptr);
+        free(rc);
+        output("\n%s\n\n", MSG_EDITTOOLONG);
+        return 0;
+    }
+
+    strcpy(rc->note, ptr);
+    free(ptr);
+
+    if (write_sklaffrc(Uid, rc) == -1)
+        return -1;
+
+    free(rc);
+
+    output("\n%s\n\n", MSG_NOTESAVED);
+
     return 0;
 }
 
+
 /*
- * cmd_mod_sig - modify users news-signature
+ * cmd_mod_sig - modify users news/FTN signature
  * args: user arguments (args)
  * ret: ok (0) or error (-1)
  */
@@ -4592,7 +4648,6 @@ int
 cmd_mod_sig(char *args)
 {
     int u_num, j;
-    char u_name[255];
     struct SKLAFFRC *rc;
     char user_home[255];
     char *ptr, *nbuf;
@@ -4600,47 +4655,218 @@ cmd_mod_sig(char *args)
     int fd;
     char *func_name = "cmd_mod_sig";
 
+    (void)args;
+
     u_num = Uid;
-    user_name(u_num, u_name);
 
     rc = read_sklaffrc(u_num);
-    if (rc != NULL) {
-        (void) user_dir(u_num, user_home);
-        strcat(user_home, TMP_NOTE);
-        if ((fd = create_file(user_home)) == -1) {
-            sys_error(func_name, 3, "open_file (LOCAL_SKLAFFRC)");
-        }
-        j = strlen(rc->sig) + LINE_LEN;
-        if ((nbuf = malloc(j)) == NULL) {
-            sys_error("cmd_mod_sig", 1, "malloc");
-            return -1;
-        }
-        memset(nbuf, 0, j);
-        strcpy(nbuf, rc->sig);
-        critical();
-        write_file(fd, nbuf);
+    if (rc == NULL)
+        return -1;
+
+    (void) user_dir(u_num, user_home);
+    strcat(user_home, TMP_NOTE);
+
+    if ((fd = create_file(user_home)) == -1) {
+        sys_error(func_name, 3, "create_file");
+        free(rc);
+        return -1;
+    }
+
+    j = strlen(rc->sig) + LINE_LEN;
+
+    if ((nbuf = malloc(j)) == NULL) {
+        close_file(fd);
+        free(rc);
+        sys_error(func_name, 1, "malloc");
+        return -1;
+    }
+
+    memset(nbuf, 0, j);
+    strcpy(nbuf, rc->sig);
+
+    critical();
+
+    if (write_file(fd, nbuf) == -1) {
         close_file(fd);
         non_critical();
-
-        output("\n");
-        if (line_ed(user_home, &th, 0, 1, 0, NULL, NULL) == 0) {
-            unlink(user_home);
-            output("\n");
-        } else {
-            if ((fd = open_file(user_home, 0)) == -1) {
-                sys_error(func_name, 4, "haffo");
-            }
-            if ((ptr = read_file(fd)) == NULL) {
-                sys_error("haffo", 3, "baffo");
-                return 0;
-            }
-            close_file(fd);
-            unlink(user_home);
-            strcpy(rc->sig, ptr);
-            free(ptr);
-        }
-        write_sklaffrc(Uid, rc);
+        free(rc);
+        unlink(user_home);
+        sys_error(func_name, 2, "write_file");
+        return -1;
     }
+
+    if (close_file(fd) == -1) {
+        non_critical();
+        free(rc);
+        unlink(user_home);
+        sys_error(func_name, 3, "close_file");
+        return -1;
+    }
+
+    non_critical();
+
+    output("\n");
+
+    if (line_ed(user_home, &th, 0, 1, 0, NULL, NULL) == 0) {
+        unlink(user_home);
+        free(rc);
+        output("\n");
+        return 0;
+    }
+
+    if ((fd = open_file(user_home, 0)) == -1) {
+        unlink(user_home);
+        free(rc);
+        sys_error(func_name, 4, "open_file");
+        return -1;
+    }
+
+    if ((ptr = read_file(fd)) == NULL) {
+        close_file(fd);
+        unlink(user_home);
+        free(rc);
+        sys_error(func_name, 5, "read_file");
+        return -1;
+    }
+
+    close_file(fd);
+    unlink(user_home);
+
+    if (strlen(ptr) >= sizeof(rc->sig)) {
+        free(ptr);
+        free(rc);
+        output("\n%s\n\n", MSG_EDITTOOLONG);
+        return 0;
+    }
+
+    strcpy(rc->sig, ptr);
+    free(ptr);
+
+    if (write_sklaffrc(Uid, rc) == -1)
+        return -1;
+
+    free(rc);
+
+    output("\n%s\n\n", MSG_SIGSAVED);
+
+    return 0;
+}
+
+
+/*
+ * cmd_mod_plan - modify user's Unix ~/.plan file
+ * args: user arguments (args)
+ * ret: ok (0) or error (-1)
+ */
+
+int
+cmd_mod_plan(char *args)
+{
+    char user_home[255];
+    char *plantext = NULL;
+    char *ptr = NULL;
+    char *nbuf;
+    struct TEXT_HEADER th;
+    int fd;
+    int j;
+    char *func_name = "cmd_mod_plan";
+
+    (void)args;
+
+    /*
+     * Existing SklaffKOM users may predate automatic .plan creation.
+     * Make sure the file exists before trying to read it.
+     */
+    if (plan_ensure(Uid) == -1) {
+        output("\n%s\n\n", MSG_PLANERROR);
+        return 0;
+    }
+
+    if (plan_read(Uid, &plantext) == -1) {
+        output("\n%s\n\n", MSG_PLANERROR);
+        return 0;
+    }
+
+    /*
+     * Use SklaffKOM's ordinary temporary editor file.  The real ~/.plan
+     * file is only touched by plan.c, which performs the UID drop and
+     * filesystem safety checks.
+     */
+    (void) user_dir(Uid, user_home);
+    strcat(user_home, TMP_NOTE);
+
+    if ((fd = create_file(user_home)) == -1) {
+        free(plantext);
+        sys_error(func_name, 1, "create_file");
+        return -1;
+    }
+
+    j = strlen(plantext) + LINE_LEN;
+
+    if ((nbuf = malloc(j)) == NULL) {
+        close_file(fd);
+        free(plantext);
+        sys_error(func_name, 2, "malloc");
+        return -1;
+    }
+
+    memset(nbuf, 0, j);
+    strcpy(nbuf, plantext);
+    free(plantext);
+
+    critical();
+
+    if (write_file(fd, nbuf) == -1) {
+        close_file(fd);
+        non_critical();
+        unlink(user_home);
+        sys_error(func_name, 3, "write_file");
+        return -1;
+    }
+
+    if (close_file(fd) == -1) {
+        non_critical();
+        unlink(user_home);
+        sys_error(func_name, 4, "close_file");
+        return -1;
+    }
+
+    non_critical();
+
+    output("\n");
+
+    if (line_ed(user_home, &th, 0, 1, 0, NULL, NULL) == 0) {
+        unlink(user_home);
+        output("\n");
+        return 0;
+    }
+
+    if ((fd = open_file(user_home, 0)) == -1) {
+        unlink(user_home);
+        sys_error(func_name, 5, "open_file");
+        return -1;
+    }
+
+    if ((ptr = read_file(fd)) == NULL) {
+        close_file(fd);
+        unlink(user_home);
+        sys_error(func_name, 6, "read_file");
+        return -1;
+    }
+
+    close_file(fd);
+    unlink(user_home);
+
+    if (plan_write(Uid, ptr) == -1) {
+        free(ptr);
+        output("\n%s\n\n", MSG_PLANERROR);
+        return 0;
+    }
+
+    free(ptr);
+
+    output("\n%s\n\n", MSG_PLANSAVED);
+
     return 0;
 }
 

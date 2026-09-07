@@ -261,7 +261,7 @@
 #define MSG_FROM2	"fr}n"
 #define MSG_LASTON	"Senast inloggad"
 #define MSG_NOTE	"Lapp:"
-#define MSG_SIG		"Plan:"
+#define MSG_SIG		"Signatur:"
 #define MSG_SUBTO	"Medlem i:"
 #define MSG_CONFTYPE	"M|testyp:      "
 #define MSG_CLOSED2	"slutet"
@@ -449,6 +449,11 @@
 #define MSG_IBOL_EMPTY        "Du skrev ingen rad."
 #define MSG_IBOL_SENT         "Raden {r k|ad f|r utskick."
 #define MSG_IBOL_SEND_ERROR   "Raden kunde inte k|as f|r utskick."
+#define MSG_NOTESAVED   "Lapp sparad."
+#define MSG_SIGSAVED    "Signaturen sparad."
+#define MSG_PLANSAVED   ".plan-filen sparad."
+#define MSG_PLANERROR   "Kunde inte l{sa eller skriva .plan-filen."
+#define MSG_EDITTOOLONG "Texten {r f|r l}ng och sparades inte."
 
 /* conf.c */
 
@@ -615,6 +620,9 @@
 #define MSG_FLAG22  "brevl}dan"
 #define MSG_FLAG22N 3
 #define MSG_FLAG22F "(B|rja alltid i) Brevl}dan"
+#define MSG_FLAG23  "interbbs"
+#define MSG_FLAG23N 2
+#define MSG_FLAG23F "(Visa) InterBBS-väggen vid utloggning"
 #define MSG_NOFLAG	"Du m}ste ange en flagga."
 #define MSG_PCWARN	"Du b|r sl} av IBM-PC f|rst."
 #define MSG_ISOWARN	"Du b|r sl} av ISO 8859-1 f|rst."
@@ -1069,7 +1077,7 @@
 #define MSG_FROM2	"from"
 #define MSG_LASTON	"Last logged in"
 #define MSG_NOTE	"Note:"
-#define MSG_SIG		"Plan:"
+#define MSG_SIG		"Signature:"
 #define MSG_SUBTO	"Member of:"
 #define MSG_CONFTYPE	"Type:         "
 #define MSG_CLOSED2	"closed"
@@ -1259,6 +1267,11 @@
 #define MSG_IBOL_EMPTY        "You did not write a line."
 #define MSG_IBOL_SENT         "The line has been queued for sending."
 #define MSG_IBOL_SEND_ERROR   "The line could not be queued for sending."
+#define MSG_NOTESAVED   "Note saved."
+#define MSG_SIGSAVED    "Signature saved."
+#define MSG_PLANSAVED   ".plan file saved."
+#define MSG_PLANERROR   "Could not read or write the .plan file."
+#define MSG_EDITTOOLONG "The text is too long and was not saved."
 
 /* conf.c */
 
@@ -1445,6 +1458,9 @@
 #define MSG_FLAG22  "mailbox"
 #define MSG_FLAG22N 3
 #define MSG_FLAG22F "(Always start in) Mailbox"
+#define MSG_FLAG23  "interbbs"
+#define MSG_FLAG23N 2
+#define MSG_FLAG23F "(Display) InterBBS wall at logout"
 #define MSG_NOFLAG	"You must supply a flagname."
 #define MSG_PCWARN	"You should turn off IBM-PC first."
 #define MSG_ISOWARN	"You should turn off ISO 8859-1 first."

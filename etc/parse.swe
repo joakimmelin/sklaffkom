@@ -119,7 +119,7 @@ V{ggen:cmd_wall:Visar InterBBS-v{ggen:X
 #[ndra m|tesnamn:cmd_change_cname:[ndra namn p} ett m|te:C
 [ndra kommentarsm|te:cmd_change_comc:[ndra kommentarsm|te till ett m|te:C
 [ndra personuppgifter:cmd_mod_pinfo:[ndra dina personuppgifter:P
-[ndra plan:cmd_mod_sig:[ndra din plan-fil:P
+[ndra plan:cmd_mod_plan:[ndra din plan-fil:P
 [ndra signatur:cmd_mod_sig:[ndrar din signatur:P
 [ndra sk{rml{ngd:cmd_mod_numlines:[ndra din sk{rml{ngd:P
 [ndra timeout:cmd_mod_timeout:[ndra tid f|r inaktivitetsutloggning:P

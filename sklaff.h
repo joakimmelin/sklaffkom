@@ -608,6 +608,7 @@ int cmd_long_help(char *);
 int cmd_mail(char *);
 int cmd_mod_note(char *);
 int cmd_mod_sig(char *);
+int cmd_mod_plan(char *);
 int cmd_mod_login(char *);
 int cmd_mod_pinfo(char *);
 int cmd_mod_timeout(char *);
@@ -875,6 +876,7 @@ long age_to_textno(long);
 
 int plan_ensure(int);
 int plan_write(int, const char *);
+int plan_read(int, char **);
 
 /* user.c */
 

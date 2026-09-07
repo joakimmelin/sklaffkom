@@ -1,0 +1,24 @@
+Argument:
+  (inga)
+
+Beskrivning:
+  Visar V{ggen, SklaffKOMs anslutning till IBOL
+  (InterBBS Oneliner).
+
+  IBOL {r en gemensam elektronisk v{gg d{r anv{ndare p} olika BBS:er
+  kan skriva korta meddelanden till varandra. De senast mottagna
+  raderna visas tillsammans med avs{ndarens namn, BBS och tidpunkt.
+
+  Efter att V{ggen har visats f}r du m|jlighet att skriva en egen rad.
+  Den k|as d} f|r utskick till IBOL-n{tet och kan senare visas p} andra
+  anslutna BBS:er.
+
+Observera:
+  En rad p} V{ggen f}r vara h|gst 65 tecken.
+
+  Hur m}nga rader som visas best{ms av systemoperat|ren. V{ggen kan
+  ocks} vara helt avst{ngd p} system d{r IBOL inte anv{nds.
+
+  Meddelanden skickas inte direkt till en viss anv{ndare eller BBS.
+  Allt som skrivs p} V{ggen {r avsett att kunna ses av andra deltagare
+  i IBOL-n{tet.

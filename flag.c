@@ -198,6 +198,7 @@ set_flags(char *flags)
             Utf8 = atoi(i);
         } else
             Utf8 = 0;  /* default off */
+        
         p = strstr(flags, "force_sf7");
         if (p) {
             i = strchr(p, '=');
@@ -205,6 +206,7 @@ set_flags(char *flags)
             Force_sf7 = atoi(i);
          } else
             Force_sf7 = 0;
+        
         p = strstr(flags, "alternate_intro");
         if (p) {
             i = strchr(p, '=');
@@ -220,6 +222,7 @@ set_flags(char *flags)
             Rookie_mode = atoi(i);
         } else
             Rookie_mode = 1;  /* default on */
+        
         p = strstr(flags, "start_mailbox");
         if (p) {
             i = strchr(p, '=');
@@ -227,6 +230,20 @@ set_flags(char *flags)
             Start_mailbox = atoi(i);
         } else
             Start_mailbox = 0; /* default off */
+        
+        p = strstr(flags, "ibol_logout");
+        if (p) {
+            i = strchr(p, '=');
+            i++;
+            Ibol_logout = atoi(i);
+        } else {
+#if IBOL_LOGOUT_COUNT > 0
+            Ibol_logout = 1;  /* default on */
+#else
+            Ibol_logout = 0;  /* default off */
+#endif
+        }
+
     } else {
         Shout = 1;
         Say = 1;
@@ -252,6 +269,11 @@ set_flags(char *flags)
         Alternate_intro = 0;
         Rookie_mode = 1;
         Start_mailbox = 0;
+#if IBOL_LOGOUT_COUNT > 0
+        Ibol_logout = 1;
+#else
+        Ibol_logout = 0;
+#endif
     }
 }
 
@@ -295,7 +317,8 @@ save_flags(void)
         "force_sf7 = %d\n"
         "alternate_intro = %d\n"
         "rookie_mode = %d\n"
-        "start_mailbox = %d\n",
+        "start_mailbox = %d\n"
+        "ibol_logout = %d\n",
         Say,
         Shout,
         Present,
@@ -319,7 +342,8 @@ save_flags(void)
         Force_sf7,
         Alternate_intro,
         Rookie_mode,
-        Start_mailbox);
+        Start_mailbox,
+        Ibol_logout);
 
     if (n < 0 || (size_t)n >= sizeof(rc->flags)) {
         debuglog("save_flags: flags buffer too small", 1);
@@ -369,7 +393,7 @@ int
 turn_flag(int mode, char *flag)
 {
     int i;
-    LINE flags[23], outline;
+    LINE flags[24], outline;
 
     strcpy(flags[0], MSG_FLAG0);
     strcpy(flags[1], MSG_FLAG1);
@@ -394,6 +418,7 @@ turn_flag(int mode, char *flag)
     strcpy(flags[20], MSG_FLAG20);
     strcpy(flags[21], MSG_FLAG21);
     strcpy(flags[22], MSG_FLAG22);
+    strcpy(flags[23], MSG_FLAG23);
     if (!flag || (*flag == '\0')) {
         output("\n%s\n\n", MSG_NOFLAG);
         return 0;
@@ -526,6 +551,9 @@ turn_flag(int mode, char *flag)
     } else if ((strstr(flags[22], flag) == flags[22]) && (i >= MSG_FLAG22N)) {
         Start_mailbox = mode;
         strcpy(outline, MSG_FLAG22F);
+    } else if ((strstr(flags[23], flag) == flags[23]) && (i >= MSG_FLAG23N)) {
+        Ibol_logout = mode;
+        strcpy(outline, MSG_FLAG23F);
     } else {
         output("\n%s\n\n", MSG_BADFLAG);
         return 0;

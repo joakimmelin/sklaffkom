@@ -103,7 +103,7 @@ extern int Force_sf7;           /* SF7 selection during login (hidden flag) */
 extern int Alternate_intro;		/* Re-arranged intro screen */
 extern int Rookie_mode;			/* Extra help for new users */
 extern int Start_mailbox;       /* Always start in Mailbox during login */
-
+extern int Ibol_logout;			/* Display interbbs oneliners during logout */
 extern struct termios Tty_mode;
 extern sigset_t Oldmask;
 

@@ -21,6 +21,8 @@
  *   GNU General Public License for more details.
  */
 
+#define PLAN_MAX_SIZE (64 * 1024)
+
 #if defined(LINUX) || defined(__linux__)
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -58,7 +60,8 @@ enum plan_child_status {
     PLAN_CHILD_CHMOD = 24,
     PLAN_CHILD_TRUNCATE = 25,
     PLAN_CHILD_WRITE = 26,
-    PLAN_CHILD_CLOSE = 27
+    PLAN_CHILD_CLOSE = 27,
+    PLAN_CHILD_READ = 28
 };
 
 
@@ -82,6 +85,8 @@ plan_child_status_text(int status)
         return "could not write .plan";
     case PLAN_CHILD_CLOSE:
         return "could not close .plan";
+    case PLAN_CHILD_READ:
+        return "could not read .plan";
     default:
         return "unknown .plan error";
     }
@@ -357,6 +362,85 @@ plan_child_do(const char *path, uid_t uid,
     return PLAN_CHILD_OK;
 }
 
+/*
+ * Read ~/.plan as the real Unix user and send its contents to the
+ * parent through pipefd.
+ */
+static int
+plan_child_read(const char *path, uid_t uid, int pipefd)
+{
+    struct stat st;
+    char buf[4096];
+    ssize_t n;
+    int fd;
+
+    if (plan_drop_to_real_user(uid) != 0)
+        return PLAN_CHILD_DROP_PRIVS;
+
+    fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+
+    if (fd < 0)
+        return PLAN_CHILD_OPEN;
+
+    if (fstat(fd, &st) != 0) {
+        close(fd);
+        return PLAN_CHILD_STAT;
+    }
+
+    if (!S_ISREG(st.st_mode) ||
+        st.st_uid != uid ||
+        st.st_nlink != 1) {
+        close(fd);
+        return PLAN_CHILD_UNSAFE;
+    }
+
+    for (;;) {
+        n = read(fd, buf, sizeof(buf));
+
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+
+            close(fd);
+            return PLAN_CHILD_READ;
+        }
+
+        if (n == 0)
+            break;
+
+        {
+            char *p = buf;
+            ssize_t left = n;
+
+            while (left > 0) {
+                ssize_t written;
+
+                written = write(pipefd, p, (size_t)left);
+
+                if (written < 0) {
+                    if (errno == EINTR)
+                        continue;
+
+                    close(fd);
+                    return PLAN_CHILD_WRITE;
+                }
+
+                if (written == 0) {
+                    close(fd);
+                    return PLAN_CHILD_WRITE;
+                }
+
+                p += written;
+                left -= written;
+            }
+        }
+    }
+
+    if (close(fd) != 0)
+        return PLAN_CHILD_CLOSE;
+
+    return PLAN_CHILD_OK;
+}
 
 /*
  * Run .plan filesystem work in a child.
@@ -462,14 +546,191 @@ plan_ensure(int uid)
 
 
 /*
- * Mirror SklaffKOM's signature to ~/.plan.
+ * Write text to ~/.plan.
  *
- * Missing files are created automatically.  This means existing
- * SklaffKOM users also acquire a .plan the next time their sklaffrc
- * is written.
+ * Missing files are created automatically as the real Unix user.
  */
+ 
 int
 plan_write(int uid, const char *text)
 {
+    if (text == NULL)
+        text = "";
+
+    if (strlen(text) > PLAN_MAX_SIZE) {
+        dlog(3, ".plan too large for uid %d", uid);
+        return -1;
+    }
+
     return plan_run(uid, text, 1);
+}
+
+/*
+ * Read ~/.plan.
+ *
+ * The returned buffer is malloced and must be freed by the caller.
+ * An empty .plan returns an allocated empty string.
+ */
+int
+plan_read(int uid, char **text)
+{
+    char plan[PATH_MAX];
+    char tmp[4096];
+    char *buf;
+    char *newbuf;
+    size_t used;
+    size_t size;
+    ssize_t n;
+    pid_t pid;
+    int pipefd[2];
+    int status;
+    int rc;
+
+    if (text == NULL)
+        return -1;
+
+    *text = NULL;
+
+    rc = plan_path_for_current_user(uid, plan, sizeof(plan));
+
+    if (rc != 0)
+        return -1;
+
+    if (pipe(pipefd) != 0) {
+        dlog_errno(3, "pipe for .plan");
+        return -1;
+    }
+
+    pid = fork();
+
+    if (pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        dlog_errno(3, "fork for .plan read");
+        return -1;
+    }
+
+    if (pid == 0) {
+        close(pipefd[0]);
+
+        rc = plan_child_read(plan,
+            (uid_t)uid,
+            pipefd[1]);
+
+        close(pipefd[1]);
+        _exit(rc);
+    }
+
+    close(pipefd[1]);
+
+    size = 4096;
+    used = 0;
+
+    buf = malloc(size);
+
+    if (buf == NULL) {
+        close(pipefd[0]);
+
+        do {
+            rc = waitpid(pid, &status, 0);
+        } while (rc < 0 && errno == EINTR);
+
+        return -1;
+    }
+
+    for (;;) {
+        n = read(pipefd[0], tmp, sizeof(tmp));
+        
+        if (n < 0) {
+            if (errno == EINTR)
+                continue;
+
+            free(buf);
+            close(pipefd[0]);
+
+            do {
+                rc = waitpid(pid, &status, 0);
+            } while (rc < 0 && errno == EINTR);
+
+            return -1;
+        }
+
+        if (n == 0)
+            break;
+
+        if (used + (size_t)n > PLAN_MAX_SIZE) {
+            free(buf);
+            close(pipefd[0]);
+
+            do {
+                rc = waitpid(pid, &status, 0);
+            } while (rc < 0 && errno == EINTR);
+
+            dlog(3, ".plan too large for uid %d", uid);
+            return -1;
+        }
+
+        if (used + (size_t)n + 1 > size) {
+            size_t newsize = size;
+
+            while (used + (size_t)n + 1 > newsize)
+                newsize *= 2;
+
+            newbuf = realloc(buf, newsize);
+
+            if (newbuf == NULL) {
+                free(buf);
+                close(pipefd[0]);
+
+                do {
+                    rc = waitpid(pid, &status, 0);
+                } while (rc < 0 && errno == EINTR);
+
+                return -1;
+            }
+
+            buf = newbuf;
+            size = newsize;
+        }
+
+        memcpy(buf + used, tmp, (size_t)n);
+        used += (size_t)n;
+    }
+
+    close(pipefd[0]);
+
+    do {
+        rc = waitpid(pid, &status, 0);
+    } while (rc < 0 && errno == EINTR);
+
+    if (rc < 0) {
+        free(buf);
+        dlog_errno(3, "waitpid for .plan read");
+        return -1;
+    }
+
+    if (!WIFEXITED(status)) {
+        free(buf);
+        dlog(3, ".plan read child for uid %d ended abnormally", uid);
+        return -1;
+    }
+
+    rc = WEXITSTATUS(status);
+
+    if (rc != PLAN_CHILD_OK) {
+        free(buf);
+
+        dlog(3,
+            ".plan read failed for uid %d: %s (status %d)",
+            uid,
+            plan_child_status_text(rc),
+            rc);
+
+        return -1;
+    }
+
+    buf[used] = '\0';
+    *text = buf;
+
+    return 0;
 }

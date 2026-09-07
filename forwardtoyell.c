@@ -1,5 +1,5 @@
 #include "sklaff.h"
-#include "ext_globals.h"
+#include "globals.h"
 #include <pwd.h>
 #include <fcntl.h>
 #include <signal.h>

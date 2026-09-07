@@ -1,5 +1,8 @@
 v1.33-rc2 Thursday 13 August 2026
 
+* forwardtoyell revived! Now works with "modern" usb-modems. Currently in
+  the "it works on my machine"-state. Needs polish and documentation.
+
 * Time for a version bump. New command "Wall" / "Väggen" displays InterBBS
   OneLiners if configured correctly. Supposed to be at logout eventually
   (optional, behind a flag setting).
@@ -8,6 +11,8 @@ v1.33-rc2 Thursday 13 August 2026
 
 * UX-improvements : Commands are now grouped after category, making 
   "List all commands" much easier to read.
+
+* .plan file handling restored (for modern Linux) and improved!
 
 v1.33-rc1 Sunday 02 August 2026 PL
 

@@ -23,6 +23,8 @@
 #include <grp.h> /* modified on 2026-07-09, PL */
 
 #define FTNTOSS_LOCKFILE "/tmp/ftntoss.lock" /* modified on 2026-06-11, PL */
+#define FTNTOSS_LOCK_NOTIFY_FILE "/tmp/ftntoss.lock.notified" /* modified on 2026-08-27, PL */
+#define FTNTOSS_LOCK_WARN_AGE 1800 /* 30 minutes; modified on 2026-08-27, PL */
 #define FTN_WRAP_COL 78 /* modified on 2026-06-13, PL */
 
 /*
@@ -262,6 +264,10 @@ static int import_all_areas_ftn(int include_unsafe);
 
 static int acquire_ftntoss_lock(void);
 static void release_ftntoss_lock(void);
+static void ftntoss_maybe_notify_stale_lock(void); /* modified on 2026-08-27, PL */
+static int ftntoss_read_lock_pid(pid_t *out_pid); /* modified on 2026-08-27, PL */
+static int ftntoss_lock_pid_alive(pid_t pid); /* modified on 2026-08-27, PL */
+static int ftntoss_send_lock_mail(pid_t pid, long age, int pid_alive); /* modified on 2026-08-27, PL */
 static int run_with_lock(int (*fn)(void *), void *arg);
 
 static int run_import_one_locked(void *arg);
@@ -1880,6 +1886,189 @@ print_unsafe_reason(const char *filename, const struct fido_msg *msg,
 }
 
 static int
+ftntoss_read_lock_pid(pid_t *out_pid)
+{
+    FILE *fp;
+    char buf[64];
+    char *endp;
+    long pid;
+
+    if (out_pid == NULL)
+        return -1;
+
+    *out_pid = (pid_t)0;
+
+    fp = fopen(FTNTOSS_LOCKFILE, "r");
+    if (fp == NULL)
+        return -1;
+
+    if (fgets(buf, sizeof(buf), fp) == NULL) {
+        fclose(fp);
+        return -1;
+    }
+
+    fclose(fp);
+
+    errno = 0;
+    pid = strtol(buf, &endp, 10);
+    if (errno != 0 || endp == buf || pid <= 1 || pid > INT_MAX)
+        return -1;
+
+    while (*endp == ' ' || *endp == '\t' ||
+        *endp == '\r' || *endp == '\n')
+        endp++;
+
+    if (*endp != '\0')
+        return -1;
+
+    *out_pid = (pid_t)pid;
+    return 0;
+}
+
+static int
+ftntoss_lock_pid_alive(pid_t pid)
+{
+    if (pid <= 1)
+        return 0;
+
+    if (kill(pid, 0) == 0)
+        return 1;
+
+    /* EPERM still means that a process with this PID exists. */
+    if (errno == EPERM)
+        return 1;
+
+    return 0;
+}
+
+static int
+ftntoss_send_lock_mail(pid_t pid, long age, int pid_alive)
+{
+    FILE *mail;
+    char hostname[256];
+    int rc;
+
+    strlcpy(hostname, "unknown", sizeof(hostname));
+    if (gethostname(hostname, sizeof(hostname)) != 0)
+        strlcpy(hostname, "unknown", sizeof(hostname));
+    hostname[sizeof(hostname) - 1] = '\0';
+
+    /*
+     * Use the traditional sendmail interface.  Both Unix MTAs and many
+     * lightweight local-mail setups provide /usr/sbin/sendmail.
+     * No external address is needed; this is ordinary local mail to sklaff.
+     *
+     * modified on 2026-08-27, PL
+     */
+    mail = popen("/usr/sbin/sendmail -t", "w");
+    if (mail == NULL) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: could not start /usr/sbin/sendmail: %s\n",
+            strerror(errno));
+        return -1;
+    }
+
+    fprintf(mail, "To: sklaff\n");
+    fprintf(mail, "Subject: [SklaffKOM] ftntoss stale lock on %s\n",
+        hostname);
+    fprintf(mail, "Auto-Submitted: auto-generated\n");
+    fprintf(mail, "\n");
+    fprintf(mail, "ftntoss has been unable to acquire its lock for at least %ld minutes.\n\n",
+        age / 60);
+    fprintf(mail, "Host:      %s\n", hostname);
+    fprintf(mail, "Lock file: %s\n", FTNTOSS_LOCKFILE);
+    fprintf(mail, "Lock age:  %ld seconds (%ld minutes)\n", age, age / 60);
+
+    if (pid > 1) {
+        fprintf(mail, "Lock PID:  %ld\n", (long)pid);
+        fprintf(mail, "PID state: %s\n",
+            pid_alive ? "process appears to be running" :
+            "no such process; lock is probably stale");
+    } else {
+        fprintf(mail, "Lock PID:  unreadable or invalid\n");
+    }
+
+    fprintf(mail, "\n");
+    fprintf(mail, "ftntoss has NOT removed the lock automatically.\n");
+    fprintf(mail, "Check that no ftntoss process is active before removing it.\n");
+
+    rc = pclose(mail);
+    if (rc != 0) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: sendmail returned status %d while sending lock warning\n",
+            rc);
+        return -1;
+    }
+
+    return 0;
+}
+
+static void
+ftntoss_maybe_notify_stale_lock(void)
+{
+    struct stat st;
+    time_t now;
+    long age;
+    pid_t pid;
+    int pid_alive;
+    int marker_fd;
+    char marker[128];
+
+    if (stat(FTNTOSS_LOCKFILE, &st) != 0)
+        return;
+
+    now = time(NULL);
+    if (now == (time_t)-1 || now < st.st_mtime)
+        return;
+
+    age = (long)(now - st.st_mtime);
+    if (age < FTNTOSS_LOCK_WARN_AGE)
+        return;
+
+    pid = (pid_t)0;
+    if (ftntoss_read_lock_pid(&pid) != 0)
+        pid = (pid_t)0;
+
+    pid_alive = ftntoss_lock_pid_alive(pid);
+
+    /*
+     * O_EXCL turns the marker into a second tiny lock: concurrent cron runs
+     * can notice the stale main lock, but only one of them sends the mail.
+     * A successful future lock acquisition removes this marker and arms the
+     * warning again for the next incident.
+     *
+     * modified on 2026-08-27, PL
+     */
+    marker_fd = open(FTNTOSS_LOCK_NOTIFY_FILE,
+        O_CREAT | O_EXCL | O_WRONLY, 0600);
+    if (marker_fd == -1) {
+        if (errno != EEXIST)
+            fprintf(stderr,
+                "[ERROR] ftntoss: could not create lock notification marker %s: %s\n",
+                FTNTOSS_LOCK_NOTIFY_FILE, strerror(errno));
+        return;
+    }
+
+    snprintf(marker, sizeof(marker),
+        "lock_mtime=%ld\npid=%ld\nnotified=%ld\n",
+        (long)st.st_mtime, (long)pid, (long)now);
+    if (write(marker_fd, marker, strlen(marker)) == -1)
+        fprintf(stderr,
+            "[ERROR] ftntoss: could not write lock notification marker: %s\n",
+            strerror(errno));
+    close(marker_fd);
+
+    if (ftntoss_send_lock_mail(pid, age, pid_alive) != 0) {
+        /* Mail failed: allow the next cron run to retry. */
+        unlink(FTNTOSS_LOCK_NOTIFY_FILE);
+        return;
+    }
+
+    fprintf(stderr,
+        "[WARN] ftntoss: stale lock warning mailed to local user sklaff\n");
+}
+
+static int
 acquire_ftntoss_lock(void)
 {
     int fd;
@@ -1891,11 +2080,18 @@ acquire_ftntoss_lock(void)
             fprintf(stderr, "[ERROR] ftntoss is already running, lock exists: %s\n",
                 FTNTOSS_LOCKFILE);
             fprintf(stderr, "[ERROR] Remove the lock only if you are sure no ftntoss process is active.\n");
+            ftntoss_maybe_notify_stale_lock();
         } else {
             perror(FTNTOSS_LOCKFILE);
         }
         return -1;
     }
+
+    /* New lock incident: re-arm stale-lock mail notification. */
+    if (unlink(FTNTOSS_LOCK_NOTIFY_FILE) == -1 && errno != ENOENT)
+        fprintf(stderr,
+            "[WARN] ftntoss: could not remove old notification marker %s: %s\n",
+            FTNTOSS_LOCK_NOTIFY_FILE, strerror(errno));
 
     snprintf(buf, sizeof(buf), "%ld\n", (long)getpid());
     if (write(fd, buf, strlen(buf)) == -1) {

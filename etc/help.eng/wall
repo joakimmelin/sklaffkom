@@ -1,0 +1,25 @@
+Arguments:
+  (none)
+
+Description:
+  Displays The Wall, SklaffKOM's connection to IBOL
+  (InterBBS Oneliner).
+
+  IBOL is a shared electronic wall where users on different BBS systems
+  can post short messages to each other. The most recently received
+  messages are shown together with the sender's name, BBS and timestamp.
+
+  After The Wall has been displayed, you are given the option to write
+  a line of your own. It is then queued for delivery to the IBOL network
+  and may later appear on other connected BBS systems.
+
+Note:
+  A line posted to The Wall may contain at most 65 characters.
+
+  The number of lines displayed is configured by the SysOp. The Wall may
+  also be disabled completely on systems where IBOL is not in use.
+
+  Messages are not sent directly to a particular user or BBS. Everything
+  posted to The Wall is intended to be visible to other participants on
+  the IBOL network.
+
