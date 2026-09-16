@@ -871,6 +871,16 @@ exec_logout(int tmp)
 
     if (tmp != SIGHUP) {
         at = active_time(Uid);
+
+#if IBOL_LOGOUT_COUNT > 0
+        if (tmp == 0 && !restart && Ibol_logout) {
+            clear_screen();
+
+            if (display_ibol_entries(IBOL_LOGOUT_COUNT) >= 0)
+                (void)prompt_ibol_oneliner();
+        }
+#endif
+
         clear_screen();
         display_logout();
         output("\n");

@@ -5581,6 +5581,11 @@ cmd_list_flags(char *args)
     output_flag_line(Alternate_intro, MSG_FLAG20F);
     output_flag_line(Rookie_mode, MSG_FLAG21F);
     output_flag_line(Start_mailbox, MSG_FLAG22F);
+
+#if IBOL_LOGOUT_COUNT > 0
+    output_flag_line(Ibol_logout, MSG_FLAG23F);
+#endif
+
     output("\n");
     return 0;
 }

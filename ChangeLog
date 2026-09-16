@@ -1,5 +1,7 @@
 v1.33-rc2 Thursday 13 August 2026
 
+* forwardtoconf revived!
+
 * forwardtoyell revived! Now works with "modern" usb-modems. Currently in
   the "it works on my machine"-state. Needs polish and documentation.
 

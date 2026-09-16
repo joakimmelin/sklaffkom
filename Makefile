@@ -137,7 +137,7 @@ survreport: $(SKLAFFLIB) $(SURVREPOBJ) $(OBJS)
 
 forwardtoconf: $(SKLAFFLIB) $(FTCOBJ) $(OBJS)
 	$(CC) -o forwardtoconf $(FTCOBJ) $(OBJS) -Llib $(LIBS)
-	strip forwardtoconf
+#	strip forwardtoconf
 
 forwardtoyell: $(SKLAFFLIB) $(FTYOBJ) $(OBJS)
 	$(CC) -o forwardtoyell $(FTYOBJ) $(OBJS) -Llib $(LIBS)

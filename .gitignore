@@ -18,3 +18,4 @@ ibolmsgdump
 ibolimport
 dist/
 forwardtoyell
+forwardtoconf

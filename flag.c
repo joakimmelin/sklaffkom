@@ -551,7 +551,9 @@ turn_flag(int mode, char *flag)
     } else if ((strstr(flags[22], flag) == flags[22]) && (i >= MSG_FLAG22N)) {
         Start_mailbox = mode;
         strcpy(outline, MSG_FLAG22F);
-    } else if ((strstr(flags[23], flag) == flags[23]) && (i >= MSG_FLAG23N)) {
+    } else if ((IBOL_LOGOUT_COUNT > 0) &&
+               (strstr(flags[23], flag) == flags[23]) &&
+               (i >= MSG_FLAG23N)) {
         Ibol_logout = mode;
         strcpy(outline, MSG_FLAG23F);
     } else {
