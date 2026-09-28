@@ -120,7 +120,11 @@
 #define MSG_ALT_COPYRIGHT "Copyright (C) 1993-1996 SklaffKOMs upphovsm{n. GNU GPL 2+, utan garanti."
 #define MSG_ALT_LICENSE "Skriv visa licens f|r fullst{ndiga villkor."
 #define MSG_ALT_DEDICATION "Programmet {r till{gnat Staffan Bergstr|ms minne."
-#define MSG_ALT_ROOKIE_TIP01 "Tips! Tryck ENTER f|r att l{sa ol{sta texter. Skriv hj{lp om du fastnar."
+#define MSG_ALT_ROOKIE_TIP01 	"Tips! Tryck ENTER f|r att forts{tta till n{sta text. Skriv hj{lp om du fastnar."
+#define MSG_ROOKIE_TIP_CONFS	"Tips! Lista m|ten visar vilka m|ten som finns. Bli medlem med kommandot Medlem."
+#define MSG_ROOKIE_TIP_GAMES 	"Tips! Har du tr}kigt? Prova Nethack eller skriv Spela f|r fler spel."
+#define MSG_ROOKIE_TIP_WHO		"Tips! Skriv Vilka f|r att se vilka andra som {r inloggade just nu."
+#define MSG_ROOKIE_TIP_HELP		"Tips! Skriv Lista kommandon om du vill se vad mer SklaffKOM kan g|ra."
 /* cmd_show_status */
 #define MSG_FTNDOMAINCOL  "FTN-dom{n:     "
 #define MSG_FTNECHOAREA   "Echo-area:     "
@@ -952,7 +956,11 @@
 #define MSG_ALT_COPYRIGHT "Copyright (C) 1993-1996 the SklaffKOM authors. GNU GPL 2+, no warranty."
 #define MSG_ALT_LICENSE "Type show license for the full terms."
 #define MSG_ALT_DEDICATION "The program is dedicated to the memory of Staffan Bergstr|m."
-#define MSG_ALT_ROOKIE_TIP01 "Tip! Just press ENTER to read unread posts. Type help if you get stuck."
+#define MSG_ALT_ROOKIE_TIP01 	"Tip! Press ENTER to continue to the next unread post. Type help if you get stuck."
+#define MSG_ROOKIE_TIP_CONFS 	"Tip! List conferences shows what's available. Use Subscribe to join one."
+#define MSG_ROOKIE_TIP_GAMES	"Tip! Getting bored? Try Nethack, or type Play to see more games."
+#define MSG_ROOKIE_TIP_WHO		"Tip! Type Who to see who else is online right now."
+#define MSG_ROOKIE_TIP_HELP		"Tip! Type List commands to see what else SklaffKOM can do."
 /* charset during login */
 #define MSG_CHARSET_LOGIN_INTRO \
     "Welcome to SklaffKOM!\n\n" \

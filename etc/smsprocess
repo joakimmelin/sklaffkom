@@ -1,0 +1,16 @@
+#!/bin/sh
+
+SMS_DIR=/usr/local/sklaff/db/sms
+
+for file in "$SMS_DIR"/incoming/*.sms
+do
+    [ -f "$file" ] || continue
+
+    name=${file##*/}
+
+    if /usr/local/bin/forwardtoyell "$file"; then
+        mv "$file" "$SMS_DIR/processed/$name"
+    else
+        mv "$file" "$SMS_DIR/failed/$name"
+    fi
+done

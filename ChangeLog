@@ -12,7 +12,7 @@ v1.33-rc2 Thursday 13 August 2026
 * Allows secret or hidden news and ftn-conferences, finally.
 
 * UX-improvements : Commands are now grouped after category, making 
-  "List all commands" much easier to read.
+  "List all commands" much easier to read. More sophisticated rookie tips.
 
 * .plan file handling restored (for modern Linux) and improved!
 

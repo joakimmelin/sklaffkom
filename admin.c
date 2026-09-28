@@ -60,6 +60,15 @@ static int Prompt_storage_warned = 0;
 static LONG_LINE Prompt_storage_path;
 static LINE Prompt_storage_error;
 
+/*
+ * Rookie tips are shown once, immediately before the first command prompt.
+ * Keeping this separate from Alternate_intro makes Rookie mode work with
+ * both the original and alternative login screens.
+ */
+static int Rookie_tip_pending = 0;
+
+static void display_rookie_tip(void);
+
 static int
 set_prompt_storage_error(const char *path, const char *op)
 {
@@ -263,6 +272,15 @@ display_prompt(char *p, char *oldp, int type)
             strcpy(p, MSG_TIMEPROMPT);
         }
     }
+    /*
+     * Show the Rookie tip at the common point just before the first prompt.
+     * By now Current_conf has been selected, regardless of intro style.
+     */
+    if (Rookie_tip_pending) {
+        display_rookie_tip();
+        Rookie_tip_pending = 0;
+    }
+
     if (type == 0) {
         output("%s " PROMPT , p);
     } else if (strcmp(oldp, p)) {
@@ -274,9 +292,74 @@ display_prompt(char *p, char *oldp, int type)
     return p;
 }
 
+static void
+display_rookie_idle_tip(void)
+{
+    unsigned int tip;
+
+    /*
+     * Good enough for friendly login-tip variation without relying
+     * on the program-wide rand()/srand() state.
+     */
+    tip = ((unsigned int)time(NULL) ^ (unsigned int)Uid) % 4;
+
+    switch (tip) {
+    case 0:
+        output_ansi_fmt(GREEN "%s\n\n" DOT,
+            "%s\n\n", MSG_ROOKIE_TIP_CONFS);
+        break;
+
+    case 1:
+        output_ansi_fmt(GREEN "%s\n\n" DOT,
+            "%s\n\n", MSG_ROOKIE_TIP_GAMES);
+        break;
+
+    case 2:
+        output_ansi_fmt(GREEN "%s\n\n" DOT,
+            "%s\n\n", MSG_ROOKIE_TIP_WHO);
+        break;
+
+    default:
+        output_ansi_fmt(GREEN "%s\n\n" DOT,
+            "%s\n\n", MSG_ROOKIE_TIP_HELP);
+        break;
+    }
+}
+
 /*
- * display_alternative_intro_finish - display current conference,
- * unread count, program information, and optional rookie tip
+ * display_rookie_tip - display a contextual Rookie-mode login tip.
+ *
+ * If there are unread texts in the current conference or elsewhere,
+ * explain the ENTER workflow.  Otherwise display one of the idle tips.
+ */
+static void
+display_rookie_tip(void)
+{
+    int left;
+    int has_unread;
+
+    if (!Rookie_mode)
+        return;
+
+    left = num_unread(Uid, Current_conf,
+        last_text(Current_conf, Uid));
+
+    has_unread = (left > 0 || more_conf() != -1);
+
+    if (has_unread) {
+        output_ansi_fmt(
+            GREEN "%s\n\n" DOT,
+            "%s\n\n",
+            MSG_ALT_ROOKIE_TIP01
+        );
+    } else {
+        display_rookie_idle_tip();
+    }
+}
+
+/*
+ * display_alternative_intro_finish - display current conference
+ * and unread count
  */
 
 void
@@ -304,7 +387,7 @@ display_alternative_intro_finish(void)
             left,
             MSG_ALT_UNREADTEXTS);
     }
-
+    output("\n");
 /*
     output_ansi_fmt("\n" YELLOW "%s%s, %s.\n" DOT,
         "\n%s%s, %s.\n",
@@ -316,16 +399,10 @@ display_alternative_intro_finish(void)
     output("%s\n", MSG_ALT_LICENSE);
     output("%s\n", MSG_ALT_DEDICATION);
 */
-	/* Good idea (the rookie tip) but most be made smarter. Looks good though */
 
-    if (Rookie_mode) {
-        output_ansi_fmt("\n" GREEN "%s\n" DOT,
-            "\n%s\n", MSG_ALT_ROOKIE_TIP01);
-    }
 
-    output("\n");
+
 }
-
 /*
  * display_original_intro_header - display the original version and
  * copyright block
@@ -545,6 +622,11 @@ display_welcome(void)
     rc = read_sklaffrc(Uid);
 
     set_flags(rc->flags);
+
+    /*
+     * Rookie tips are now independent of Alternate_intro as it should be
+     */
+    Rookie_tip_pending = Rookie_mode;
 
 	/*
      * If no character set has ever been selected, let SklaffKOM and
