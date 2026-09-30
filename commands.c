@@ -4304,14 +4304,24 @@ int
 cmd_mod_pinfo(char *args)
 {
     char u_name[255];
+    char new_name[255];
     struct SKLAFFRC *rc;
     char str2[255];
 
     user_name(Uid, u_name);
+    strlcpy(new_name, u_name, sizeof(new_name));
 
     rc = read_sklaffrc(Uid);
+
+
+
     if (rc != NULL) {
         output("\n%s %s.\n\n", MSG_MODPINFO, u_name);
+
+        if (can_change_realname()) {
+            output(MSG_INFOFULLNAME);
+            input(u_name, new_name, 60, 0, 0, 0);
+        }
 //        output(MSG_MODPINFO2); /* upcoming feature */
 /*
         output(MSG_INFOADDR);
@@ -4359,9 +4369,32 @@ cmd_mod_pinfo(char *args)
         down_string(str2);
 
         if (*str2 == MSG_YESANSWER) {
+
+            if (can_change_realname() &&
+                strcmp(u_name, new_name) != 0) {
+
+                if (set_sklaff_user_name(Uid, new_name) == -1) {
+                    output("\n%s\n\n", MSG_REALNAMEFAIL);
+                    free(rc);
+                    return 0;
+                }
+
+                if (set_unix_realname(new_name) == -1) {
+                /*
+                 * Unix name change failed. Restore SklaffKOM's copy.
+                 */
+                if (set_sklaff_user_name(Uid, u_name) == -1)
+                    sys_error("cmd_mod_pinfo", 1,
+                        "restore user name");
+
+                output("\n%s\n\n", MSG_REALNAMEFAIL);
+                free(rc);
+                return 0;
+            }
+        }
             write_sklaffrc(Uid, rc);
             output("\n%s\n\n", MSG_INFOSAVED);
-        } else {
+       } else {
             free(rc);
             output("\n%s\n\n", MSG_INFONOSAVE);
         }

@@ -32,9 +32,329 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/time.h>   /* for utimes() */
+#include <sys/wait.h> /* real name changes */
+#include <errno.h> /* also for real name changes */
+#include <ctype.h> /* real name valid checks */
+#include <stdio.h>    /* FILE, fopen, fgets, sscanf, fclose */
+#include <string.h>   /* strcmp, strchr */
+#include <strings.h>  /* strcasecmp */
 #if defined(LINUX) || defined(__linux__)
 #include <bsd/string.h>  // Required for strlcpy on Linux via libbsd
 #endif
+
+/*
+ * can_change_realname - check if the system allows real name changes
+ * args: none
+ * ret: 1 if real name changes are allowed, 0 otherwise
+ * 2026-09-24 PL
+ */
+ 
+
+int
+can_change_realname(void)
+{
+#ifdef LINUX
+    FILE *fp;
+    char line[256];
+    char key[64];
+    char value[64];
+
+    if (access("/usr/bin/chfn", X_OK) != 0)
+        return 0;
+
+    fp = fopen("/etc/login.defs", "r");
+    if (fp == NULL)
+        return 0;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        char *p = line;
+
+        while (*p == ' ' || *p == '\t')
+            p++;
+
+        if (*p == '#' || *p == '\n' || *p == '\0')
+            continue;
+
+        if (sscanf(p, "%63s %63s", key, value) != 2)
+            continue;
+
+        if (strcmp(key, "CHFN_RESTRICT") != 0)
+            continue;
+
+        fclose(fp);
+
+        if (!strcasecmp(value, "no"))
+            return 1;
+
+        if (!strcasecmp(value, "yes"))
+            return 0;
+
+        return strchr(value, 'f') != NULL ||
+               strchr(value, 'F') != NULL;
+    }
+
+    fclose(fp);
+#endif
+    return 0;
+}
+
+/*
+ * set_unix_realname - change the user's Unix real name
+ * args: new real name (name)
+ * ret: ok (0) or failure (-1)
+ * 2026-09-28 PL
+ */
+
+int
+set_unix_realname(const char *name)
+{
+    if (!realname_valid(name))
+        return -1;
+
+#ifdef LINUX
+    char *utf8_name;
+    pid_t pid;
+    int status;
+    int result = -1;
+    sigset_t sigmask, oldsigmask;
+
+    if (!can_change_realname())
+        return -1;
+
+    utf8_name = sf7_to_utf8_dup(name);
+    if (utf8_name == NULL)
+        return -1;
+
+    /*
+     * chfn uses PAM and needs a normal terminal, just like passwd.
+     */
+    output("\n%s\n", MSG_REALNAMEPASS);
+    fflush(stdout);
+
+    tty_reset();
+
+    sigemptyset(&sigmask);
+    sigaddset(&sigmask, SIGNAL_NEW_TEXT);
+    sigaddset(&sigmask, SIGNAL_NEW_MSG);
+    sigprocmask(SIG_BLOCK, &sigmask, &oldsigmask);
+
+    pid = fork();
+
+    if (pid == 0) {
+        execl("/usr/bin/chfn",
+              "/usr/bin/chfn",
+              "-f",
+              utf8_name,
+              (char *)NULL);
+
+        _exit(127);
+    }
+
+    if (pid > 0 &&
+        waitpid(pid, &status, 0) != -1 &&
+        WIFEXITED(status) &&
+        WEXITSTATUS(status) == 0) {
+        result = 0;
+    }
+
+    tty_raw();
+    sigprocmask(SIG_SETMASK, &oldsigmask, NULL);
+
+    free(utf8_name);
+
+    return result;
+
+#else
+    (void)name;
+    return -1;
+#endif
+}
+
+/*
+ * realname_valid - check if a real name is safe to store
+ * args: real name (name)
+ * ret: valid (1) or invalid (0)
+ * 2026-09-29 PL
+ */
+
+int
+realname_valid(const char *name)
+{
+    const unsigned char *p;
+    int visible = 0;
+
+    if (name == NULL || *name == '\0')
+        return 0;
+
+    if (strlen(name) >= sizeof(((struct USER_ENTRY *)0)->name))
+        return 0;
+
+    if (strpbrk(name, ":\r\n") != NULL)
+        return 0;
+
+    for (p = (const unsigned char *)name; *p; p++) {
+        if (!isspace(*p)) {
+            visible = 1;
+            break;
+        }
+    }
+
+    return visible;
+}
+
+/*
+ * set_sklaff_user_name - change the name stored in USER_FILE
+ * args: user uid (uid), new real name (name)
+ * ret: ok (0) or failure (-1)
+ * 2026-09-29 PL
+ */
+
+int
+set_sklaff_user_name(int uid, const char *name)
+{
+    int fd = -1;
+    int result = -1;
+    int matches = 0;
+    char *buf = NULL;
+    char *line;
+    char *line_end;
+    char *target_start = NULL;
+    char *target_end = NULL;
+    char *p;
+    char *endptr;
+    char *nbuf = NULL;
+    long file_uid;
+    long long last_session = 0;
+    size_t old_len;
+    size_t old_entry_len;
+    size_t new_entry_len;
+    size_t prefix_len;
+    size_t suffix_len;
+    char new_entry[512];
+
+    if (uid <= 0 || !realname_valid(name))
+        return -1;
+
+    /*
+     * Keep the whole read-modify-write operation protected.
+     */
+    critical();
+
+    fd = open_file(USER_FILE, 0);
+    if (fd == -1) {
+        sys_error("set_sklaff_user_name", 1, "open_file");
+        goto out;
+    }
+
+    buf = read_file(fd);
+    if (buf == NULL) {
+        sys_error("set_sklaff_user_name", 2, "read_file");
+        goto out;
+    }
+
+    /*
+     * Find exactly one line beginning with this UID followed by ':'.
+     * Preserve every other byte in USER_FILE unchanged.
+     */
+    line = buf;
+
+    while (*line != '\0') {
+        line_end = strchr(line, '\n');
+
+        if (line_end != NULL)
+            line_end++;
+        else
+            line_end = line + strlen(line);
+
+        errno = 0;
+        file_uid = strtol(line, &endptr, 10);
+
+        if (errno == 0 &&
+            endptr != line &&
+            *endptr == ':' &&
+            file_uid == uid) {
+
+            matches++;
+
+            if (matches == 1) {
+                char *session_start = endptr + 1;
+
+                errno = 0;
+                last_session = strtoll(session_start, &p, 10);
+
+                if (errno != 0 ||
+                    p == session_start ||
+                    *p != ':') {
+                    goto out;
+                }
+
+                target_start = line;
+                target_end = line_end;
+            }
+        }
+
+        line = line_end;
+    }
+
+    /*
+     * Zero matches means a broken/missing user entry.
+     * More than one means USER_FILE is already inconsistent.
+     * In either case: touch nothing.
+     */
+    if (matches != 1)
+        goto out;
+
+    if (snprintf(new_entry, sizeof(new_entry),
+            "%d:%lld:%s\n",
+            uid, last_session, name) >= (int)sizeof(new_entry))
+        goto out;
+
+    old_len = strlen(buf);
+    old_entry_len = (size_t)(target_end - target_start);
+    new_entry_len = strlen(new_entry);
+    prefix_len = (size_t)(target_start - buf);
+    suffix_len = old_len - (size_t)(target_end - buf);
+
+    nbuf = malloc(old_len - old_entry_len +
+                  new_entry_len + 1);
+
+    if (nbuf == NULL) {
+        sys_error("set_sklaff_user_name", 3, "malloc");
+        goto out;
+    }
+
+    memcpy(nbuf, buf, prefix_len);
+    memcpy(nbuf + prefix_len,
+           new_entry, new_entry_len);
+    memcpy(nbuf + prefix_len + new_entry_len,
+           target_end, suffix_len);
+
+    nbuf[prefix_len + new_entry_len + suffix_len] = '\0';
+
+    if (write_file(fd, nbuf) == -1) {
+        nbuf = NULL;
+        sys_error("set_sklaff_user_name", 4, "write_file");
+        goto out;
+    }
+    nbuf = NULL;
+    result = 0;
+
+out:
+    free(nbuf);
+    free(buf);
+
+    if (fd != -1) {
+        if (close_file(fd) == -1) {
+            sys_error("set_sklaff_user_name", 5, "close_file");
+            result = -1;
+        }
+    }
+
+    non_critical();
+
+    return result;
+}
+
 /*
  * user_name - get username from uid
  * args: uid of user (uid), username string (name)

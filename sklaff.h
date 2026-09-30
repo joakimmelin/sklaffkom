@@ -902,6 +902,10 @@ int list_user(int, int, int);
 struct UEN *sort_user(struct UEL *, int);
 struct SKLAFFRC *read_sklaffrc(int);
 int write_sklaffrc(int, struct SKLAFFRC *);
+int can_change_realname(void);
+int set_unix_realname(const char *);
+int realname_valid(const char *);
+int set_sklaff_user_name(int, const char *);
 
 /* survey.c */
 
