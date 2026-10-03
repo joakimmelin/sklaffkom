@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <time.h>
 
+#include "sklaff_features.h"
 /* Define language desired, one of: SWEDISH or ENGLISH */
 #define SWEDISH
 //#define ENGLISH

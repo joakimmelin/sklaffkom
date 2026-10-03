@@ -866,6 +866,12 @@
 #define MSG_NOREPORT    "Enk{ten ska inte redovisas {nnu"
 #define MSG_REPORT      "Redovisning: "
 
+/* sklaff_features.h */
+
+#define MSG_QWK_OFF 	"QWK-st|d {r inte aktiverat p} detta system."
+#define MSG_ZORK_OFF 	"Zork {r inte aktiverat p} detta system."
+#define MSG_NETHACK_OFF "Nethack {r inte aktiverat p} detta system."
+
 #else
 
 /* lib/input.c */
@@ -1699,5 +1705,11 @@
 #define MSG_SRINFO      "Syntax: survreport <confid> <survey no>"
 #define MSG_NOREPORT    "The survey should not yet be reported"
 #define MSG_REPORT      "Report: "
+
+/* sklaff_features.h */
+
+#define MSG_QWK_OFF "QWK support is not enabled on this system."
+#define MSG_ZORK_OFF "Zork is not enabled on this system."
+#define MSG_NETHACK_OFF "Nethack is not enabled on this system."
 
 #endif
