@@ -1,0 +1,33 @@
+Argument:
+  (<Game code>)
+
+Description:
+  This command starts classic text adventures in Z-machine format using
+  Frotz. If the command is entered without an argument, a list of all
+  adventures installed on the system is displayed.
+
+  Each game has a game code which is entered after the command.
+
+  Example:
+    Adventure stugan
+
+  starts the game Stugan.
+
+Note:
+  The available games are selected by the SysOp. Only games which are
+  both registered in SklaffKOM and have an installed story file are
+  shown in the game list.
+
+Background:
+  The Z-machine was originally created by Infocom for their text
+  adventures. Rather than writing every game directly for a particular
+  computer, the games were written for a virtual machine. The same story
+  file could therefore run on many completely different computers, as
+  long as a Z-machine interpreter was available.
+
+  That turned out to be a rather good idea. Several decades later, the
+  same old games can still be played on modern systems.
+
+  SklaffKOM uses Frotz as its Z-machine interpreter. This means that both
+  classic Infocom games and much newer works of interactive fiction can
+  be played directly from the BBS.

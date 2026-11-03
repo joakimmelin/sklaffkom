@@ -1,0 +1,51 @@
+zmodemsnif is the newest incarnation of my x/y/zmodem protocol tracer, and
+the first to be included in the distribution.
+
+Compile with:
+     gcc -D_POSIX_C_SOURCE=200809L src/zmodemsnif.c
+
+Run with:
+     ./a.out src/lrz (usual options)
+
+It will output on stderr. Sample output:
+
+21:13:17.111 → ZRQINIT hdr=00000000
+21:13:17.111 → ZFILE conv=BIN mgmt=CRC
+21:13:17.111 →   data subframe 43 bytes (ZCRCW)
+21:13:17.111 →     file="all256.bin" size=256 mtime=1787339596 mode=00
+21:13:17.111 ← ZRINIT flags=CANFDX|CANOVIO|CANBRK|CANFC32 Rxbuflen=0 0 ZP[0-3]=[0 ,0 ,0 ,27]
+21:13:17.111 ← ZRPOS offset=0
+21:13:17.111 → ZFILE conv=BIN mgmt=CRC
+21:13:17.111 →   data subframe 43 bytes (ZCRCW)
+21:13:17.111 →     file="all256.bin" size=256 mtime=1787339596 mode=00
+21:13:17.111 ← ZRPOS offset=0
+21:13:18.112 → ZDATA offset=0
+21:13:18.112 →   data subframe 256 bytes (ZCRCE)
+21:13:18.112 → ZEOF offset=256
+21:13:18.112 ← ZRINIT flags=CANFDX|CANOVIO|CANBRK|CANFC32 Rxbuflen=0 0 ZP[0-3]=[0 ,0 ,0 ,27]
+21:13:18.112 → ZFILE conv=BIN mgmt=CRC
+21:13:18.112 →   data subframe 40 bytes (ZCRCW)
+21:13:18.112 →     file="4k.bin" size=4096 mtime=1787339596 mode=00
+21:13:18.113 ← ZRPOS offset=0
+
+Limits:
+- it does not understand ZMODEM RLE encoding.
+  This was ever only implemented in some OMEN ZMODEM implementations, never
+  in open source.
+  It is also of questionable value: its only useful in the niche of 
+  transfering uncompressed files with long, repeated sequences of 
+  characters (like lines of stars in certain C code).
+
+- it does not understand ZMODEM variable length headers.
+  This was ever only implemented in some OMEN ZMODEM implementations, never
+  in open source.
+  The variable length headers have been here for 30 years, and since then
+  the only implementations of them have been in OMEN products (they are 
+  dead), and that shows that they haven't been attractive.
+
+- it does not understand the ZBIN64 frames of rzsz-nd (the magic conflicts
+  with that of one the RLE frames).
+
+- it does not understand the 32k and 64k blocksizes of ADONTECs SUPERCOM.
+
+Generally speaking: it understands common, documented ZMODEM options.

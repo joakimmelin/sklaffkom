@@ -1,0 +1,1390 @@
+#!/bin/sh
+
+#
+# configure for SklaffKOM
+#
+# Detects the build environment and writes config.h, config.mk and Makefile.
+#
+
+set -u
+
+CC=${CC:-cc}
+CPPFLAGS=${CPPFLAGS:-}
+CFLAGS=${CFLAGS:-}
+LDFLAGS=${LDFLAGS:-}
+
+CONFIG_LIBS=""
+STRL_PROVIDER=""
+WITH_FROTZ=1
+FROTZ_BUILD_TARGET=""
+FROTZ_CLEAN_TARGET=""
+FROTZ_MAKE=""
+FROTZ_CURSES=""
+WITH_ZMODEM=1
+ZMODEM_BUILD_TARGET=""
+ZMODEM_CPPFLAGS=""
+ENABLE_EMAIL=0
+ENABLE_USENET_POSTING=0
+ENABLE_FTN_POSTING=0
+ENABLE_IBOL=0
+IBOL_BUILD_TARGET=""
+ENABLE_BBSLINK=0
+BBSLINK_CFLAGS=""
+BBSLINK_LIBS=""
+BBSLINK_TELNET_BIN=""
+CP437_CFLAGS=""
+CP437_LIBS=""
+INEWS_OVERRIDE=""
+LOCAL_SENDMAIL_OVERRIDE=""
+LOCAL_SENDMAIL_BIN=""
+SENDMAIL_OVERRIDE=""
+LYNX_OVERRIDE=""
+HAVE_SKLAFF_LOCAL_H=0
+HAVE_SENDMAIL=0
+SENDMAIL_BIN=""
+SENDMAIL_DEFINE=""
+HAVE_INEWS=0
+INEWS_BIN=""
+INEWS_DEFINE=""
+HAVE_LYNX=0
+LYNX_BIN=""
+LYNX_DEFINE=""
+HAVE_AT=0
+AT_BIN=""
+AT_DEFINE=""
+
+HAVE_ZIP=0
+ZIP_BIN=""
+ZIP_DEFINE=""
+
+HAVE_NETHACK=0
+NETHACK_BIN=""
+NETHACK_DEFINE=""
+
+HAVE_CHFN=0
+CHFN_BIN=""
+CHFN_DEFINE=""
+
+HAVE_CP437=0
+CP437_BIN=""
+CP437_DEFINE=""
+
+usage()
+{
+    cat <<EOF_USAGE
+Usage: ./configure [options]
+
+Options:
+  --enable-frotz     Build bundled SklaffKOM Frotz (default)
+  --disable-frotz    Do not build or install bundled Frotz
+  --enable-zmodem    Build bundled lrzsz (default)
+  --disable-zmodem   Do not build or install ZMODEM file transfers
+  --enable-email     Enable external email support (requires mail transport)
+  --disable-email    Disable external email support (default)
+  --enable-usenet-posting  Enable outgoing Usenet posting (requires inews)
+  --disable-usenet-posting Disable outgoing Usenet posting (default)
+  --enable-ftn-posting   Enable outgoing FTN echomail and netmail
+  --disable-ftn-posting  Disable outgoing FTN posting (default)
+  --enable-ibol       Enable InterBBS Oneliner wall and importer
+  --disable-ibol      Disable InterBBS Oneliner (default)
+  --enable-bbslink       Build standalone BBSLink C client
+  --disable-bbslink      Do not build BBSLink (default)
+  --with-inews=PATH     Use this inews executable for outgoing Usenet posts
+  --with-local-sendmail=PATH  Use this sendmail-compatible binary for local mail
+  --with-sendmail=PATH  Override sendmail for external email (requires --enable-email)
+  --with-lynx=PATH      Use required Lynx executable at PATH
+  -h, --help         Show this help
+EOF_USAGE
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        --enable-frotz|--with-frotz)
+            WITH_FROTZ=1
+            ;;
+        --disable-frotz|--without-frotz)
+            WITH_FROTZ=0
+            ;;
+        --enable-zmodem)
+            WITH_ZMODEM=1
+            ;;
+        --disable-zmodem)
+            WITH_ZMODEM=0
+            ;;
+        --enable-email)
+            ENABLE_EMAIL=1
+            ;;
+        --disable-email)
+            ENABLE_EMAIL=0
+            ;;
+        --enable-usenet-posting)
+            ENABLE_USENET_POSTING=1
+            ;;
+        --disable-usenet-posting)
+            ENABLE_USENET_POSTING=0
+            ;;
+        --enable-ftn-posting)
+            ENABLE_FTN_POSTING=1
+            ;;
+        --disable-ftn-posting)
+            ENABLE_FTN_POSTING=0
+            ;;
+        --enable-ibol)
+            ENABLE_IBOL=1
+            ;;
+        --disable-ibol)
+            ENABLE_IBOL=0
+            ;;
+        --enable-bbslink)
+            ENABLE_BBSLINK=1
+            ;;
+        --disable-bbslink)
+            ENABLE_BBSLINK=0
+            ;;
+        --with-inews=*)
+            INEWS_OVERRIDE=${arg#--with-inews=}
+            case "$INEWS_OVERRIDE" in
+                /*) ;;
+                *)
+                    echo "configure: --with-inews requires an absolute executable path." >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        --with-local-sendmail=*)
+            LOCAL_SENDMAIL_OVERRIDE=${arg#--with-local-sendmail=}
+            case "$LOCAL_SENDMAIL_OVERRIDE" in
+                /*) ;;
+                *)
+                    echo "configure: --with-local-sendmail requires an absolute executable path." >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        --with-sendmail=*)
+            SENDMAIL_OVERRIDE=${arg#--with-sendmail=}
+            case "$SENDMAIL_OVERRIDE" in
+                /*) ;;
+                *)
+                    echo "configure: --with-sendmail requires an absolute executable path." >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        --with-lynx=*)
+            LYNX_OVERRIDE=${arg#--with-lynx=}
+            case "$LYNX_OVERRIDE" in
+                /*) ;;
+                *)
+                    echo "configure: --with-lynx requires an absolute executable path." >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "configure: unknown option: $arg" >&2
+            echo "configure: try ./configure --help" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$ENABLE_EMAIL" -eq 0 ] && [ -n "$SENDMAIL_OVERRIDE" ]; then
+    echo "configure: --with-sendmail requires --enable-email." >&2
+    exit 1
+fi
+
+if [ "$ENABLE_USENET_POSTING" -eq 0 ] && [ -n "$INEWS_OVERRIDE" ]; then
+    echo "configure: --with-inews requires --enable-usenet-posting." >&2
+    exit 1
+fi
+
+#
+# Find a real executable in PATH.  Do not use command -v here: some core
+# utilities, notably echo, may be reported as shell builtins instead of the
+# external program SklaffKOM needs for exec().
+#
+find_program()
+{
+    prog=$1
+    search_path=${PATH:-/usr/local/bin:/usr/bin:/bin}
+
+    case "$prog" in
+        */*)
+            if [ -f "$prog" ] && [ -x "$prog" ]; then
+                printf '%s\n' "$prog"
+                return 0
+            fi
+            return 1
+            ;;
+    esac
+
+    old_IFS=$IFS
+    IFS=:
+
+    for dir in $search_path; do
+        [ -n "$dir" ] || dir=.
+
+        if [ -f "$dir/$prog" ] && [ -x "$dir/$prog" ]; then
+            IFS=$old_IFS
+            printf '%s\n' "$dir/$prog"
+            return 0
+        fi
+    done
+
+    IFS=$old_IFS
+    return 1
+}
+
+# Find the first available program from a list of equivalent names.
+# This is useful for tools such as lrzsz, which may be installed as
+# lrz/lsz or under the traditional rz/sz names.
+find_first_program()
+{
+    for prog in "$@"; do
+        if path=`find_program "$prog"`; then
+            printf '%s\n' "$path"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Escape a pathname for use inside a C string literal.
+c_escape_string()
+{
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+tmpdir="${TMPDIR:-/tmp}/sklaff-configure.$$"
+
+cleanup()
+{
+    rm -rf "$tmpdir"
+}
+
+trap cleanup 0
+trap 'exit 1' HUP INT TERM
+
+umask 077
+
+if ! mkdir "$tmpdir"; then
+    echo "configure: cannot create temporary directory" >&2
+    exit 1
+fi
+
+
+echo
+echo "Configuring SklaffKOM"
+echo "====================="
+echo
+
+#
+# Local site configuration
+#
+
+printf "%-36s" "Checking for sklaff_local.h..."
+
+if [ -f sklaff_local.h ]; then
+    HAVE_SKLAFF_LOCAL_H=1
+    echo "yes"
+else
+    HAVE_SKLAFF_LOCAL_H=0
+    echo "no"
+fi
+
+#
+# Operating system
+#
+
+printf "%-36s" "Checking operating system..."
+
+host_os=`uname -s 2>/dev/null || echo unknown`
+
+case "$host_os" in
+    Linux)
+        sklaffsys=LINUX
+        echo "Linux"
+        ;;
+    FreeBSD)
+        sklaffsys=FREEBSD
+        echo "FreeBSD"
+        ;;
+    Darwin)
+        sklaffsys=DARWIN
+        echo "Darwin (experimental)"
+        echo "  WARNING: macOS is currently untested."
+        ;;
+    *)
+        sklaffsys=UNKNOWN
+        echo "$host_os (unsupported)"
+        echo "  WARNING: this operating system has not been tested."
+        ;;
+esac
+
+
+#
+# C compiler
+#
+
+printf "%-36s" "Checking C compiler..."
+
+if ! command -v "$CC" >/dev/null 2>&1; then
+    echo "not found"
+    echo
+    echo "configure: no C compiler found: $CC" >&2
+    exit 1
+fi
+
+cat > "$tmpdir/conftest.c" <<'EOF_TEST'
+int
+main(void)
+{
+    return 0;
+}
+EOF_TEST
+
+if "$CC" $CPPFLAGS $CFLAGS "$tmpdir/conftest.c" \
+    $LDFLAGS -o "$tmpdir/conftest" >/dev/null 2>&1; then
+    echo "$CC"
+else
+    echo "failed"
+    echo
+    echo "configure: the C compiler cannot build executables." >&2
+    exit 1
+fi
+
+
+#
+# strlcpy / strlcat
+#
+# Linux uses SklaffKOM's bundled compatibility implementations.
+# BSD-derived systems normally provide these functions in libc.
+#
+
+printf "%-36s" "Checking strlcpy/strlcat..."
+
+if [ "$sklaffsys" = "LINUX" ]; then
+
+    if [ ! -f lib/compat.c ]; then
+        echo "failed"
+        echo
+        echo "configure: lib/compat.c is missing." >&2
+        exit 1
+    fi
+
+    cat > "$tmpdir/conftest.c" <<'EOF_TEST'
+#include <stddef.h>
+
+size_t strlcpy(char *, const char *, size_t);
+size_t strlcat(char *, const char *, size_t);
+
+int
+main(void)
+{
+    char buf[16];
+
+    strlcpy(buf, "foo", sizeof(buf));
+    strlcat(buf, "bar", sizeof(buf));
+
+    return 0;
+}
+EOF_TEST
+
+    if "$CC" $CPPFLAGS $CFLAGS -DLINUX -I. \
+        "$tmpdir/conftest.c" lib/compat.c \
+        $LDFLAGS -o "$tmpdir/conftest" >/dev/null 2>&1; then
+
+        STRL_PROVIDER="bundled"
+        echo "bundled compatibility functions"
+
+    else
+        echo "failed"
+        echo
+        echo "configure: bundled strlcpy/strlcat compatibility test failed." >&2
+        exit 1
+    fi
+
+else
+
+    cat > "$tmpdir/conftest.c" <<'EOF_TEST'
+#include <string.h>
+
+int
+main(void)
+{
+    char buf[16];
+
+    strlcpy(buf, "foo", sizeof(buf));
+    strlcat(buf, "bar", sizeof(buf));
+
+    return 0;
+}
+EOF_TEST
+
+    if "$CC" $CPPFLAGS $CFLAGS "$tmpdir/conftest.c" \
+        $LDFLAGS -o "$tmpdir/conftest" >/dev/null 2>&1; then
+
+        STRL_PROVIDER="system"
+        echo "yes"
+
+    else
+        echo "no"
+        echo
+        echo "configure: strlcpy() and strlcat() are required on $host_os." >&2
+        echo "configure: no bundled compatibility implementation is used on this platform." >&2
+        exit 1
+    fi
+fi
+
+#
+# Math library
+#
+
+printf "%-36s" "Checking math library..."
+
+cat > "$tmpdir/conftest.c" <<'EOF_TEST'
+#include <math.h>
+
+int
+main(void)
+{
+    double (*volatile fn)(double) = sqrt;
+    volatile double value = 2.0;
+
+    return fn(value) < 0.0;
+}
+EOF_TEST
+
+if "$CC" $CPPFLAGS $CFLAGS "$tmpdir/conftest.c" \
+    $LDFLAGS -o "$tmpdir/conftest" >/dev/null 2>&1; then
+
+    echo "not needed"
+
+elif "$CC" $CPPFLAGS $CFLAGS "$tmpdir/conftest.c" \
+    $LDFLAGS -lm -o "$tmpdir/conftest" >/dev/null 2>&1; then
+
+    echo "-lm"
+    CONFIG_LIBS="${CONFIG_LIBS}${CONFIG_LIBS:+ }-lm"
+
+else
+    echo "failed"
+    echo
+    echo "configure: math library support is required." >&2
+    exit 1
+fi
+
+
+#
+# Bundled build tools
+#
+# Both bundled Frotz and lrzsz use GNU make.  Require it once if either
+# component is enabled.  On FreeBSD, the user should invoke gmake.
+#
+if [ "$WITH_FROTZ" -eq 1 ] || [ "$WITH_ZMODEM" -eq 1 ]; then
+    printf "%-36s" "Checking for GNU make..."
+    if command -v gmake >/dev/null 2>&1; then
+        FROTZ_MAKE=gmake
+        echo "$FROTZ_MAKE"
+    elif command -v make >/dev/null 2>&1 &&
+         make --version 2>/dev/null | grep 'GNU Make' >/dev/null 2>&1; then
+        FROTZ_MAKE=make
+        echo "$FROTZ_MAKE"
+    else
+        echo "not found"
+        echo
+        echo "configure: bundled Frotz and ZMODEM require GNU make." >&2
+        echo "configure: install GNU make (gmake on BSD systems) and try again." >&2
+        exit 1
+    fi
+fi
+
+#
+# Bundled SklaffKOM Frotz
+#
+# Frotz is enabled by default but can be disabled with --disable-frotz.
+# SklaffKOM always builds vendor/frotz; it never uses system Frotz.
+#
+
+if [ "$WITH_FROTZ" -eq 1 ]; then
+    printf "%-36s" "Checking bundled Frotz source..."
+    if [ -f vendor/frotz/Makefile ]; then
+        echo "vendor/frotz"
+    else
+        echo "not found"
+        echo
+        echo "configure: bundled Frotz is enabled but vendor/frotz/Makefile is missing." >&2
+        echo "configure: rerun with --disable-frotz to omit the bundled interpreter." >&2
+        exit 1
+    fi
+
+    printf "%-36s" "Checking ncursesw for Frotz..."
+
+    FROTZ_CURSES_CFLAGS=""
+    FROTZ_CURSES_LIBS=""
+
+    if command -v pkgconf >/dev/null 2>&1 && pkgconf --exists ncursesw 2>/dev/null; then
+        FROTZ_CURSES_CFLAGS=`pkgconf --cflags ncursesw 2>/dev/null || true`
+        FROTZ_CURSES_LIBS=`pkgconf --libs ncursesw 2>/dev/null || true`
+    elif command -v pkg-config >/dev/null 2>&1 && pkg-config --exists ncursesw 2>/dev/null; then
+        FROTZ_CURSES_CFLAGS=`pkg-config --cflags ncursesw 2>/dev/null || true`
+        FROTZ_CURSES_LIBS=`pkg-config --libs ncursesw 2>/dev/null || true`
+    fi
+
+    cat > "$tmpdir/conftest.c" <<'EOF_TEST'
+#include <curses.h>
+
+int
+main(void)
+{
+    WINDOW *w = initscr();
+    if (w != 0)
+        endwin();
+    return 0;
+}
+EOF_TEST
+
+    frotz_curses_ok=no
+
+    if [ -n "$FROTZ_CURSES_LIBS" ] &&
+       "$CC" $CPPFLAGS $CFLAGS $FROTZ_CURSES_CFLAGS \
+           "$tmpdir/conftest.c" $LDFLAGS $FROTZ_CURSES_LIBS \
+           -o "$tmpdir/conftest" >/dev/null 2>&1; then
+        frotz_curses_ok=yes
+    fi
+
+    if [ "$frotz_curses_ok" = no ]; then
+        case "$sklaffsys" in
+            FREEBSD)
+                frotz_fallback_cflags="-I/usr/local/include"
+                frotz_fallback_ldflags="-L/usr/local/lib"
+                ;;
+            *)
+                frotz_fallback_cflags=""
+                frotz_fallback_ldflags=""
+                ;;
+        esac
+
+        for frotz_libs in "-lncursesw -ltinfo" "-lncursesw"; do
+            if "$CC" $CPPFLAGS $CFLAGS $frotz_fallback_cflags \
+                "$tmpdir/conftest.c" $LDFLAGS $frotz_fallback_ldflags \
+                $frotz_libs -o "$tmpdir/conftest" >/dev/null 2>&1; then
+                FROTZ_CURSES_CFLAGS=$frotz_fallback_cflags
+                FROTZ_CURSES_LIBS=$frotz_libs
+                frotz_curses_ok=yes
+                break
+            fi
+        done
+    fi
+
+    if [ "$frotz_curses_ok" = yes ]; then
+        FROTZ_CURSES=ncursesw
+        echo "yes"
+    else
+        echo "not found"
+        echo
+        echo "configure: bundled Frotz is enabled but ncursesw development files were not found." >&2
+        echo "configure: install the ncurses wide-character development package and try again." >&2
+        echo "configure: or rerun with --disable-frotz to omit the bundled interpreter." >&2
+        exit 1
+    fi
+
+    FROTZ_BUILD_TARGET=frotz
+    FROTZ_CLEAN_TARGET=clean-frotz
+else
+    printf "%-36s" "Bundled Frotz support..."
+    echo "disabled"
+fi
+
+
+#
+# Bundled ZMODEM (lrzsz 0.13.1)
+#
+# The original source tree is not modified or configured in-place.
+# Actual lrzsz configuration happens during make in build/lrzsz.
+#
+if [ "$WITH_ZMODEM" -eq 1 ]; then
+    printf "%-36s" "Checking bundled lrzsz source..."
+    if [ -f vendor/lrzsz/configure ] &&
+       [ -f vendor/lrzsz/src/Makefile.in ] &&
+       [ -f vendor/lrzsz/src/lrz.c ] &&
+       [ -f vendor/lrzsz/src/lsz.c ]; then
+        echo "vendor/lrzsz"
+    else
+        echo "not found"
+        echo
+        echo "configure: ZMODEM is enabled but vendor/lrzsz is incomplete." >&2
+        echo "configure: rerun with --disable-zmodem to omit file transfers." >&2
+        exit 1
+    fi
+
+    ZMODEM_BUILD_TARGET=zmodem
+    if [ "$sklaffsys" = "FREEBSD" ]; then
+        ZMODEM_CPPFLAGS="${CPPFLAGS}${CPPFLAGS:+ }-D_XOPEN_SOURCE=700"
+    else
+        ZMODEM_CPPFLAGS="$CPPFLAGS"
+    fi
+else
+    printf "%-36s" "Bundled ZMODEM support..."
+    echo "disabled"
+fi
+
+#
+# Core runtime tools
+#
+# These programs are required by the base SklaffKOM runtime.  Missing core
+# tools are fatal; optional transports and utilities are detected separately.
+#
+
+printf "%-36s" "Checking for grep..."
+if GREP_BIN=`find_program grep`; then
+    echo "$GREP_BIN"
+else
+    echo "not found"
+    echo
+    echo "configure: grep is required." >&2
+    exit 1
+fi
+
+printf "%-36s" "Checking for ls..."
+if LS_BIN=`find_program ls`; then
+    echo "$LS_BIN"
+else
+    echo "not found"
+    echo
+    echo "configure: ls is required." >&2
+    exit 1
+fi
+
+printf "%-36s" "Checking for echo..."
+if ECHO_BIN=`find_program echo`; then
+    echo "$ECHO_BIN"
+else
+    echo "not found"
+    echo
+    echo "configure: echo is required." >&2
+    exit 1
+fi
+
+printf "%-36s" "Checking for passwd..."
+if PASSWD_BIN=`find_program passwd`; then
+    echo "$PASSWD_BIN"
+else
+    echo "not found"
+    echo
+    echo "configure: passwd is required." >&2
+    exit 1
+fi
+
+#
+# Local system mail (mandatory)
+#
+# sklaffacct always sends account applications through a sendmail-compatible
+# local mail interface, even when external email integration is disabled.
+# Record the actual executable path; a login session may have a different PATH.
+#
+printf "%-36s" "Checking local system mail..."
+
+if [ -n "$LOCAL_SENDMAIL_OVERRIDE" ]; then
+    LOCAL_SENDMAIL_BIN=$LOCAL_SENDMAIL_OVERRIDE
+elif [ -f /usr/sbin/sendmail ] && [ -x /usr/sbin/sendmail ]; then
+    LOCAL_SENDMAIL_BIN=/usr/sbin/sendmail
+elif LOCAL_SENDMAIL_BIN=`find_program sendmail`; then
+    :
+else
+    for candidate in /usr/bin/sendmail /usr/local/sbin/sendmail /usr/local/bin/sendmail /usr/lib/sendmail; do
+        if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+            LOCAL_SENDMAIL_BIN=$candidate
+            break
+        fi
+    done
+fi
+
+if [ -n "$LOCAL_SENDMAIL_BIN" ] &&
+   [ -f "$LOCAL_SENDMAIL_BIN" ] && [ -x "$LOCAL_SENDMAIL_BIN" ]; then
+    # Ensure the path stored in config.h is absolute, including for a
+    # relative directory found through PATH.
+    case "$LOCAL_SENDMAIL_BIN" in
+        /*) ;;
+        *)
+            local_mail_dir=`dirname "$LOCAL_SENDMAIL_BIN"`
+            local_mail_base=`basename "$LOCAL_SENDMAIL_BIN"`
+            local_mail_dir=`cd "$local_mail_dir" && pwd -P` || exit 1
+            LOCAL_SENDMAIL_BIN=$local_mail_dir/$local_mail_base
+            ;;
+    esac
+    echo "$LOCAL_SENDMAIL_BIN"
+else
+    echo "not found"
+    echo
+    echo "configure: SklaffKOM requires a sendmail-compatible executable for local account mail." >&2
+    echo "configure: install a local MTA, or specify --with-local-sendmail=/absolute/path." >&2
+    exit 1
+fi
+
+#
+# External email integration (optional)
+#
+# Reuse the detected local MTA by default.  Sysop may override the external
+# transport independently with --with-sendmail; Lynx is not bundled.
+#
+if [ "$ENABLE_EMAIL" -eq 1 ]; then
+    printf "%-36s" "Checking external mail transport..."
+
+    if [ -n "$SENDMAIL_OVERRIDE" ]; then
+        SENDMAIL_BIN=$SENDMAIL_OVERRIDE
+    else
+        SENDMAIL_BIN=$LOCAL_SENDMAIL_BIN
+    fi
+
+    if [ -f "$SENDMAIL_BIN" ] && [ -x "$SENDMAIL_BIN" ]; then
+        HAVE_SENDMAIL=1
+        echo "$SENDMAIL_BIN"
+    else
+        echo "not found"
+        echo
+        echo "configure: --with-sendmail must point to an executable sendmail-compatible program." >&2
+        exit 1
+    fi
+
+else
+    printf "%-36s" "External email support..."
+    echo "disabled"
+fi
+
+#
+# Lynx (mandatory for rendering incoming HTML mail in mailtoss)
+#
+# Needed even when outgoing external email is disabled.
+#
+printf "%-36s" "Checking for lynx..."
+if [ -n "$LYNX_OVERRIDE" ]; then
+    LYNX_BIN=$LYNX_OVERRIDE
+elif LYNX_BIN=`find_program lynx`; then
+    :
+else
+    LYNX_BIN=""
+fi
+
+if [ -n "$LYNX_BIN" ] &&
+   [ -f "$LYNX_BIN" ] && [ -x "$LYNX_BIN" ]; then
+    HAVE_LYNX=1
+    echo "$LYNX_BIN"
+else
+    echo "not found"
+    echo
+    echo "configure: SklaffKOM requires Lynx to render incoming HTML mail." >&2
+    echo "configure: install lynx, or pass --with-lynx=/absolute/path/to/lynx." >&2
+    exit 1
+fi
+
+#
+# Outgoing Usenet posting (optional)
+#
+# Importing Usenet through newstoss does not require inews.  Only check
+# the posting tool when the Sysop explicitly enables outgoing posting.
+#
+if [ "$ENABLE_USENET_POSTING" -eq 1 ]; then
+    printf "%-36s" "Checking for inews..."
+
+    if [ -n "$INEWS_OVERRIDE" ]; then
+        INEWS_BIN=$INEWS_OVERRIDE
+    elif INEWS_BIN=`find_program inews`; then
+        :
+    else
+        INEWS_BIN=""
+    fi
+
+    if [ -n "$INEWS_BIN" ] && [ -f "$INEWS_BIN" ] && [ -x "$INEWS_BIN" ]; then
+        # Store an absolute path even when PATH contains relative directories.
+        case "$INEWS_BIN" in
+            /*) ;;
+            *)
+                inews_dir=`dirname "$INEWS_BIN"`
+                inews_base=`basename "$INEWS_BIN"`
+                inews_dir=`cd "$inews_dir" && pwd -P` || exit 1
+                INEWS_BIN=$inews_dir/$inews_base
+                ;;
+        esac
+        HAVE_INEWS=1
+        echo "$INEWS_BIN"
+    else
+        echo "not found"
+        echo
+        echo "configure: --enable-usenet-posting requires an executable inews." >&2
+        echo "configure: install inews, or use --with-inews=/absolute/path." >&2
+        exit 1
+    fi
+else
+    printf "%-36s" "Usenet posting support..."
+    echo "disabled"
+fi
+
+#
+# at
+#
+
+printf "%-36s" "Checking for at..."
+
+if AT_BIN=`find_program at`; then
+    HAVE_AT=1
+    echo "$AT_BIN"
+else
+    HAVE_AT=0
+    echo "not found"
+fi
+
+#
+# zip
+#
+
+printf "%-36s" "Checking for zip..."
+
+if ZIP_BIN=`find_program zip`; then
+    HAVE_ZIP=1
+    echo "$ZIP_BIN"
+else
+    HAVE_ZIP=0
+    echo "not found"
+fi
+
+#
+# Nethack
+#
+
+printf "%-36s" "Checking for nethack..."
+
+if NETHACK_BIN=`find_program nethack`; then
+    HAVE_NETHACK=1
+    echo "$NETHACK_BIN"
+else
+    HAVE_NETHACK=0
+    echo "not found"
+fi
+
+#
+# chfn
+#
+
+printf "%-36s" "Checking for chfn..."
+
+if CHFN_BIN=`find_program chfn`; then
+    HAVE_CHFN=1
+    echo "$CHFN_BIN"
+else
+    HAVE_CHFN=0
+    echo "not found"
+fi
+
+# Quote detected paths for config.h.
+GREP_BIN_C=`c_escape_string "$GREP_BIN"`
+LS_BIN_C=`c_escape_string "$LS_BIN"`
+ECHO_BIN_C=`c_escape_string "$ECHO_BIN"`
+PASSWD_BIN_C=`c_escape_string "$PASSWD_BIN"`
+LOCAL_SENDMAIL_BIN_C=`c_escape_string "$LOCAL_SENDMAIL_BIN"`
+
+if [ "$HAVE_SENDMAIL" -eq 1 ]; then
+    SENDMAIL_BIN_C=`c_escape_string "$SENDMAIL_BIN"`
+    SENDMAIL_DEFINE="#define SENDMAIL_BIN \"$SENDMAIL_BIN_C\""
+else
+    # Prevent legacy sklaff_programs.h from silently enabling email.
+    SENDMAIL_DEFINE='#define SENDMAIL_BIN ""'
+fi
+
+if [ "$HAVE_INEWS" -eq 1 ]; then
+    INEWS_BIN_C=`c_escape_string "$INEWS_BIN"`
+    INEWS_DEFINE="#define INEWS_BIN \"$INEWS_BIN_C\""
+else
+    # Explicitly disable the old sklaff_programs.h fallback.
+    INEWS_DEFINE='#define INEWS_BIN ""'
+fi
+
+if [ "$HAVE_LYNX" -eq 1 ]; then
+    LYNX_BIN_C=`c_escape_string "$LYNX_BIN"`
+    LYNX_DEFINE="#define LYNX_BIN \"$LYNX_BIN_C\""
+else
+    LYNX_DEFINE='#define LYNX_BIN ""'
+fi
+
+if [ "$HAVE_AT" -eq 1 ]; then
+    AT_BIN_C=`c_escape_string "$AT_BIN"`
+    AT_DEFINE="#define AT_BIN \"$AT_BIN_C\""
+else
+    AT_DEFINE="/* AT_BIN not detected; using sklaff_programs.h fallback */"
+fi
+
+if [ "$HAVE_ZIP" -eq 1 ]; then
+    ZIP_BIN_C=`c_escape_string "$ZIP_BIN"`
+    ZIP_DEFINE="#define ZIP_BIN \"$ZIP_BIN_C\""
+else
+    ZIP_DEFINE="/* ZIP_BIN not detected; using sklaff_programs.h fallback */"
+fi
+
+if [ "$HAVE_NETHACK" -eq 1 ]; then
+    NETHACK_BIN_C=`c_escape_string "$NETHACK_BIN"`
+    NETHACK_DEFINE="#define NETHACK_BIN \"$NETHACK_BIN_C\""
+else
+    NETHACK_DEFINE="/* NETHACK_BIN not detected; using sklaff_programs.h fallback */"
+fi
+
+if [ "$HAVE_CHFN" -eq 1 ]; then
+    CHFN_BIN_C=`c_escape_string "$CHFN_BIN"`
+    CHFN_DEFINE="#define CHFN_BIN \"$CHFN_BIN_C\""
+else
+    CHFN_DEFINE="/* CHFN_BIN not detected; using sklaff_programs.h fallback */"
+fi
+
+# A bundled wrapper uses a fixed installation path, never the PATH.
+# An empty value when disabled also overrides any legacy program fallback.
+if [ "$ENABLE_BBSLINK" -eq 1 ]; then
+    HAVE_CP437=1
+    CP437_BIN=/usr/local/sklaff/libexec/cp437
+    CP437_DEFINE='#define CP437_BIN SKLAFFDIR "/libexec/cp437"'
+else
+    HAVE_CP437=0
+    CP437_BIN=""
+    CP437_DEFINE='#define CP437_BIN ""'
+fi
+
+#
+# BBSLink (optional).
+#
+# The client uses libcurl for HTTP, libcrypto for the protocol's MD5 hash,
+# and the system Telnet executable for the door session.
+# UTF-8 sessions use our separately built, vendored CP437 filter.
+#
+if [ "$ENABLE_BBSLINK" -eq 1 ]; then
+    # Give Sysops package names instead of only generic library names.
+    # Keep this platform-neutral: no root privileges or distro probing needed.
+    bbslink_package_help()
+    {
+        cat >&2 <<'EOF_BBSLINK_PACKAGES'
+configure: Install the BBSLink build dependencies using your distribution:
+  Debian / Ubuntu:
+    sudo apt install libcurl4-openssl-dev libssl-dev pkg-config telnet
+  Rocky Linux / RHEL:
+    sudo dnf install libcurl-devel openssl-devel pkgconf-pkg-config telnet
+  FreeBSD:
+    sudo pkg install pkgconf curl
+    (OpenSSL is provided by the base system; check that telnet is installed.)
+EOF_BBSLINK_PACKAGES
+    }
+
+    echo
+    printf "%-36s" "Checking BBSLink client source..."
+    if [ ! -f bbslink_client.c ]; then
+        echo "not found"
+        echo "configure: bbslink_client.c is required by --enable-bbslink." >&2
+        exit 1
+    fi
+    echo "yes"
+
+    printf "%-36s" "Checking pkg-config for BBSLink..."
+    if command -v pkgconf >/dev/null 2>&1; then
+        BBSLINK_PKG_CONFIG=pkgconf
+    elif command -v pkg-config >/dev/null 2>&1; then
+        BBSLINK_PKG_CONFIG=pkg-config
+    else
+        echo "not found"
+        echo "configure: --enable-bbslink requires pkgconf/pkg-config, libcurl and OpenSSL development files." >&2
+        bbslink_package_help
+        exit 1
+    fi
+    BBSLINK_MISSING=
+    for bbslink_module in libcurl openssl; do
+        if ! "$BBSLINK_PKG_CONFIG" --exists "$bbslink_module"; then
+            BBSLINK_MISSING="$BBSLINK_MISSING $bbslink_module"
+        fi
+    done
+    if [ -n "$BBSLINK_MISSING" ]; then
+        echo "missing:$BBSLINK_MISSING"
+        echo "configure: $BBSLINK_PKG_CONFIG cannot find:$BBSLINK_MISSING" >&2
+        bbslink_package_help
+        exit 1
+    fi
+    echo "$BBSLINK_PKG_CONFIG"
+    BBSLINK_CFLAGS=`"$BBSLINK_PKG_CONFIG" --cflags libcurl openssl` || exit 1
+    BBSLINK_LIBS=`"$BBSLINK_PKG_CONFIG" --libs libcurl openssl` || exit 1
+
+    printf "%-36s" "Checking BBSLink link dependencies..."
+    cat > "$tmpdir/conftest.c" <<'EOF_BBSLINK'
+#include <curl/curl.h>
+#include <openssl/evp.h>
+int main(void) {
+    CURL *c = curl_easy_init();
+    const EVP_MD *h = EVP_md5();
+    curl_easy_cleanup(c);
+    return h == 0;
+}
+EOF_BBSLINK
+    if "$CC" $CPPFLAGS $CFLAGS $BBSLINK_CFLAGS "$tmpdir/conftest.c" \
+       $LDFLAGS $BBSLINK_LIBS -o "$tmpdir/conftest" >/dev/null 2>&1; then
+        echo "yes"
+    else
+        echo "failed"
+        echo "configure: BBSLink C client cannot link libcurl/libcrypto." >&2
+        bbslink_package_help
+        echo "configure: If already installed, check your CFLAGS, LDFLAGS and library paths." >&2
+        exit 1
+    fi
+
+    printf "%-36s" "Checking Telnet for BBSLink..."
+    if BBSLINK_TELNET_BIN=`find_program telnet`; then
+        case "$BBSLINK_TELNET_BIN" in
+            /*) ;;
+            *)
+                telnet_dir=`dirname "$BBSLINK_TELNET_BIN"`
+                telnet_base=`basename "$BBSLINK_TELNET_BIN"`
+                telnet_dir=`cd "$telnet_dir" && pwd -P` || exit 1
+                BBSLINK_TELNET_BIN=$telnet_dir/$telnet_base
+                ;;
+        esac
+        echo "$BBSLINK_TELNET_BIN"
+    else
+        echo "not found"
+        echo "configure: --enable-bbslink requires a Telnet client." >&2
+        bbslink_package_help
+        exit 1
+    fi
+
+    # Compile the vendor's source as-is.  First try the platform PTY library
+    # with libc iconv, then libiconv as a fallback (notably on FreeBSD).
+    printf "%-36s" "Checking bundled cp437 source..."
+    if [ ! -f vendor/cp437/cp437.c ] || [ ! -f vendor/cp437/COPYRIGHT ]; then
+        echo "not found"
+        echo "configure: --enable-bbslink requires vendor/cp437/cp437.c and COPYRIGHT." >&2
+        echo "configure: Copy the sources from https://github.com/keaston/cp437" >&2
+        exit 1
+    fi
+    echo "yes"
+
+    case "$host_os" in
+        *freebsd*|*openbsd*|*netbsd*)
+            CP437_CFLAGS="-I/usr/local/include"
+            CP437_LIBDIR="-L/usr/local/lib"
+            ;;
+        *)
+            CP437_CFLAGS=""
+            CP437_LIBDIR=""
+            ;;
+    esac
+
+    printf "%-36s" "Checking cp437 iconv and forkpty..."
+    for cp437_link in "-lutil" "-lutil -liconv"; do
+        if "$CC" $CPPFLAGS $CFLAGS $CP437_CFLAGS \
+            vendor/cp437/cp437.c $LDFLAGS $CP437_LIBDIR $cp437_link \
+            -o "$tmpdir/cp437-conftest" >/dev/null 2>&1; then
+            CP437_LIBS="$CP437_LIBDIR $cp437_link"
+            break
+        fi
+    done
+    if [ -z "$CP437_LIBS" ]; then
+        echo "failed"
+        echo "configure: Cannot compile vendored cp437 (iconv/forkpty)." >&2
+        echo "configure: Debian/Ubuntu: sudo apt install libc6-dev" >&2
+        echo "configure: Rocky Linux:   sudo dnf install glibc-devel" >&2
+        echo "configure: FreeBSD:       sudo pkg install libiconv" >&2
+        echo "configure: Also check custom CPPFLAGS/CFLAGS/LDFLAGS." >&2
+        exit 1
+    fi
+    echo "yes ($CP437_LIBS)"
+fi
+
+#
+# Optional InterBBS Oneliner (IBOL)
+#
+# The importer uses only bundled code; the Sysop supplies the FTN .MSG
+# directory at runtime.  FTN posting is separately controlled, so an
+# IBOL-enabled site can use the wall read-only.
+#
+if [ "$ENABLE_IBOL" -eq 1 ]; then
+    IBOL_BUILD_TARGET=ibolimport
+    printf "%-36s" "InterBBS Oneliner support..."
+    if [ "$ENABLE_FTN_POSTING" -eq 1 ]; then
+        echo "enabled (read/write)"
+    else
+        echo "enabled (read-only; FTN posting disabled)"
+    fi
+else
+    printf "%-36s" "InterBBS Oneliner support..."
+    echo "disabled"
+fi
+
+#
+# config.h
+#
+
+cat > config.h.tmp <<EOF_CONFIG
+/*
+ * config.h
+ *
+ * Generated by ./configure.
+ * Do not edit manually.
+ */
+
+#ifndef SKLAFF_CONFIG_H
+#define SKLAFF_CONFIG_H
+
+#define SKLAFF_CONFIGURED 1
+
+/* Optional local site configuration */
+#define HAVE_SKLAFF_LOCAL_H $HAVE_SKLAFF_LOCAL_H
+
+/* Bundled SklaffKOM Frotz */
+#define HAVE_FROTZ $WITH_FROTZ
+#define FROTZ_BIN SKLAFFDIR "/libexec/frotz"
+
+/* Core runtime tools */
+#define GREP_BIN "$GREP_BIN_C"
+#define LS_BIN "$LS_BIN_C"
+#define ECHO_BIN "$ECHO_BIN_C"
+#define PASSWD_BIN "$PASSWD_BIN_C"
+
+/* Mandatory local system mail (for sklaffacct, independent of --enable-email) */
+#define LOCAL_SENDMAIL_BIN "$LOCAL_SENDMAIL_BIN_C"
+
+/* External email integration (enabled only by --enable-email) */
+#define ENABLE_EMAIL $ENABLE_EMAIL
+#define HAVE_SENDMAIL $HAVE_SENDMAIL
+$SENDMAIL_DEFINE
+
+/* Optional BBSLink C client (separate from core SklaffKOM). */
+#define ENABLE_BBSLINK $ENABLE_BBSLINK
+#define BBSLINK_CLIENT_BIN SKLAFFDIR "/libexec/bbslink_client"
+#define BBSLINK_TELNET_BIN "$BBSLINK_TELNET_BIN"
+
+/* InterBBS Oneliner (import/display, outgoing messages require FTN posting) */
+#define ENABLE_IBOL $ENABLE_IBOL
+
+/* Optional outgoing Usenet posting (newstoss import is independent) */
+#define ENABLE_USENET_POSTING $ENABLE_USENET_POSTING
+
+/* Outgoing FTN posting (echomail and netmail). Import remains available. */
+#define ENABLE_FTN_POSTING $ENABLE_FTN_POSTING
+#define HAVE_INEWS $HAVE_INEWS
+$INEWS_DEFINE
+
+/* Lynx */
+#define HAVE_LYNX $HAVE_LYNX
+$LYNX_DEFINE
+
+/* at */
+#define HAVE_AT $HAVE_AT
+$AT_DEFINE
+
+/* Legacy QWK batch download is not ready for a public feature switch. */
+#define ENABLE_QWK 0
+
+/* zip */
+#define HAVE_ZIP $HAVE_ZIP
+$ZIP_DEFINE
+
+/* Nethack */
+#define HAVE_NETHACK $HAVE_NETHACK
+$NETHACK_DEFINE
+
+/* chfn */
+#define HAVE_CHFN $HAVE_CHFN
+$CHFN_DEFINE
+
+/* CP437 wrapper */
+#define HAVE_CP437 $HAVE_CP437
+$CP437_DEFINE
+
+/* Bundled ZMODEM file transfer tools */
+#define ENABLE_ZMODEM $WITH_ZMODEM
+#if ENABLE_ZMODEM
+#define LRZ_BIN SKLAFFDIR "/libexec/lrz"
+#define LSZ_BIN SKLAFFDIR "/libexec/lsz"
+#else
+/* Keep these empty so legacy sklaff_programs.h does not add fallbacks. */
+#define LRZ_BIN ""
+#define LSZ_BIN ""
+#endif
+
+#endif /* SKLAFF_CONFIG_H */
+EOF_CONFIG
+
+mv config.h.tmp config.h
+
+
+#
+# config.mk
+#
+
+cat > config.mk.tmp <<EOF_CONFIG
+#
+# config.mk
+#
+# Generated by ./configure.
+# Do not edit manually.
+#
+
+CONFIG_CC = $CC
+CONFIG_SKLAFFSYS = $sklaffsys
+CONFIG_LIBS = $CONFIG_LIBS
+CONFIG_WITH_FROTZ = $WITH_FROTZ
+CONFIG_WITH_ZMODEM = $WITH_ZMODEM
+CONFIG_ZMODEM_CPPFLAGS = $ZMODEM_CPPFLAGS
+CONFIG_ENABLE_EMAIL = $ENABLE_EMAIL
+CONFIG_ENABLE_USENET_POSTING = $ENABLE_USENET_POSTING
+CONFIG_ENABLE_FTN_POSTING = $ENABLE_FTN_POSTING
+CONFIG_ENABLE_IBOL = $ENABLE_IBOL
+CONFIG_IBOL_BUILD_TARGET = $IBOL_BUILD_TARGET
+CONFIG_ENABLE_BBSLINK = $ENABLE_BBSLINK
+CONFIG_BBSLINK_CFLAGS = $BBSLINK_CFLAGS
+CONFIG_BBSLINK_LIBS = $BBSLINK_LIBS
+CONFIG_CP437_CFLAGS = $CP437_CFLAGS
+CONFIG_CP437_LIBS = $CP437_LIBS
+EOF_CONFIG
+
+mv config.mk.tmp config.mk
+
+
+#
+# Makefile
+#
+
+#
+# Generate Makefile from Makefile.in
+#
+
+printf "%-36s" "Generating Makefile..."
+
+if [ ! -f Makefile.in ]; then
+    echo "failed"
+    echo
+    echo "configure: Makefile.in is missing." >&2
+    exit 1
+fi
+
+# Escape characters that are special in the replacement part of sed's
+# substitute command.
+sed_escape_replacement()
+{
+    printf '%s' "$1" | sed 's/[\\&|]/\\&/g'
+}
+
+sed_cc=`sed_escape_replacement "$CC"`
+sed_sys=`sed_escape_replacement "$sklaffsys"`
+sed_libs=`sed_escape_replacement "$CONFIG_LIBS"`
+sed_with_frotz=`sed_escape_replacement "$WITH_FROTZ"`
+sed_frotz_build_target=`sed_escape_replacement "$FROTZ_BUILD_TARGET"`
+sed_frotz_clean_target=`sed_escape_replacement "$FROTZ_CLEAN_TARGET"`
+sed_enable_ibol=`sed_escape_replacement "$ENABLE_IBOL"`
+sed_ibol_build_target=`sed_escape_replacement "$IBOL_BUILD_TARGET"`
+sed_zmodem_build_target=`sed_escape_replacement "$ZMODEM_BUILD_TARGET"`
+sed_zmodem_cppflags=`sed_escape_replacement "$ZMODEM_CPPFLAGS"`
+sed_enable_bbslink=`sed_escape_replacement "$ENABLE_BBSLINK"`
+sed_bbslink_cflags=`sed_escape_replacement "$BBSLINK_CFLAGS"`
+sed_bbslink_libs=`sed_escape_replacement "$BBSLINK_LIBS"`
+sed_cp437_cflags=`sed_escape_replacement "$CP437_CFLAGS"`
+sed_cp437_libs=`sed_escape_replacement "$CP437_LIBS"`
+
+if sed \
+    -e "s|@CC@|$sed_cc|g" \
+    -e "s|@SKLAFFSYS@|$sed_sys|g" \
+    -e "s|@LIBS@|$sed_libs|g" \
+    -e "s|@WITH_FROTZ@|$sed_with_frotz|g" \
+    -e "s|@FROTZ_BUILD_TARGET@|$sed_frotz_build_target|g" \
+    -e "s|@FROTZ_CLEAN_TARGET@|$sed_frotz_clean_target|g" \
+    -e "s|@ENABLE_IBOL@|$sed_enable_ibol|g" \
+    -e "s|@IBOL_BUILD_TARGET@|$sed_ibol_build_target|g" \
+    -e "s|@ZMODEM_BUILD_TARGET@|$sed_zmodem_build_target|g" \
+    -e "s|@ZMODEM_CPPFLAGS@|$sed_zmodem_cppflags|g" \
+    -e "s|@ENABLE_BBSLINK@|$sed_enable_bbslink|g" \
+    -e "s|@BBSLINK_CFLAGS@|$sed_bbslink_cflags|g" \
+    -e "s|@BBSLINK_LIBS@|$sed_bbslink_libs|g" \
+    -e "s|@CP437_CFLAGS@|$sed_cp437_cflags|g" \
+    -e "s|@CP437_LIBS@|$sed_cp437_libs|g" \
+    Makefile.in > Makefile.tmp; then
+
+    mv Makefile.tmp Makefile
+    echo "done"
+else
+    rm -f Makefile.tmp
+    echo "failed"
+    echo
+    echo "configure: could not generate Makefile." >&2
+    exit 1
+fi
+
+
+#
+# Summary
+#
+
+echo
+echo "Configuration successful."
+echo
+echo "  Operating system: $host_os"
+echo "  Target system:    $sklaffsys"
+echo "  C compiler:       $CC"
+echo "  strlcpy/strlcat:  $STRL_PROVIDER"
+if [ "$WITH_FROTZ" -eq 1 ]; then
+    echo "  Bundled Frotz:    enabled ($FROTZ_CURSES)"
+    echo "  Frotz path:       /usr/local/sklaff/libexec/frotz"
+else
+    echo "  Bundled Frotz:    disabled"
+fi
+if [ "$WITH_ZMODEM" -eq 1 ]; then
+    echo "  Bundled ZMODEM:   enabled (lrzsz 0.13.1)"
+    echo "  ZMODEM binaries:  /usr/local/sklaff/libexec/lrz, lsz"
+else
+    echo "  Bundled ZMODEM:   disabled"
+fi
+echo "  Local mail:       $LOCAL_SENDMAIL_BIN (required)"
+if [ "$ENABLE_EMAIL" -eq 1 ]; then
+    echo "  External email:   enabled"
+    echo "  Sendmail path:    $SENDMAIL_BIN"
+else
+    echo "  External email:   disabled"
+fi
+echo "  Lynx path:        $LYNX_BIN (required)"
+if [ "$ENABLE_USENET_POSTING" -eq 1 ]; then
+    echo "  Usenet posting:   enabled"
+    echo "  inews path:       $INEWS_BIN"
+else
+    echo "  Usenet posting:   disabled (newstoss still available)"
+fi
+if [ "$ENABLE_FTN_POSTING" -eq 1 ]; then
+    echo "  FTN posting:      enabled"
+else
+    echo "  FTN posting:      disabled (ftntoss import still available)"
+fi
+if [ "$ENABLE_IBOL" -eq 1 ]; then
+    if [ "$ENABLE_FTN_POSTING" -eq 1 ]; then
+        echo "  InterBBS Oneliner: enabled (read/write)"
+    else
+        echo "  InterBBS Oneliner: enabled (read-only; requires FTN posting to send)"
+    fi
+else
+    echo "  InterBBS Oneliner: disabled"
+fi
+
+if [ "$ENABLE_BBSLINK" -eq 1 ]; then
+    echo "  BBSLink client:   enabled (libcurl, OpenSSL, Telnet)"
+    echo "  BBSLink binary:   /usr/local/sklaff/libexec/bbslink_client"
+    echo "  Bundled cp437:    /usr/local/sklaff/libexec/cp437"
+    echo "  Credentials:      /usr/local/sklaff/etc/bbslink_credentials (Sysop-managed)"
+else
+    echo "  BBSLink client:   disabled"
+fi
+
+if [ -n "$CONFIG_LIBS" ]; then
+    echo "  Extra libraries:  $CONFIG_LIBS"
+else
+    echo "  Extra libraries:  none"
+fi
+
+echo
+echo "Generated:"
+echo "  config.h"
+echo "  config.mk"
+echo "  Makefile"
+echo

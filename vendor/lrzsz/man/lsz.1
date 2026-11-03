@@ -1,0 +1,666 @@
+'\"
+'\" Revision Level 
+'\" Last Delta     04-21-88
+.TH SZ 1 2.6.1996 lrzsz-0.12b
+.SH NAME
+sx, sb, sz \- XMODEM, YMODEM, ZMODEM file send
+.SH SYNOPSIS
+sz
+.RB [\- +8abdefkLlNnopqTtuvyY ]
+.I file ...
+.br
+sb
+.RB [\- adfkqtuv ]
+.I file ...
+.br
+sx
+.RB [\- akqtuv ]
+.I file
+.br
+sz
+.RB [\- oqtv ]
+.B "-c COMMAND"
+.br
+sz
+.RB [\- oqtv ]
+.B "-i COMMAND"
+.SH DESCRIPTION
+.B Sz
+uses the ZMODEM, YMODEM or XMODEM error correcting protocol to send
+one or more files over a dial-in serial port to a variety of programs running under
+multiple operating systems.
+
+.B Sz
+sends one or more files with ZMODEM protocol.
+
+ZMODEM
+greatly simplifies file transfers compared to XMODEM.
+In addition to a friendly user interface, ZMODEM
+provides Personal Computer and other users
+an efficient, accurate, and robust file transfer method.
+
+ZMODEM provides complete
+.B "END-TO-END"
+data integrity between application programs.
+ZMODEM's 32 bit CRC catches errors
+that sneak into even the most advanced networks.
+
+Advanced file management features include
+AutoDownload (Automatic file Download initiated without user intervention),
+Display of individual and total file lengths and transmission time estimates,
+Crash Recovery,
+selective file transfers,
+and preservation of
+exact file date and length.
+
+Output from another program may be piped to
+.B sz
+for transmission by denoting standard input with "-":
+.ce
+ls -l | sz -
+The program output is transmitted with the filename sPID.sz
+where PID is the process ID of the
+.B sz
+program.
+If the environment variable
+.B ONAME
+is set, that is used instead.
+In this case, the Unix command:
+.ce
+ls -l | ONAME=con sz -ay -
+will send a "file" to the PC-DOS console display.
+The
+.B -y
+option instructs the receiver to open the file for writing unconditionally.
+The
+.B -a
+option
+causes the receiver to convert Unix newlines to PC-DOS carriage returns
+and linefeeds.
+
+
+.B Sb
+batch sends one or more files with YMODEM or ZMODEM protocol.
+The initial ZMODEM initialization is not sent.
+When requested by the receiver (!!!),
+.B sb
+supports
+.B YMODEM-g
+with "cbreak" tty mode, XON/XOFF flow control,
+and interrupt character set to CAN (^X). This 
+increases throughput over error free channels
+(direct connection, X.PC, etc.)
+by not acknowledging each transmitted sector.
+
+The receiver included in this package does not request YMODEM-g.
+
+On
+.SM Unix
+systems, additional information about the file is transmitted.
+If the receiving program uses this information,
+the transmitted file length controls the exact number of bytes written to
+the output dataset,
+and the modify time and file mode
+are set accordingly.
+
+
+.B Sx
+sends a single
+.I file
+with
+.B XMODEM
+or
+.B XMODEM-1k
+protocol
+(sometimes incorrectly called "ymodem").
+The user must supply the file name to both sending and receiving programs.
+
+If
+.B sz
+is invoked with $SHELL set and if that variable contains the
+string
+.I "rsh"
+,
+.I "rbash"
+or
+.I "rksh"
+(restricted shell),
+.B sz
+operates in restricted mode.
+Restricted mode restricts pathnames to the current directory and/or 
+subdirectories thereof.
+
+
+The fourth form sends a single COMMAND to a ZMODEM receiver for execution.
+.B Sz
+exits with the COMMAND return value.
+If COMMAND includes spaces or characters special to the shell,
+it must be quoted.
+
+
+The fifth form sends a single COMMAND to a ZMODEM receiver for execution.
+.B Sz
+exits as soon as the receiver has correctly received the command,
+before it is executed.
+This form (and thus the
+.BR \-c / \-i
+options) is deprecated and will be removed in a future release: it
+asks the receiving program to execute COMMAND, which only old ZMODEM
+implementations still do.
+
+
+If
+.B sz
+is invoked with stdout and stderr to different datasets,
+Verbose is set to 2, causing frame by frame progress reports
+to stderr.
+This may be disabled with the
+.B q
+option.
+.PP
+The meanings of the available options are:
+.PP
+.PD 0
+.TP
+.B "-+, --append"
+Instruct the receiver to append transmitted data to an existing file
+(ZMODEM only).
+.TP 
+.B "-2, --twostop"
+use two stop bits (if possible). Do not use this unless you know
+what you are doing.
+.TP
+.B "-8, --try-8k"
+Try to go up to 8KB blocksize. This is incompatible with standard zmodem,
+but a common extension in the bbs world. (ZMODEM only).
+.TP
+.B "-9"
+Short form of --start-8k.
+.TP
+.B "--start-8k"
+Start with 8KB blocksize. Like --try-8k.
+.TP
+.B "-4, --try-4k"
+Try to go up to 4KB blocksize. (ZMODEM only).
+.TP
+.B "-5"
+Short form of --start-4k.
+.TP
+.B "--start-4k"
+Start with 4KB blocksize. Like --try-4k.
+.TP
+.B "-a, --ascii"
+Convert NL characters in the transmitted file to CR/LF.
+This is done by the sender for XMODEM and YMODEM, by the receiver
+for ZMODEM.
+
+Deprecated: for ZMODEM this requests the historic ZCNL conversion,
+which current ZMODEM documentation marks as deprecated. It is kept
+for compatibility with old peers; new setups should use binary
+transfer.
+.TP
+.B "-b, --binary"
+(ZMODEM) Binary override: transfer file without any translation.
+.TP
+.B "-B NUMBER, --bufsize NUMBER"
+Use a readbuffer of 
+.B NUMBER
+bytes. Default ist 16384, which should be enough
+for most situations. If you have a slow machine or a bad disk interface
+or suffer from other hardware problems you might want to increase
+the buffersize.
+.B -1
+or
+.B auto
+use a buffer large enough to buffer the whole file. Be careful with this
+option - things normally get worse, not better, if the machine starts
+to swap.
+
+ .TP
+.B "-c COMMAND, --command COMMAND"
+Send COMMAND to the receiver for execution, return with COMMAND\'s exit status.
+Deprecated: this asks the
+.B receiving
+program to execute COMMAND. It is kept for compatibility with old
+ZMODEM implementations (OMEN zmodem and older
+.BR lrz )
+that still execute received commands, and will be removed in a future
+release. New setups should not use it; modern receivers
+(including lrz) never execute commands and answer with a failure status.
+.TP
+.B "-C N, --command-tries N"
+Retry to send command N times (default: 11). Only meaningful together
+with
+.BR \-c / \-i ,
+which are deprecated.
+.TP
+.B "--delay-startup N"
+Wait
+.B N
+seconds before doing anything.
+.TP
+.B "--no-unixmode"
+Send a mode field of 0 in the ZMODEM file header instead of the
+file's Unix permission bits.
+By default,
+.B lsz
+transmits the full
+.I st_mode
+as returned by
+.BR fstat (2),
+including permission bits (rwx) and setuid, setgid, and sticky bits.
+The recipient may, and likely will, modify the mode before applying it
+\(em for example,
+.I lrz
+masks the received mode with
+.B 0777
+in normal operation (stripping setuid, setgid, and sticky) and with
+.B 0666
+under restricted shell (also stripping execute bits).
+Use
+.B --no-unixmode
+to leave permission selection entirely to the receiver's defaults 
+(or to keep that information for yourself).
+.TP 
+.B "-e, --escape"
+Escape all control characters;
+normally XON, XOFF, DLE, CR-@-CR, and Ctrl-X are escaped.
+.TP
+.B "-E, --rename"
+Force the sender to rename the new file if a file with the same
+name already exists.
+.TP
+.B "-f, --full-path"
+Send Full pathname.
+Normally directory prefixes are stripped from the transmitted
+filename.
+Deprecated: the current ZMODEM documentation states that a sender
+MUST NOT transmit absolute pathnames or
+.B ..
+components. This option is kept for compatibility with the historical
+behavior (OMEN
+.B sz
+and derivatives, and for mirroring directory trees with relative
+paths); a future release will continue to allow relative paths but
+will reject absolute paths and
+.B ..
+components with a fatal error. New setups should use plain relative
+filenames.
+.TP
+.B "-h, --help"
+give help.
+.TP
+.B "-H, --crc-check"
+(ZMODEM) Accept and transfer files if the file lengths and/or the CRCs
+differ.
+.TP
+.B "-i COMMAND, --immediate-command COMMAND"
+Send COMMAND to the receiver for execution, return immediately
+upon the receiving program's successful reception of the command.
+Deprecated: for the same reasons as
+.BR \-c ;
+kept for compatibility with old ZMODEM implementations that still
+execute received commands, will be removed in a future release.
+.TP
+.B "-J FILE, --journal FILE"
+Append a transfer-statistics line to
+.B FILE
+for each file sent.
+The line consists of key=value pairs including timestamp, direction
+(dir=tx), filename, status, byte counts, duration, and throughput.
+The file is created if it does not exist and appended to on each
+invocation.
+.TP
+.B "-k, --1k"
+(XMODEM/YMODEM) Send files using 1024 byte blocks
+rather than the default 128 byte blocks.
+1024 byte packets speed file transfers at high bit rates.
+(ZMODEM streams the data for the best possible throughput.)
+.TP
+.B "-L N, --packetlen N"
+Use ZMODEM sub-packets of length N.
+A larger N (32 <= N <= 1024) gives slightly higher throughput,
+a smaller N speeds error recovery.
+The default is 128 below 300 baud, 256 above 300 baud, or 1024 above 2400 baud.
+.TP 
+.B "-m N, --min-bps N"
+Stop transmission if BPS-Rate (Bytes Per Second) falls below N for a
+certain time (see --min-bps-time option).
+The check is per file: the timer resets at the start of each file.
+.TP
+.B "-M N, --min-bps-time"
+Used together with --min-bps. Default is 120 (seconds).
+The timeout is per file: a slow transfer of one file does not count
+toward the next file's timeout.
+.TP
+.B "-l N, --framelen N"
+Wait for the receiver to acknowledge correct data every
+.B N
+(32 <= N <= 1024)
+characters.
+This may be used to avoid network overrun when XOFF flow control is lacking.
+.TP
+.B "--sync-transfer"
+(ZMODEM) Integrity mode: wait for the receiver's acknowledgement after
+every data sub-packet (a ZCRCW round trip), instead of streaming.
+On a packetized transport an entire sub-packet together with its
+terminator and CRC can be silently swallowed, which plain streaming
+cannot detect (the CRC is position independent and the frame
+position is only checked at the start of a ZDATA frame).
+The cost is one round trip per sub-packet, causing a substantial
+throughput loss on slow or high-latency lines.
+This option is only needed on transports that can silently drop a
+contiguous chunk of the byte stream, for example a packet radio or
+other datagram link that loses packets without retransmitting them,
+or a line that overruns its buffer when flow control fails. It is pointless on
+transports that hide packet loss by retransmitting internally, so that
+no loss reaches the byte stream (TCP, ISDN, X.25), and wasteful on
+transports that only corrupt individual characters (noisy modem or
+serial lines): there the CRC catches the damage and the normal resync
+heals it, streaming is safe and faster.
+.TP
+.B "-n, --newer"
+(ZMODEM) Send each file if
+destination file does not exist.
+Overwrite destination file if
+source file is newer than the destination file.
+.TP
+.B "-N, --newer-or-longer"
+(ZMODEM) Send each file if
+destination file does not exist.
+Overwrite destination file if
+source file is newer or longer than the destination file.
+.TP
+.B "-o, --16-bit-crc"
+(ZMODEM) Disable automatic selection of 32 bit CRC.
+.TP
+.B "-O, --disable-timeouts"
+Disable read timeout handling. This makes lsz hang if the other side
+doesn't send anything, but increases performance (not much) and
+decreases system load (reduces number of system calls by about 50
+percent).
+
+Use this option with care.
+.TP
+.B "-p, --protect"
+(ZMODEM) Protect existing destination files by skipping transfer if the
+destination file exists.
+.TP
+.B "-q, --quiet"
+Quiet suppresses verbosity.
+.TP
+.B "-R, --restricted"
+Restricted mode: restricts pathnames to the current directory
+and/or subdirectories thereof. See
+.BR SECURITY .
+.TP
+.B "-r, --resume"
+(ZMODEM) Resume interrupted file transfer.
+If the source file is longer than the destination file,
+the transfer commences at the offset in the source file that equals
+the length of the destination file.
+.TP
+.B "-s HH:MM, --stop-at HH:MM"
+Stop transmission at
+.B HH
+hours,
+.B MM
+minutes. Another variant, using
+.B +N
+instead of
+.B HH:MM,
+stops transmission in
+.B N
+seconds. The deadline is tracked with a one-second granularity because
+of the way the check is implemented (the
+.B N
+argument is parsed before any data flows and compared against integer
+seconds afterwards); the transfer stops during the second after the
+deadline is reached, so a transfer stops within about
+.B N+1
+to
+.B N+2
+seconds.
+.TP
+.B "--syslog[=off]"
+turn syslogging on or off. Syslog is on by default.
+.TP
+.B "-t TIM, --timeout TIM"
+Change timeout to
+.I TIM
+tenths of seconds.
+.TP
+.B "-T, --turbo"
+Do not escape certain characters (^P, ^P|0x80, telenet escape sequence
+[CR + @]). This improves performance by about 1 percent and shouldn't
+hurt in the normal case (but be careful - ^P might be useful if connected
+through a terminal server).
+
+.TP
+.B "-u, --unlink"
+Unlink the file after successful transmission.
+.TP
+.B "-U, --unrestrict"
+Removed. See
+.BR SECURITY .
+.TP
+.B "-w N, --windowsize N"
+Limit the transmit window size to N bytes (ZMODEM).
+.TP
+.B "-v, --verbose"
+Verbose output to stderr. With one
+.BR v ,
+a summary (file names, transfer result, error events) is printed. With two
+.BR v s,
+progress reports are also shown. More
+.BR v s
+are accepted but have no effect. Since version 0.13 detailed protocol 
+debugging is available with
+.B \-\-debug
+instead.
+.TP
+.B "\-\-debug=MODULES"
+Enable debug output for the comma separated list of MODULES on stderr.
+Known modules: "protocol" (ZMODEM frame state machine), "readline" (line
+reader: select/read calls, timeouts, hex dump), "transfer" (file transfer
+state machine), "windowhandling" (adaptive block length and window
+logic, ZMODEM only), "tty" (terminal mode changes). The special name
+"all" enables all.
+.TP
+.B "-X, --xmodem"
+use XMODEM protocol.
+.TP
+.B "-y, --overwrite"
+Instruct a ZMODEM receiving program to overwrite any existing file
+with the same name.
+.TP
+.B "-Y, --overwrite-or-skip"
+Instruct a ZMODEM receiving program to overwrite any existing file
+with the same name,
+and to skip any source files that do have a file with the same
+pathname on the destination system.
+.TP
+.B "-g, --ymodem"
+use ZMODEM protocol.
+.TP
+.B "-Z, --zmodem"
+use ZMODEM protocol.
+.PD
+.SH SECURITY
+Restricted mode restricts pathnames to the current directory
+and/or subdirectories thereof: absolute pathnames and references to
+a parent directory are not sent, and lsz refuses to send remote
+commands (the \-c/\-i options).
+
+Restricted mode is entered if the
+.B R
+option is given or if lsz detects that it runs under a restricted
+shell or if the environment variable
+.B ZMODEM_RESTRICTED
+is set.
+Restricted mode cannot be turned off; the
+.B U
+option has been removed (see
+.BR "HISTORICAL NOTES" ).
+
+.SH ENVIRONMENT
+.TP
+.B ZNULLS
+may be used to specify the number of nulls to send before a ZDATA frame. This is a 1980s modem workaround and of questionable benefit today. It is kept for compatibility.
+.TP
+.B SHELL
+lsz recognizes a restricted shell if this variable includes
+.I "rsh"
+or
+.I "rksh"
+.TP
+.B ZMODEM_RESTRICTED
+lsz enters restricted mode if the variable is set.
+.SH EXAMPLES
+.ne 7
+.B "ZMODEM File Transfer"
+.br
+.B "% sz \-a *.c"
+.br
+This single command transfers all .c files in the current directory
+with conversion
+.RB ( \-a )
+to end of line conventions appropriate to the receiving environment.
+
+.br
+.B "% sz \-Yan *.c *.h"
+.br
+Send only the .c and .h files that exist on both systems,
+and are newer on the sending system than the
+corresponding version on the receiving system, converting Unix to
+DOS text format if needed.
+
+.B "XMODEM File Transfer"
+.br
+%
+.B "sx \-a foo.c"
+.br
+.B "ESC"
+.br
+.B "rx foo.c"
+.br
+The above three commands transfer a single file
+from the local to the remote machine while
+.I sz
+translating Unix newlines to DOS CR/LF.
+This combination is much slower and far less reliable than ZMODEM.
+.SH ERROR MESSAGES
+"Caught signal 99"
+indicates the program was not properly compiled,
+refer to "bibi(99)" in rbsb.c for details.
+.SH SEE ALSO
+lrz,
+ZMODEM.DOC,
+YMODEM.DOC,
+
+Compile time options required for various operating systems are described in
+the source file.
+
+.SH BUGS
+On at least one BSD system, sz would hang or exit when it got within
+a few kilobytes of the end of file.
+Using the "-w 8192" flag fixed the problem.
+The real cause is unknown, perhaps a bug in the kernel TTY output routines.
+
+Programs that do not properly implement the specified file transfer protocol
+may cause
+.I sz
+to "hang" the port for a minute or two.
+
+Many programs claiming to support YMODEM only support XMODEM with 1k blocks,
+and they often don't get that quite right.
+
+XMODEM transfers add up to 127 garbage bytes per file.
+XMODEM-1k and YMODEM-1k transfers use 128 byte blocks
+to avoid extra padding.
+
+YMODEM programs use the file length transmitted at the beginning of the
+transfer to prune the file to the correct length; this may cause problems with
+source files that grow during the course of the transfer.
+This problem does not pertain to ZMODEM transfers, which preserve the exact
+file length unconditionally.
+
+Most ZMODEM options are merely passed to the receiving program;
+some do not implement all these options.
+
+Circular buffering and a ZMODEM sliding window should be used
+when input is from pipes instead of acknowledging frames each 1024 bytes.
+If no files can be opened,
+.B sz
+sends a ZMODEM command to echo a suitable complaint;
+perhaps it should check for the presence of at least one accessible file before
+getting hot and bothered.
+
+.SH WORKAROUNDS
+A few high speed modems have (had?) a firmware bug that drops characters when the
+direction of high speed transmission is reversed.
+The environment variable ZNULLS may be used to specify the number of nulls to
+send before a ZDATA frame.
+Values of 101 for a 4.77 MHz PC and 124 for an AT were typical. 
+.SH CAVEATS
+The ZMODEM protocol uses 32-bit fields for file positions, imposing a
+hard limit of 4 GiB on transfer size.
+Furthermore, many ZMODEM implementations derived from the original
+Omen Technology codebase (including
+.IR crzsz ,
+.IR rzsz ,
+.IR lrzsz older than version 0.13,
+and other 1990s variants) and also at least some independent
+implementation use signed
+.I long
+internally, which on 32-bit platforms limits correct operation to
+files below 2 GiB.
+.B lsz
+itself handles positions up to 4 GiB correctly, but interoperability
+with older or 32-bit receivers may fail for files larger than 2 GiB.
+.B lsz
+prints a warning when sending files larger than 2 GiB; use
+.B -q
+to suppress it.
+.SH "HISTORICAL NOTES"
+When a receiver ends the session with a ZABORT frame (or ZFERR, which
+the ZMODEM documentation defines as equivalent),
+.B lsz
+replies with the ZFIN sequence the documentation requires and then ends
+the session cleanly. Older lsz versions, as well as OMEN-derived senders 
+answered with the cancel sequence instead. The outcome (transfer aborted, 
+exit status 0x80) is the same, so this only matters to peers that inspect 
+the reply.
+.TP
+The following options and features have been removed and are 
+no longer functional. Using the options prints an error message and exits.
+.TP
+.B "-S, --timesync"
+Time synchronization.
+Removed because no other still-available implementation supported it,
+and setting the local time would have required root privileges.
+.TP
+.B "-U, --unrestrict"
+Turned off restricted mode (impossible under a restricted shell).
+Removed because security-relevant options cannot be turned off:
+whoever can pass \-U can equally well drop it from the command line,
+so the option provided no protection — only a trap. See
+.BR SECURITY .
+.TP
+.B PUBDIR
+The
+.B PUBDIR
+environment variable and the associated public directory feature
+(restricting file transfers to
+.IR PUBDIR ,
+usually
+.IR /var/spool/uucppublic )
+have been removed.
+.TP
+.B "-d, --dot-to-slash"
+Converted dots to slashes in pathnames and truncated filenames to
+8.3 format for MS-DOS / CP-M compatibility.
+Removed because these systems are obsolete.
+Use
+.B -f / --full-path
+to send full pathnames.

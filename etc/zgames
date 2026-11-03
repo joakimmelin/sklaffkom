@@ -1,0 +1,42 @@
+# SklaffKOM Z-machine game registry
+#
+# Format:
+#   command:title:storyfile
+#
+# The first ':' separates the command from the title.
+# The last ':' separates the title from the story file.
+# Titles may therefore contain ':'.
+#
+# Games are only shown by the Äventyr command when the corresponding
+# story file exists in the Frotz game directory.
+#
+# The filenames below are SklaffKOM defaults. A SysOp may freely
+# change them to match locally installed story files.
+
+zork 1:Zork I: The Great Underground Empire:zork1.z3
+zork 2:Zork II: The Wizard of Frobozz:zork2.z3
+zork 3:Zork III: The Dungeon Master:zork3.z3
+
+hitchhiker:The Hitchhiker's Guide to the Galaxy:hhgg.z3
+planetfall:Planetfall:planetfall.z3
+stationfall:Stationfall:stationfall.z3
+
+enchanter:Enchanter:enchanter.z3
+sorcerer:Sorcerer:sorcerer.z3
+spellbreaker:Spellbreaker:spellbreaker.z3
+
+wishbringer:Wishbringer:wishbringer.z3
+trinity:Trinity:trinity.z4
+amfv:A Mind Forever Voyaging:amfv.z4
+
+lurking horror:The Lurking Horror:lurkinghorror.z3
+leather goddesses:Leather Goddesses of Phobos:lgop.z3
+bureaucracy:Bureaucracy:bureaucracy.z4
+
+stugan:Stugan:Stuga.zblorb
+{ventyr:[ventyr:Aventyr.z5
+drakmagi:Drakmagi:drakmagi.z5
+hotellet:Hotellet:hotellet.z5
+pangnyheten:Pangnyheten:pangnyheten.z5
+storforsen:Storforsen:Storforsen.z5
+vanyar:Vanyar:vanyar.z5

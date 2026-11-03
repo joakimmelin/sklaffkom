@@ -129,8 +129,20 @@ errlogin:
         int d__ = dup(1);
         if (d__ >= 0) close(d__);
     }
-        execl(MAILPRGM, MAILPRGM, SKLAFF_ACCT, (char *) 0);
-    }
+#if ENABLE_EMAIL
+        /* Sysop-configured recipient; may be a local user or email address. */
+        execl(SENDMAIL_BIN, SENDMAIL_BIN, SKLAFF_ACCT, (char *) 0);
+#else
+        /*
+         * Account applications still require local notification even when
+         * external email support is disabled.  In that configuration,
+         * SENDMAIL_BIN is empty; use the local MTA found by configure.
+         */
+        execl(LOCAL_SENDMAIL_BIN, LOCAL_SENDMAIL_BIN,
+              "sklaff", (char *) 0);
+#endif
+        _exit(127); 
+   }
     unlink(fname);
     fd = open_file(ACCT_LOG, OPEN_QUIET | OPEN_CREATE);
     lseek(fd, 0L, 2);

@@ -76,7 +76,14 @@ rebuild_index_file(void)
         (void) open("/dev/null", O_RDONLY);
         (void) open(fn2, O_WRONLY | O_CREAT, 0777);
         (void) open("/dev/null", O_WRONLY);
-        execl(LSPRGM, LSPRGM, LSOPT, (char *) 0);
+
+        if (LS_ARGS[0]) {
+            execl(LS_BIN, LS_BIN, LS_ARGS, (char *)0);
+        } else {
+            execl(LS_BIN, LS_BIN, (char *)0);
+        }
+    /* execl() only returns on failure */
+    _exit(127);
     }
 
     if (chdir(cwd) == -1) {

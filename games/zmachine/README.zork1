@@ -1,0 +1,55 @@
+Zork I: The Great Underground Empire
+=====================================
+
+This directory contains a compiled Z-machine story file for Zork I,
+included with SklaffKOM so that the Adventure feature can be used
+immediately after installation.
+
+File:
+    zork1.z3 
+
+Zork I was originally written by Marc Blank, Dave Lebling,
+Bruce Daniels and Tim Anderson and published by Infocom.
+
+Source
+------
+
+This story file was built from the ZIL source code published in:
+
+    historicalsource/zork1
+
+Source commit:
+
+    97b7b3d68c075dd9af7da499c3e9690ada3471fd
+
+The source code is distributed under the MIT License.
+
+The corresponding license is included with SklaffKOM as:
+
+    LICENSE.zork1
+
+Build
+-----
+
+The included zork1.z3 was compiled from the ZIL sources using ZILF 1.9
+and ZAPF 1.9 on October 14, 2026.
+
+SHA-256:
+
+    fcfa34f0f244362b6e7f1bf7365463ec558100aa8574f19b2bda2cbfb6bedcd3
+
+The generated story file has been tested with the Frotz interpreter
+bundled with SklaffKOM.
+
+SklaffKOM does not modify the Zork I game itself. The compiled story
+file is included solely as a ready-to-play game for the Adventure
+feature.
+
+License
+-------
+
+Zork I is distributed under the MIT License. See LICENSE.zork1 for
+the complete license text.
+
+SklaffKOM is a separate project and is distributed under its own
+license.

@@ -286,7 +286,7 @@ main(int argc, char *argv[])
         exit(0);
     }
 
-    snprintf(mbox, sizeof(mbox), "%s/%s", MAIL_LIB, argv[1]);
+    snprintf(mbox, sizeof(mbox), "%s/%s", MAIL_SPOOL, argv[1]);
     mt_status("kontrollerar mailspool: %s", mbox);
 
     /* Graceful exit if the spool is empty (common under cron - not a real error). */

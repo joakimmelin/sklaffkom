@@ -31,10 +31,6 @@
 
 #include "sklaff.h"
 
-#ifdef LINUX
-#include <bsd/string.h>
-#endif
-
 #define BBSLINK_TITLE_WIDTH 32
 
 static void
@@ -87,7 +83,7 @@ find_bbslink_game(const char *wanted, char *out, size_t outsz)
     FILE *fp;
     char line[256];
 
-    fp = fopen(BBSLINK_INTRO, "r");
+    fp = fopen(BBSLINK_GAMES_FILE, "r");
     if (!fp)
         return 0;
 
@@ -118,9 +114,9 @@ show_bbslink_games(void)
     output(MSG_BBSLINK02 "\n\n");
     output(MSG_BBSLINK03 "\n\n");
 
-    fp = fopen(BBSLINK_INTRO, "r");
+    fp = fopen(BBSLINK_GAMES_FILE, "r");
     if (!fp) {
-        output("Kunde inte läsa spellistan (%s)\n\n", BBSLINK_INTRO);
+        output("Kunde inte läsa spellistan (%s)\n\n", BBSLINK_GAMES_FILE);
         return;
     }
 

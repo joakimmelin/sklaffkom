@@ -1,0 +1,94 @@
+"make vcheck"
+	will do many tests.
+        this test suite is moderately complete. There are still some options
+        without tests, but all crucial ones are covered.
+
+"make qa"
+        will run something similar to
+             configure && make clean && make && make vcheck
+        multiple times:
+        - gcc and/and clang, if available, multiplied with
+        - ASan, MSan und UBSan.
+        and a final coverage run.
+        
+        If this runs through, a final
+             configure && make clean && make
+        is run.
+
+The checks will ./tests, and this directory will not be removed
+after the check.
+In it you will find, among things i didn't clean up:
+- passfail.log (shows all tests run with PASSED/FAILED info)
+- failures.log (shows all failed tests)
+- perf.log (performance data)
+- journal.log
+
+Note that the tests are run over a pipe and a named pipe. The performance
+values are in no way comparable to a real serial interface (or even a 
+network connection).
+Having said that: in real life the number will change, but what is faster
+in the benchmark will most likely be faster over a real serial line.
+
+
+If you want to do compatibility checks, note this:
+    available="lrzsz"
+    if test -x ~/bin/lrzsz-0.12.21rc/lrz -a -x ~/bin/lrzsz-0.12.21rc/lsz ; then
+        available="$available lrzsz_old"
+    fi
+    if test -x ~/bin/crzsz/crz -a -x ~/bin/crzsz/csz ; then
+        available="$available crzsz"
+    fi
+    if test -x ~/bin/rzsz373/rz -a -x ~/bin/rzsz373/sz ; then
+        available="$available rzsz373"
+    fi
+    if test -x ~/bin/zmtx-zmrx-2.06/zmtx -a -x ~/bin/zmtx-zmrx-2.06/zmrx ; then
+        available="$available zmtxzmrx2"
+    fi
+    if test -x ~/bin/sexyz-3.6 ; then
+        available="$available sexyz"
+    fi
+
+zmtx-zmrx-2.06 is easy to compile.
+sexyz is easy to compile.
+The other are mostly historic, anyway.
+
+oh, yes… "make vcheck-zbenchmark" runs a benchmark.
+
+"make buildcheck-remote"
+        unpacks the distribution tarball on one or more remote machines
+        (after an scp) and runs "make buildcheck+" there — a clean
+        configure/compile plus the test suite, on systems this tree does
+        not build on locally.
+        The host list is kept in a local, non-distributed cfg.mk, e.g.:
+             REMOTE_HOSTS = uwe@openbsd uwe@dev
+        and can be overridden per run:
+             make buildcheck-remote REMOTE_HOSTS=uwe@openbsd
+
+"make fuzz"
+    runs the ZMODEM protocol fuzzing (src/zmodemfuzz.c).
+    default: 25 iterations per mode (override with FUZZITER=NNN, for
+    example: FUZZITER=200 make fuzz):
+    - "-m receive": a faked sender talks to ./src/lrz with mutated byte
+      streams (CRC corruption, illegal ZDLE escapes, frame type roulette,
+      garbage floods, CAN bursts, truncated streams, hostile file names).
+    - "-m send": a faked receiver answers ./src/lsz with hostile frame 
+      sequences (silence, ZNAK loops, ZSKIP, ZABORT, ZFERR, ZCHALLENGE,
+      absurd ZRPOS positions, cancel bursts).
+    The fuzzer checks that the target terminates in a bounded time,
+    dies by no signal, writes nothing outside the receiving directory,
+    and (clean baseline exchanges, every 17th iteration) that the
+    received content matches what was sent. Every failure leaves
+    /tmp/zmodemfuzz-fail-seedNNN-itNNN.log with the complete byte
+    transcript; reproduce any run exactly with the printed seed:
+         src/zmodemfuzz -s SEED -m receive -- ./src/lrz -q -Z
+    The end-of-run class summary columns are
+         count, avg ms, max ms, hangs, timeouts, fails [, crc32]
+    where "timeouts" counts iterations that burned the harness alarm
+    budget (hang, or the target was still stuck in a bounded retry loop
+    when the alarm fired) - expected after mid-stream mutations and the
+    hostile ACK-loop choice, NOT a target bug; and "fails" counts real
+    invariant violations (crash, signal death, canary escape, content
+    mismatch). A run is healthy when the trailing "done, N iterations, F
+    failures" line reports F=0. The per-row "fails" is redundant with F:
+    fail() prints a FAIL line for every counted failure, so a row with
+    fails>0 without FAIL lines cannot happen.
