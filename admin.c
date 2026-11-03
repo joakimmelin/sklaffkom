@@ -1026,8 +1026,10 @@ exec_logout(int tmp)
         if (tmp == 0 && !restart && Ibol_logout) {
             clear_screen();
 
-            if (display_ibol_entries(IBOL_LOGOUT_COUNT) >= 0)
-                (void)prompt_ibol_oneliner();
+            if (display_ibol_entries(IBOL_LOGOUT_COUNT) >= 0) {
+                if (prompt_ibol_oneliner() == 1)
+                    sleep(2);
+            }
         }
 #endif
 
