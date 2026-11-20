@@ -32,10 +32,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#ifdef LINUX
-#include <bsd/string.h>
-#endif
-
 #include "sklaff.h"
 #include "ext_globals.h"
 /*

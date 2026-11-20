@@ -1,0 +1,139 @@
+- make argv[0]-recognition of X/YModem work with program_name_transform.
+  (or not? does anyone use that feature?)
+
+- add a stronger turbo escaping, only escaping ZDLE.
+
+- look into VMIN code: how to determine if it's usable (it isn't unter
+  FreeBSD and NetBSD (might have changed) and possibly many other 
+  systems), and what is the max value?
+  Anyway - we don't *need* it. It just reduces system load (but that's
+  not a real problem - zmodem over a ISDN/modem link is not much load).
+
+- lsz: adaptive send window (dynamic Txwindow/Txwspac) instead of
+  unbounded streaming when the receiver advertises Rxbuflen=0.
+
+  The problem: lsz sends MANY data subframes, until the network is
+  saturated. if the receiver is slow (behind a serial port, for
+  example), it will drain the net slowly.
+  Example: lsz sends a 64k file, with a final ZRCRE. The receiver
+  (in a dosbox) reads one 1024 byte packet per second, answers the
+  ZCRCE after 64 seconds.
+  Result: timeout, transmission failed.
+
+  This depends on the receiver announced Rxbuflen (usually 0, meaning
+  unlimited), and the window size, which can cause ZCRCW packets
+  and this force answers from the receiver.
+
+  Secondary effect of the unbounded streaming: on flaky lines the
+  in-flight backlog before the FIRST error is the whole file. That
+  means after an error most of the transfer is thrown away. Not the
+  smart thing to do.
+
+  Current workaround: lsz -w N sets Txwindow manually (e.g. -w 65536
+  or -w 16384); then ZCRCQ pings/ACKs pace the stream and the
+  endgame wait only has to cover the last window. Slow receivers
+  and flaky lines work.
+
+  Ideas:
+  1. simple: treat an incoming Rxbuflen==0 as 65536 in the ZRINIT
+     handler (lsz.c:1353 ff.).
+     Bounds the backlog and fixes the endgame threshold to 
+     "window/60s" (~1.1 kcps), independent of file size. Costs 
+     one ZCRCW+ZACK round trip per 64k on clean links (<0.1% ?).
+  2. better: use a dynamic window size. Start conservatively (e.g.
+     Txwindow=4096, Txwspac=1024) whenever Rxbuflen==0 && CANFDX,
+     then re-estimate drain rate after each ACK in the window loop
+     (zsendfdata) and adapt Txwspac ~= rate*1s ("one ZACK per 
+     second" or so), Txwindow = 4*Txwspac, clamped to [1k..64k] and 
+     to the advertised Rxbuflen (though we might want to not do
+     a dynamic window if Rxbuflen is > 0).
+     Scales with measured drain, not file size. Almost not overhead
+     on fast links.
+     Caveats to resolve before implementing:
+     - calc_blklen (see below) overwrites Txwindow from Rxbuflen 
+       after errors. need to decide if adaptive values survive error 
+       recovery (maybe not, safety first).
+     - -w must keep working as manual override (adaptive only when
+       -w was not given).
+     - only do it when Rxbuflen==0 && CANFDX (ZCRCQ needs a
+       receiver that ACKs while streaming; CANOVIO peers are the
+       ones that can tolerate unbounded backlog).
+
+- lsz: calc_blklen is a mess. is does not only calculate the
+  data subframe length, but also the window size.
+
+- zmodemsnif: PS_DATA parser hardening (cosmetic, no protocol impact).
+  Found during the zmtx-zmrx-1.02 MSan investigation: once the parser
+  desyncs (e.g. it swallows a data subpacket whose byte stream it was
+  not aligned with), two defects surface:
+  1. data_len is not bounded against data_buf[2048] - a desynced
+     length byte can read beyond the buffer.
+  2. crc_recv is not reset on resync, so after a desync the sniffer
+     emits repeated identical "received 2375eb0b / calculated
+     aaf75693" lines where the "received" CRC is stale state from a
+     previous (corrupt) frame, not from the current one - phantom
+     BAD CRC reports that can mislead an investigation.
+  Fix: bound data_len, reset crc_recv/parser state when a frame
+  header is (re)acquired. Optional, the sniffer is a diagnostic tool;
+  its frame log remains trustworthy up to the first desync.
+  [i needed an AI to find that. i myself totally overlooked that angle]
+
+- B38 (from audit.md, reduced scope): remaining unbounded protocol
+  loops. Most loops gained escape hatches since the audit (rzfile's
+  n=20 budget, wcgetsec RETRYMAX, getnak tries==3, wcputsec/EOT
+  RETRYMAX, getinsync stuck_acks from B37), but these paths still
+  rely on the peer behaving - all require an ACTIVE misbehaving
+  peer sending valid, CRC-correct frames (garbage/timeout paths are
+  all bounded already):
+  1. lsz getinsync() case ERROR/default (lsz.c:~2300): sends ZNAK
+     and continues without any counter; a peer that keeps sending
+     decodable-but-unexpected headers (e.g. ZSINIT/ZFREECNT spam)
+     keeps the loop alive forever.
+  2. lsz getinsync() case ZACK with flag==0 (lsz.c:~2286): a peer
+     answering every ZCRCW with ZACKs whose position never equals
+     bytes_sent loops forever (window loop uses flag=1, but
+     ack_resync() uses flag==0).
+  3. lsz saybibi() default case (lsz.c:~2340): loops re-sending
+     ZFIN while the peer answers with anything else than
+     ZFIN/ZCAN/RCDO/TIMEOUT.
+  4. lsz zsendcmd() case ZRINIT -> goto listen (lsz.c:~2364):
+     re-sends ZCOMMAND on every ZRINIT, unbounded (ERROR/TIMEOUT
+     are bounded by Cmdtries, ZRINIT is not).
+  5. lrz wcrx() duplicate-sector branch (lrz.c:~737, and the same
+     pattern in wcrxpn): a peer that replays the same valid sector
+     forever gets ACK + NAK + re-receive in an unbounded loop;
+     wcgetsec's RETRYMAX only bounds garbage, not valid dupes.
+  Fix direction: per-call retry counters (RETRYMAX-style) on each
+  of these; the counters must reset on protocol progress (offset
+  advancing / new sector number), not on every received frame.
+
+- A1 scopes 2+3 (from review.md, deferred to after the next
+  release by maintainer decision 2026-09-10): the zglobal.h global
+  monolith. Full scope plan lives in review.md A1; here just the
+  pointer so it does not get lost: (2) stat_for_file -> zi->
+  (~50 sites, mechanical thanks to A10's helper barrier; A2's inline
+  send primitives need a zi parameter + fresh gcc -S hot-path
+  proof), (3) zm.c engine state (Rxhdr/Txhdr/Txfcs32/Crc32t/Znulls/
+  Attn/Rxtimeout/Zrwindow/protocol/errors/Zctlesc) into zi
+  (~18 signature changes, ~250-350 sites, re-touches the I4/I5
+  machines - highest regression risk). Scope (4) (full context
+  struct incl. Verbose/Baudrate) was explicitly recommended against.
+  Methodology: journal-baseline comparison, one commit per phase.
+
+- A9 (from review.md): magic numbers - name them: 896L endgame
+  margin (lsz.c:1014), 0xfffff000 page/buffer rounding (lrz.c:1450,
+  lsz.c:751), zmodem_requested?15:5 ZRQINIT retry counts
+  (lrz.c:1577), st.st_size & ~(1023) resume offset rounding
+  (lrz.c:1375).
+
+- V7/V8 future work (from review.md, both documented as deferred
+  removals with deprecation warnings shipped; decision recorded
+  there): remove the ZCOMMAND sender (lsz -c/-i/-C) and the ZRQINIT
+  ZF0=ZCOMMAND bit (V7), and make absolute paths / .. components in
+  lsz -f a fatal sender-side error (V8) - the latter will break the
+  MGMT-traversal-dotdot test's sender, which would need a
+  hand-crafted-protocol sender to keep receiver-side traversal
+  coverage. Timeline at maintainer discretion (~6-12 months).
+
+- add another tool to check safe_open_fd for races?
+  That might be total overkill.

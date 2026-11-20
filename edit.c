@@ -28,9 +28,6 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <signal.h>
-#ifdef LINUX                                                                    
-#include <bsd/string.h>  /* for strlcat on Linux */                             
-#endif
 #include "sklaff.h"
 #include "ext_globals.h"
 

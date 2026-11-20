@@ -30,9 +30,6 @@
 #include <signal.h>
 #include <ctype.h>
 #include <strings.h>
-#if defined(LINUX) || defined(__linux__)
-#include <bsd/string.h>  // Required for strlcpy on Linux via libbsd
-#endif
 
 /*
  * push_unread - push text on unread stack

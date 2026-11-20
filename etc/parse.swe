@@ -124,6 +124,7 @@ V{ggen:cmd_wall:Visar InterBBS-v{ggen:X
 [ndra sk{rml{ngd:cmd_mod_numlines:[ndra din sk{rml{ngd:P
 [ndra timeout:cmd_mod_timeout:[ndra tid f|r inaktivitetsutloggning:P
 [ndra uppstartskommandon:cmd_mod_login:[ndra vilka kommandon som k|rs vid login:P
+[ventyr:cmd_adventure:Spela {ventyrsspel:X
 Nethack:cmd_nethack:Spela nethack:X
 Zork:cmd_zork:Spela Zork 1, 2 eller 3:X
 

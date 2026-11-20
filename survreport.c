@@ -33,10 +33,6 @@
 
 #include "globals.h"
 
-#ifdef LINUX
-#include <bsd/string.h>  /* for strlcat on Linux */
-#endif
-
 long post_survey_result(char *, struct TEXT_HEADER *, int, int, int);
 
 int

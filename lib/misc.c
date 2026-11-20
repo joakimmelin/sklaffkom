@@ -36,9 +36,7 @@
 #include <limits.h>
 #include <dirent.h>
 #include <sys/wait.h>
-#ifdef LINUX
-#include <bsd/string.h>  /* for strlcat on Linux */
-#endif
+
 #include "sklaff.h"
 #include "ext_globals.h"
 

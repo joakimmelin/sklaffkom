@@ -1,0 +1,335 @@
+/*
+ * sklaff_local.h.example
+ *
+ * Local site-specific overrides for SklaffKOM.
+ *
+ * Copy this file to:
+ *
+ *     sklaff_local.h
+ *
+ * and edit that file for the local installation.
+ *
+ * Only define values here that you actually want to override.
+ *
+ * Example:
+ *
+ *     #define MACHINE_NAME "bbs.example.org"
+ *
+ * If a setting is left commented out, the value from
+ * sklaff_defaults.h will be used instead.
+ */
+
+#ifndef SKLAFF_LOCAL_H
+#define SKLAFF_LOCAL_H
+
+
+/*
+ * ----------------------------------------------------------------------
+ * Site identity
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * Host name used when SklaffKOM generates external messages, for example
+ * the domain part of addresses used when posting to Usenet.
+ *
+ * Example:
+ *
+ * #define MACHINE_NAME "bbs.example.org"
+ */
+
+
+/*
+ * Name shown as the BBS/system identity.
+ *
+ * Example:
+ *
+ * #define SKLAFF_ID "SklaffKOM BBS"
+ */
+
+
+/*
+ * Human-readable location of the BBS.
+ *
+ * Example:
+ *
+ * #define SKLAFF_LOC "Stockholm, Sweden"
+ */
+
+
+/*
+ * Telephone number or other traditional contact number shown as part of
+ * the BBS identity.  This is largely a legacy field but is still used by
+ * some old SklaffKOM functionality.
+ *
+ * Example:
+ *
+ * #define SKLAFF_NUM "+46-8-12345678"
+ */
+
+
+/*
+ * Name of the local SysOp.
+ *
+ * Example:
+ *
+ * #define SKLAFF_SYSOP "John Doe"
+ */
+
+
+/*
+ * Unix account that receives notifications related to new account
+ * creation.
+ *
+ * Example:
+ *
+ * #define SKLAFF_ACCT "sklaff"
+ */
+
+
+/*
+ * User ID of the SklaffKOM account used as survey reporter.
+ *
+ * Example:
+ *
+ * #define SKLAFF_SURVEY_REPORTER 5000
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * IBOL - InterBBS One-Liner
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * Number of IBOL entries shown during logout.
+ *
+ * Set to 0 to disable the logout display.
+ *
+ * Example:
+ *
+ * #define IBOL_LOGOUT_COUNT 5
+ */
+
+
+/*
+ * FTN domain used for outgoing IBOL messages.
+ *
+ * Example:
+ *
+ * #define IBOL_FTN_DOMAIN "fsxnet"
+ */
+
+
+/*
+ * FTN echo area used for IBOL traffic.
+ *
+ * Example:
+ *
+ * #define IBOL_FTN_AREA "FSX_DAT"
+ */
+
+
+/*
+ * Maximum length of one IBOL line.
+ *
+ * Normally this should not need to differ between installations, but it
+ * can be overridden here if required.
+ *
+ * Example:
+ *
+ * #define IBOL_ONELINER_MAX 65
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * FTN / CrashMail
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * Full path to CrashMail II's crashmail.prefs.
+ *
+ * This path is installation-specific and often differs between systems.
+ *
+ * Example:
+ *
+ * #define CRASHMAIL_PREFS_FILE "/usr/local/ftn/etc/crashmail.prefs"
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * Usenet / news
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * INN article spool.
+ *
+ * Example:
+ *
+ * #define NEWS_SPOOL "/usr/local/news/spool/articles"
+ */
+
+
+/*
+ * INN active file containing the known newsgroups.
+ *
+ * Example:
+ *
+ * #define NEWS_GROUPS "/usr/local/news/db/active"
+ */
+
+
+/*
+ * Enable posting to external NEWS and FTN conferences.
+ *
+ * This is an old compile-time switch.  Define POSTING_OK to allow
+ * external posting.  Leave it undefined to disable it.
+ *
+ * Example:
+ *
+ * #define POSTING_OK
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * System paths
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * System utmp file used by legacy login/session handling.
+ *
+ * Linux commonly uses /var/run/utmp.  Other Unix systems may differ.
+ *
+ * Example:
+ *
+ * #define UTMP_REC "/var/run/utmp"
+ */
+
+
+/*
+ * Local Unix mail spool directory.
+ *
+ * Example:
+ *
+ * #define MAIL_SPOOL "/var/mail"
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * Modem / login groups
+ * ----------------------------------------------------------------------
+ *
+ * These settings belong to older modem/login handling in SklaffKOM.
+ * Only override them if that functionality is actually used on the
+ * local system.
+ */
+
+/*
+ * Name of the modem pool.
+ *
+ * Example:
+ *
+ * #define MODEM_POOL "silly"
+ */
+
+
+/*
+ * Numeric Unix group ID used for modem access.
+ *
+ * Example:
+ *
+ * #define MODEM_GROUP 50
+ */
+
+
+/*
+ * Numeric Unix group ID used for Internet access.
+ *
+ * Example:
+ *
+ * #define INET_GROUP 60
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * Terminal defaults
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * Terminal name used when no useful TERM value is available.
+ *
+ * Example:
+ *
+ * #define NO_TERM "unknown"
+ */
+
+
+/*
+ * Default terminal type used by SklaffKOM for terminal control.
+ *
+ * Example:
+ *
+ * #define SKLAFF_TERM "vt100"
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * Text expiry defaults
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * Default number of days before texts expire in ordinary local
+ * conferences.
+ *
+ * Example:
+ *
+ * #define EXP_DEF 10
+ */
+
+
+/*
+ * Default number of days before texts expire in Usenet conferences.
+ *
+ * Example:
+ *
+ * #define EXP_DEF_NEWS 10
+ */
+
+
+/*
+ * Default number of days before texts expire in FTN conferences.
+ *
+ * Example:
+ *
+ * #define EXP_DEF_FTN 10
+ */
+
+
+/*
+ * ----------------------------------------------------------------------
+ * Character-set handshake
+ * ----------------------------------------------------------------------
+ */
+
+/*
+ * Enable (1) or disable (0) the character-set handshake during login.
+ *
+ * Example:
+ *
+ * #define ENABLE_CHARSET_HANDSHAKE 1
+ */
+
+
+#endif /* SKLAFF_LOCAL_H */

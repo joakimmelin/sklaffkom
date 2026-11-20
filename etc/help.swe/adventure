@@ -1,0 +1,32 @@
+Argument:
+  (<Spelkod>)
+
+Beskrivning:
+  Detta kommando startar klassiska text{ventyr i Z-machine-format med
+  hj{lp av Frotz. Om kommandot ges utan argument visas en lista |ver alla
+  {ventyr som finns installerade p} systemet.
+
+  Varje spel har en spelkod som anges efter kommandot.
+
+  Exempel:
+    [ventyr stugan
+
+  startar spelet Stugan.
+
+Observera:
+  Vilka spel som finns tillg{ngliga best{ms av SysOp. Endast spel som
+  b}de finns registrerade i SklaffKOM och vars spelfil finns installerad
+  visas i spellistan.
+
+Bakgrund:
+  Z-machine skapades ursprungligen av Infocom f|r deras text{ventyr.
+  Ist{llet f|r att skriva varje spel direkt f|r en viss dator skapades
+  spelen f|r en virtuell maskin. Samma spelfil kunde d{rf|r k|ras p}
+  m}nga helt olika datorer, bara det fanns en Z-machine-tolk.
+
+  Det visade sig vara en ganska bra id}. Flera decennier senare kan
+  samma gamla spel fortfarande k|ras p} moderna system.
+
+  SklaffKOM anv{nder Frotz som Z-machine-tolk. Det inneb{r att b}de
+  gamla Infocom-spel och betydligt nyare interaktiva ber{ttelser kan
+  k|ras direkt fr}n BBS:en.

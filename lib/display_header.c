@@ -33,10 +33,6 @@
 #include "sklaff.h"
 #include "ext_globals.h"
 
-#ifdef LINUX
-#include <bsd/string.h>
-#endif
-
 /*
  * display_header - displays textheader
  * args: pointer to TEXT_HEADER (th), allow editing of subject (edit_subject),

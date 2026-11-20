@@ -1,0 +1,147 @@
+<html>
+<head>
+<title>Frotz</title>
+
+<meta name="description"
+content="Homepage of Frotz, a Z-Machine interpreter for playing
+Infocom's interactive fiction games and newer games using the same 
+format.">
+<meta name="keywords"
+content="frotz, infocom, inform, interactive fiction, z-machine,
+zcode, game, text adventure, z-machine interpreter, unix, linux, dos">
+
+</head>
+<body>
+<a name="top">
+<h1 align="center"><img src="frotz-banner.png" alt="Frotz"></h1>
+<h1 align="center">A Portable Z-Machine Interpreter</h1>
+</a>
+
+<p>
+Frotz is an interpreter for Infocom games and other Z-machine games.
+It complies with the
+<a href="http://www.inform-fiction.org/zmachine/index.html">Z-Machine Standard</a>
+version 1.1.
+It was written by Stefan Jokisch in 1995-1997.
+It was ported to Unix by Galen Hazelwood.
+Currently the Unix port is being developed and maintained by David Griffith.
+The Unix port is also the canonical core version
+upon which all other ports are based.
+
+<hr>
+<h2><a name="features">Features</a></h2>
+
+<p>
+<ul>
+<li>Compiles and runs without changes on most common flavors of Unix,
+both open source and not.  This includes macOS.
+<li>Portable to many other operating systems and hardware.
+<li>Curses, Dumb, and SDL user interfaces.
+<li>Plays all Z-code games including V6.
+<li>Sound support through libao.
+<li>Graphics support through SDL and X11 (Xaw).
+<li>Config files.
+<li>User-configurable error-checking.
+<li>Distributed under the GNU <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">General Public License</a>, version 2 or any later version.
+</ul>
+
+<hr>
+<h2><a name="download">Places to get Frotz</a></h2>
+
+<dl>
+<p>
+
+<p>
+<dt>
+<a href="http://www.ifarchive.org/indexes/if-archiveXinfocomXinterpretersXfrotz.html">Interactive Fiction Archive</a>
+<dd>
+Various flavors of Frotz can be found at the
+<a href="http://ifarchive.org/">Interactive Fiction Archive</a> or any of
+its mirrors.
+
+<p>
+<dt>
+<a href="https://gitlab.com/DavidGriffith/frotz">Gitlab</a>
+<dd>
+<a href="https://gitlab.com">Gitlab</a> hosts a <a 
+href="https://git-scm.com/">Git</a> repository of the Unix port of 
+Frotz, which also includes the <a 
+href="https://en.wikipedia.org/wiki/DOS">DOS</a> port.  The Unix port 
+includes a <a 
+href="https://www.gnu.org/software/ncurses/ncurses.html">curses</a> 
+interface, an <a href=http://www.libsdl.org/>SDL</a> interface, and a 
+dumb interface that requires absolutely no other libraries besides the 
+standard C library.
+
+<p>
+<dt><a href="https://pkgs.org/download/frotz">Your operating system's package repository</a>
+<dd>
+This link shows the Frotz packages for the most commonly-encountered distributions of 
+Linux.  Frotz is also available in Gentoo's
+<a href="https://wiki.gentoo.org/wiki/Portage">Portage</a> and
+<a href="https://packages.gentoo.org/packages/games-engines/frotz">Packages</a> systems.
+For the BSD world, there are
+NetBSD's <a href="https://pkgsrc.se/games/frotz">pkgsrc</a> tree,
+FreeBSD's <a href="https://svnweb.freebsd.org/ports/head/games/frotz/">ports</a> tree, and 
+OpenBSD's <a href="https://openports.se/games/frotz">ports</a> tree.
+
+<dt>Install with <a href="https://finkproject.org/">Fink</a>
+<dd>
+Fink is a packaging system for macOS.  To install Frotz through Fink,
+see <a href="https://pdb.finkproject.org/pdb/package.php/frotz">https://pdb.finkproject.org/pdb/package.php/frotz</a>
+
+<dt>Install with <a href="https://brew.sh/">Brew</a>
+<dd>
+Brew is primarily for macOS users, but it works for many other flavors
+of Unix as well.  Brew allows you to download and install any of a wide
+variety of programs and libraries with a single command.  See
+<a href="https://formulae.brew.sh/formula/frotz">https://formulae.brew.sh/formula/frotz</a>
+
+<dt>Install with <a href="https://www.docker.com/">Docker</a>
+<dd>
+Frotz can also be installed as a container with Docker.  See
+<a href="https://github.com/newtmitch/frotz-docker">https://github.com/newtmitch/frotz-docker</a>
+and
+<a href="https://hub.docker.com/r/newtmitch/frotz">https://hub.docker.com/r/newtmitch/frotz</a>
+
+</dl>
+
+
+<hr>
+<h2><a name="credits">Credits</a></h2>
+<p>
+This program started as a remake of Mark Howell's Zip, but has grown into
+a completely new interpreter with ports for lots of platforms.
+
+<p> 
+Thanks goes to Stefan Jokisch for writing Frotz and Galen Hazelwood for
+doing the initial work of porting it to Unix.  Thanks also to Jim Dunleavy
+for his optimization to the core Frotz code.  Other people to thank
+include those who uploaded patches to Unix Frotz to the IF-Archive and
+getting me interested in the inner-workings of interpreters like Frotz,
+people who posted to Usenet feedback on what I was doing, testers, those
+who donated the use of machines for porting, sent me patches, etc.  These
+include, but are not limited to:
+
+<blockquote> 
+Torbjorn Anderson, Timo Korvola, Martin Frost, Mihail Milushev, David
+Picton, Chris Sullivan, Leonard Richardson, Stephen Kitt, Paul E Coad,
+Paul Janzen, Brad Town, Jason C Penney, Denis Hirschfeldt, Jacob Nevins,
+Matteo De Luigi, Steven Frank, Thomas Troeger, and others that I've 
+forgotten.
+</blockquote>
+
+<p>
+Michael Edmonson (author of Rezrov) and Evin Robertson (author of Nitfol)
+deserve recognition for the ideas that I've borrowed from their
+programs.  Al Petrofsky (creator of dumbfrotz) donated much code to allow
+Unix Frotz to semi-support V6 games.
+
+
+<hr>
+<p>
+<i>
+This page was last updated on November 23, 2023
+</i>
+</body>
+</html>

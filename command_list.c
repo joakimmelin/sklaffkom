@@ -2,6 +2,7 @@
 
 const struct COMMAND_ENTRY command_list[] = {
     { "cmd_add_rights", cmd_add_rights, },
+    { "cmd_adventure", cmd_adventure, },
     { "cmd_alias", cmd_alias, },
     { "cmd_answermsg", cmd_answermsg, },
     { "cmd_back_text", cmd_back_text, },

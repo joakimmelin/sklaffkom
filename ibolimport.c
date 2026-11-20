@@ -19,6 +19,10 @@
  *   (at your option) any later version.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "ftnmsg.h"
 #include "ibol.h"
 #include "iboldb.h"
@@ -945,6 +949,12 @@ main(int argc, char **argv)
     int dry_run;
     int verbose;
     int i;
+
+#if defined(HAVE_CONFIG_H) && !ENABLE_IBOL
+    fprintf(stderr,
+        "ibolimport: IBOL is disabled (configure with --enable-ibol).\n");
+    return 1;
+#endif
 
     mode = MODE_NONE;
     area = NULL;

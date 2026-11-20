@@ -7,7 +7,12 @@
  * URL noise.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "mailbody.h"
+#include "sklaff_programs.h"
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -19,10 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#ifndef HTMLPRGM
-#define HTMLPRGM "/usr/bin/lynx"
-#endif
 
 #define DEFAULT_WIDTH "78"
 
@@ -1164,15 +1165,15 @@ render_html_with_lynx_dup(const char *html, size_t html_len, size_t *out_len)
         close(outpipe[0]);
         close(outpipe[1]);
 
-        execlp(HTMLPRGM,
-               HTMLPRGM,
+        execlp(LYNX_BIN,
+               LYNX_BIN,
                "-dump",
                "-stdin",
                "-width=" DEFAULT_WIDTH,
                "-nolist",
                (char *)NULL);
 
-        perror("execlp " HTMLPRGM);
+        perror("execlp " LYNX_BIN);
         _exit(127);
     }
 
@@ -1234,7 +1235,7 @@ mailbody_render_utf8_opts_dup(const char *msg, int flags)
     if (mb_verbose) {
         fprintf(stderr, "selected: %s\n", selected_reason);
         fprintf(stderr, "renderer: %s%s\n",
-                htmlish ? HTMLPRGM : "plain stdout",
+                htmlish ? LYNX_BIN : "plain stdout",
                 clean ? " + cleanup" : "");
     }
 

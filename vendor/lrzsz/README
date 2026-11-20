@@ -1,0 +1,17 @@
+lrzsz is a X/Y/ZModem package built from the public-domain version of
+Chuck Forsberg´s rzsz package. This package contains NO code from later
+releases of rzsz which would preclude it from being released under the
+GPL.
+It has been heavily modified by me and others.
+
+Please note that credit should be given to Chuck Forsberg (rzsz) and Stephen
+Satchell/Satchell Evaluations (crc routines) for large parts of this package.
+
+Please read:
+- INSTALL for installation instructions
+- NEWS for a list of major changes between the releases
+- ChangeLog for the list of minor changes.
+- AUTHORS and THANKS to see whom to thank for this package.
+- README.tests for information about how to do a self test
+
+Uwe Ohse

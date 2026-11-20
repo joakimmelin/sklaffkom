@@ -39,13 +39,16 @@
 #include <math.h>   /* for floor() in Swatch Internet Time  2025-09-10 PL */
 #include <ctype.h>  /* isspace */
 /* a bunch of new includes below for zork  2025-08-xx PL*/
+#include <fcntl.h>
 #include <limits.h>
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-
+#include <strings.h>    /* strcasecmp */
+#include <dirent.h> /* for zmodem uploads 2026-10-11 PL */
 /*
  * cmd_sendbatch - send all texts in database format, zipped
  * args: user arguments (args)
@@ -588,7 +591,13 @@ cmd_sendbatch(char *args)
 
     /* Pack QWK-file */
 
-    strcpy(sbuf, ZIPPRGM);
+    strcpy(sbuf, ZIP_BIN);
+
+    if (ZIP_ARGS[0]) {
+        strcat(sbuf, " ");
+        strcat(sbuf, ZIP_ARGS);
+    }
+
     strcat(sbuf, " ");
     strcat(sbuf, package);
     strcat(sbuf, ".qwk control.dat messages.dat *.ndx > /dev/null");
@@ -616,9 +625,24 @@ cmd_sendbatch(char *args)
     output("%s\n", MSG_FINPACK);
 
     snprintf(cmdline, sizeof(cmdline), "%d.qwk", getpid());
+
     if (!fork()) {
+        char *args_exec[4];
+        int i = 0;
+
         sig_reset();
-        execl(DOWNLOADPRGM, DOWNLOADPRGM, DLOPT1, DLOPT2, DLOPT3, cmdline, NULL); /* TODO : POSSIBLY BROKEN */
+
+        args_exec[i++] = (char *)LSZ_BIN;
+
+        if (LSZ_ARGS[0])
+            args_exec[i++] = (char *)LSZ_ARGS;
+
+        args_exec[i++] = cmdline;
+        args_exec[i] = NULL;
+
+        execvp(LSZ_BIN, args_exec);
+
+        _exit(127);
     } else {
         wait(NULL);
     }
@@ -2742,13 +2766,24 @@ cmd_mail(char *args)
             return 0;
          }
 
+        if (!ENABLE_FTN_POSTING) {
+            output("\n%s\n\n", MSG_NONETMAIL);
+            return 0;
+        }
+
         mailrec = ftn_to_name;
         mailuid = 0;
         is_ftn_netmail = 1;
         
     } else if (strchr(args, '@')) {
 
-            strcpy(tmp, args);
+
+        if (!ENABLE_EMAIL) {
+            output("\n%s\n\n", MSG_OUTBOUND_EMAIL_OFF);
+            return 0;
+        }
+        
+        strcpy(tmp, args);
 
             /* Only allow a minimum of nonalphanum chars in mail address */
             if (strip_string(tmp, "@+.-_%") != 0 || tmp[0] == '-') {
@@ -2814,7 +2849,7 @@ cmd_mail(char *args)
             if (queue_ftn_netmail(Uid, ftn_to_name, ftn_to_addr,
                     th.subject, inbuf) != 0) {
                 free(inbuf);
-                output("%s\n\n", MSG_NOMAIL);
+                output("%s\n\n", MSG_NONETMAIL);
                 return -1;
             }
 
@@ -2831,9 +2866,9 @@ cmd_mail(char *args)
             unlink(fname);
             output("%s\n\n", MSG_NETMAILED);
         } else {
-            snprintf(cmdline, sizeof(cmdline), "%s %s", MAILPRGM, mailrec);
+            snprintf(cmdline, sizeof(cmdline), "%s %s", SENDMAIL_BIN, mailrec);
             if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
-                output("%s\n\n", MSG_NOMAIL);                     /* Cannot exec mailprgm. */
+                output("%s\n\n", MSG_NOMAIL);                     /* Cannot exec mailprgm / sendmail. */
                 return -1;
             }
             if ((fd = open_file(fname, 0)) == -1) {
@@ -3024,7 +3059,20 @@ cmd_personal(char *args)
         }
     }
 
+    if (is_ftn_personal && !ENABLE_FTN_POSTING) {
+        output("\n%s\n\n", MSG_NONETMAIL);
+        free_text_entry(&te);
+        return 0;
+    }
+
     if (!commentuid && !is_ftn_personal) {
+    
+    if (!ENABLE_EMAIL) {
+        output("\n%s\n\n", MSG_OUTBOUND_EMAIL_OFF);
+        free_text_entry(&te);
+        return 0;
+    }
+    
         tb = te.body;
         while (tb) {
             if ((ptr2 = strstr(tb->line, MSG_EMFROM)) != NULL)
@@ -3114,7 +3162,7 @@ cmd_personal(char *args)
         if (queue_ftn_netmail_reply(Uid, ftn_to_name, ftn_to_addr,
                 th.subject, inbuf, ftn_reply_msgid) != 0) {
             free(inbuf);
-            output("%s\n\n", MSG_NOMAIL);
+            output("%s\n\n", MSG_NONETMAIL);
             return -1;
         }
 
@@ -3139,7 +3187,7 @@ cmd_personal(char *args)
             return -1;
         }
     } else {
-        snprintf(cmdline, sizeof(cmdline), "%s %s", MAILPRGM, mailrec);
+        snprintf(cmdline, sizeof(cmdline), "%s %s", SENDMAIL_BIN, mailrec);
         if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
             output("%s\n\n", MSG_NOMAIL);
             return -1;
@@ -3263,14 +3311,28 @@ cmd_post_text(char *args)
     }
     th.author = Uid;
     ce = get_conf_struct(confid);
+    
+    if (conf_is_news(ce->type) && !ENABLE_USENET_POSTING) {
+        dlog(5, "cmd_post_text: Usenet posting disabled");
+        output("\n%s\n\n", MSG_USENET_POSTING_OFF);
+        return 0;
+    }
+    if (conf_is_ftn(ce->type) && !ENABLE_FTN_POSTING) {
+        dlog(5, "cmd_post_text: FTN posting disabled");
+        output("\n%s\n\n", MSG_NOFTN);
+        return 0;
+    }
+    
 #ifndef POSTING_OK
-    if (conf_is_external(ce->type)) {
+    /* News and FTN posting use their independent configure flags. */
+    if (conf_is_external(ce->type) && !conf_is_news(ce->type) &&
+        !conf_is_ftn(ce->type)) {
         dlog(5, "cmd_post_text: external conf but POSTING_OK not defined -> MSG_NONEWS");
         output("\n%s\n\n", MSG_NONEWS);
         return 0;
     }
 #endif
-#ifdef POSTING_OK
+    /* Usenet posting is now selected by configure, not legacy POSTING_OK. */
     if (conf_is_news(ce->type)) {
         struct passwd *pw = getpwuid(Uid);
         snprintf(uname, sizeof(uname), "%s <%s@%s>",
@@ -3280,7 +3342,6 @@ cmd_post_text(char *args)
         th.author = 0;
         dlog(6, "cmd_post_text: NEWS posting mode, uname=[%s]", uname);
     }
-#endif
     th.num = 0L;
     th.comment_num = 0;
     th.comment_conf = 0;
@@ -3313,11 +3374,25 @@ cmd_post_text(char *args)
     if (un) {
         /* Build inews command line; capture stderr if LOGLEVEL >= 8 */
 #if defined(LOGLEVEL) && (LOGLEVEL >= 8)
-        snprintf(cmdline, sizeof(cmdline), "%s 2>/tmp/inews.err.%d", NEWSPRGM, getpid());
+        if (INEWS_ARGS[0]) {
+            snprintf(cmdline, sizeof(cmdline),
+                     "%s %s 2>/tmp/inews.err.%d",
+                     INEWS_BIN, INEWS_ARGS, getpid());
+        } else {
+            snprintf(cmdline, sizeof(cmdline),
+                     "%s 2>/tmp/inews.err.%d",
+                     INEWS_BIN, getpid());
+        }
 #else
-        snprintf(cmdline, sizeof(cmdline), "%s", NEWSPRGM);
+        if (INEWS_ARGS[0]) {
+            snprintf(cmdline, sizeof(cmdline), "%s %s",
+                     INEWS_BIN, INEWS_ARGS);
+        } else {
+            snprintf(cmdline, sizeof(cmdline), "%s", INEWS_BIN);
+        }
 #endif
-        dlog(6, "cmd_post_text: inews NEWSPRGM=[%s]", NEWSPRGM);
+        dlog(6, "cmd_post_text: inews INEWS_BIN=[%s]", INEWS_BIN);
+        dlog(6, "cmd_post_text: inews INEWS_ARGS=[%s]", INEWS_ARGS);
         dlog(6, "cmd_post_text: inews cmdline=[%s]", cmdline);
         dlog(7, "cmd_post_text: env SERVER=[%s] NNTPSERVER=[%s] PATH=[%s]",
              getenv("SERVER") ? getenv("SERVER") : "(unset)",
@@ -3771,6 +3846,27 @@ cmd_comment(char *args)
         }
     }
 
+    /*
+     * Incoming FTN netmail can always be read, but outgoing replies
+     * require the separate FTN posting option.
+     */
+    if (is_netmail_reply && !ENABLE_FTN_POSTING) {
+        output("\n%s\n\n", MSG_NONETMAIL);
+        free_text_entry(&te);
+        return 0;
+    }
+
+    /*
+     * Internet mail replies require outbound e-mail support.
+     * Local mail and FTN netmail use separate controls.
+     */
+
+    if (!Current_conf && !commentuid && !is_netmail_reply &&
+        !ENABLE_EMAIL) {
+        output("\n%s\n\n", MSG_OUTBOUND_EMAIL_OFF);
+        free_text_entry(&te);
+        return 0;
+    }
             /*
             * Only mail and Usenet replies need an email address extracted from From:.
             * Imported FTN texts also have author 0, but use an FTN address instead.
@@ -3885,10 +3981,30 @@ cmd_comment(char *args)
         ptr = NULL;
     }
 
+    if (nc > 0) {
+        ce = get_conf_struct(nc);
+
+        if (ce != NULL &&
+            conf_is_news(ce->type) &&
+            !ENABLE_USENET_POSTING) {
+            dlog(5, "cmd_comment: Usenet posting disabled");
+            output("\n%s\n\n", MSG_USENET_POSTING_OFF);
+            return 0;
+        }
+        if (ce != NULL &&
+            conf_is_ftn(ce->type) &&
+            !ENABLE_FTN_POSTING) {
+            dlog(5, "cmd_comment: FTN posting disabled");
+            output("\n%s\n\n", MSG_NOFTN);
+            return 0;
+        }
+    }
+
 #ifndef POSTING_OK
     if (nc > 0) {
         ce = get_conf_struct(nc);
-        if (ce != NULL && conf_is_external(ce->type)) {
+        if (ce != NULL && conf_is_external(ce->type) &&
+            !conf_is_news(ce->type) && !conf_is_ftn(ce->type)) {
             dlog(5, "cmd_comment: external conf but POSTING_OK not defined -> MSG_NONEWS");
             output("\n%s\n\n", MSG_NONEWS);
             return 0;
@@ -3896,7 +4012,6 @@ cmd_comment(char *args)
     }
 #endif
 
-#ifdef POSTING_OK
     if (nc > 0) {
         ce = get_conf_struct(nc);
 
@@ -3905,7 +4020,6 @@ cmd_comment(char *args)
         else if (ce != NULL && conf_is_ftn(ce->type))
             show_post_warning(POST_FTNINFO, "POST_FTNINFO");
     }
-#endif
 
     dlog(6, "cmd_comment: display_header subject=[%s] nc=%d mailrec=%s",
          th.subject, nc, mailrec ? mailrec : "(null)");
@@ -3953,7 +4067,7 @@ cmd_comment(char *args)
             if (queue_ftn_netmail_reply(Uid, ftn_to_name, ftn_to_addr,
                     th.subject, inbuf, ftn_reply_msgid) != 0) {
                 free(inbuf);
-                output("%s\n\n", MSG_NOMAIL);
+                output("%s\n\n", MSG_NONETMAIL);
                 return -1;
             }
 
@@ -3974,7 +4088,7 @@ cmd_comment(char *args)
             return 0;
         }
 
-        snprintf(cmdline, sizeof(cmdline), "%s %s", MAILPRGM, mailrec);
+        snprintf(cmdline, sizeof(cmdline), "%s %s", SENDMAIL_BIN, mailrec);
         dlog(6, "cmd_comment: MAIL start cmd=[%s]", cmdline);
 
         if ((pipe = (FILE *) popen(cmdline, "w")) == NULL) {
@@ -4036,11 +4150,25 @@ cmd_comment(char *args)
 
         /* Build inews command; capture stderr if LOGLEVEL >= 8 */
 #if defined(LOGLEVEL) && (LOGLEVEL >= 8)
-        snprintf(cmdline, sizeof(cmdline), "%s 2>/tmp/inews.err.%d", NEWSPRGM, getpid());
+        if (INEWS_ARGS[0]) {
+            snprintf(cmdline, sizeof(cmdline),
+                     "%s %s 2>/tmp/inews.err.%d",
+                     INEWS_BIN, INEWS_ARGS, getpid());
+        } else {
+            snprintf(cmdline, sizeof(cmdline),
+                     "%s 2>/tmp/inews.err.%d",
+                     INEWS_BIN, getpid());
+        }
 #else
-        snprintf(cmdline, sizeof(cmdline), "%s", NEWSPRGM);
+        if (INEWS_ARGS[0]) {
+            snprintf(cmdline, sizeof(cmdline), "%s %s",
+                     INEWS_BIN, INEWS_ARGS);
+        } else {
+            snprintf(cmdline, sizeof(cmdline), "%s", INEWS_BIN);
+        }
 #endif
-        dlog(6, "cmd_comment: inews NEWSPRGM=[%s]", NEWSPRGM);
+        dlog(6, "cmd_comment: inews INEWS_BIN=[%s]", INEWS_BIN);
+        dlog(6, "cmd_comment: inews INEWS_ARGS=[%s]", INEWS_ARGS);
         dlog(6, "cmd_comment: inews cmdline=[%s]", cmdline);
         dlog(7, "cmd_comment: env SERVER=[%s] NNTPSERVER=[%s] PATH=[%s]",
              getenv("SERVER") ? getenv("SERVER") : "(unset)",
@@ -5620,7 +5748,7 @@ cmd_list_flags(char *args)
     output_flag_line(Rookie_mode, MSG_FLAG21F);
     output_flag_line(Start_mailbox, MSG_FLAG22F);
 
-#if IBOL_LOGOUT_COUNT > 0
+#if ENABLE_IBOL && IBOL_LOGOUT_COUNT > 0
     output_flag_line(Ibol_logout, MSG_FLAG23F);
 #endif
 
@@ -5890,7 +6018,7 @@ cmd_change_passwd(char *args)
     if (fork()) {
         (void) wait(NULL);
     } else {
-        execl(SKLAFFPASSWD, SKLAFFPASSWD, (char *) 0);
+        execl(PASSWD_BIN, PASSWD_BIN, (char *) 0);
     }
     tty_raw();
     sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
@@ -6060,6 +6188,37 @@ cmd_licens(char *args)
 }
 #undef LOGTAG
 #define LOGTAG "files"
+
+static int
+prepare_zmodem_child(void)
+{
+    uid_t euid = geteuid();
+    gid_t egid = getegid();
+
+/*
+ * SklaffKOM runs setuid sklaff.  lrzsz refuses to run when
+ * real and effective IDs differ, so normalize the transfer
+ * child before exec.
+ *
+ * The effective UID is the SklaffKOM owner (sklaff), while
+ * the caller's group is preserved.  SklaffKOM uses the group
+ * ownership of created objects to identify their author.
+ */
+ 
+    if (setregid(egid, egid) == -1)
+        return -1;
+
+    if (setreuid(euid, euid) == -1)
+        return -1;
+
+    if (getuid() != geteuid() || getgid() != getegid())
+        return -1;
+
+    if (setenv("ZMODEM_RESTRICTED", "1", 1) == -1)
+        return -1;
+
+    return 0;
+}
 /*
  * cmd_upload - uploads file(s)
  * args: user arguments (args)
@@ -6069,44 +6228,61 @@ cmd_licens(char *args)
 int
 cmd_upload(char *args)
 {
-    LINE cwd;
-    LONG_LINE filed;
-    int status;  /* wait() status */
+    LINE cwd, uploaded_name;
+    LONG_LINE filed, tmpdir;
+    struct stat st;
+    int status;
+    int uploaded_files = 0;
+    pid_t pid, waited;
 
-    dlog(6, "cmd_upload: enter args=[%s]", (args && *args) ? args : "(empty)");
+    dlog(6, "cmd_upload: enter args=[%s]",
+         (args && *args) ? args : "(empty)");
 
     Change_msg = 1;
     Change_prompt = 1;
-    
-	if (UPLOADPRGM == NULL || *UPLOADPRGM == '\0') {
-    dlog(3, "cmd_upload: UPLOADPRGM is empty");
-    output(MSG_FILES_OFF "\n\n");
-    return 0;
-}
 
-	if (!Current_conf) {
+    uploaded_name[0] = '\0';
+
+    if (LRZ_BIN[0] == '\0') {
+        dlog(3, "cmd_upload: LRZ_BIN is empty");
+        output(MSG_FILES_OFF "\n\n");
+        return 0;
+    }
+
+    if (!Current_conf) {
         dlog(4, "cmd_upload: not in mailbox -> MSG_NOTINMBOX");
         output("\n%s\n\n", MSG_NOTINMBOX);
         return 0;
     }
+
     set_avail(Uid, 1);
     output("\n");
+
     if (getcwd(cwd, LINE_LEN) == NULL) {
         dlog(3, "cmd_upload: getcwd failed");
+        set_avail(Uid, 0);
         return 0;
     }
+
     dlog(7, "cmd_upload: cwd=[%s]", cwd);
 
     signal(SIGNAL_NEW_TEXT, SIG_IGN);
     signal(SIGNAL_NEW_MSG, SIG_IGN);
-    snprintf(filed, sizeof(filed), "%s/%d", FILE_DB, Current_conf);
+
+    snprintf(filed, sizeof(filed), "%s/%d",
+             FILE_DB, Current_conf);
+
     dlog(6, "cmd_upload: target dir=[%s]", filed);
-    
-     /*
-     * Sanity check: FILE_DB itself must exist and be usable.
+
+    /*
+     * FILE_DB must exist and be a directory.
+     * The real BBS user does not need direct Unix access.
      */
-    if (access(FILE_DB, F_OK) == -1) {
-        dlog(3, "cmd_upload: FILE_DB missing: %s", FILE_DB);
+    if (stat(FILE_DB, &st) == -1 ||
+        !S_ISDIR(st.st_mode)) {
+        dlog(3,
+             "cmd_upload: FILE_DB missing or not a directory: %s",
+             FILE_DB);
         output(MSG_FILE_DB_ER "\n\n");
 
         signal(SIGNAL_NEW_TEXT, baffo);
@@ -6114,22 +6290,44 @@ cmd_upload(char *args)
         set_avail(Uid, 0);
         return 0;
     }
-
-    if (access(FILE_DB, W_OK | X_OK) == -1) {
-        dlog(3, "cmd_upload: FILE_DB not writable/searchable: %s", FILE_DB);
-        output("\n"MSG_FILE_DB_ER"\n\n");
-
-        signal(SIGNAL_NEW_TEXT, baffo);
-        signal(SIGNAL_NEW_MSG, newmsg);
-        set_avail(Uid, 0);
-        return 0;
-    }
-	 /*
-     * Sanity check: upload program must be configured.
+ 
+    /*
+     * Ensure the real conference file directory exists.
+     * It remains owned by the SklaffKOM account.
      */
-    if (UPLOADPRGM == NULL || *UPLOADPRGM == '\0') {
-        dlog(3, "cmd_upload: UPLOADPRGM is empty");
-        output("\n"MSG_FILES_OFF"\n\n");
+    if (stat(filed, &st) == -1) {
+        if (errno != ENOENT) {
+            dlog(3,
+                 "cmd_upload: stat failed for %s: %s",
+                 filed, strerror(errno));
+            output(MSG_FILE_DB_ER "\n\n");
+
+            signal(SIGNAL_NEW_TEXT, baffo);
+            signal(SIGNAL_NEW_MSG, newmsg);
+            set_avail(Uid, 0);
+            return 0;
+        }
+
+        dlog(7,
+             "cmd_upload: dir missing, creating %s",
+             filed);
+
+        if (mkdir(filed, 0700) == -1) {
+            dlog(3,
+                 "cmd_upload: mkdir failed for %s: %s",
+                 filed, strerror(errno));
+            output(MSG_FILE_DB_ER "\n\n");
+
+            signal(SIGNAL_NEW_TEXT, baffo);
+            signal(SIGNAL_NEW_MSG, newmsg);
+            set_avail(Uid, 0);
+            return 0;
+        }
+    } else if (!S_ISDIR(st.st_mode)) {
+        dlog(3,
+             "cmd_upload: target exists but is not a directory: %s",
+             filed);
+        output(MSG_FILE_DB_ER "\n\n");
 
         signal(SIGNAL_NEW_TEXT, baffo);
         signal(SIGNAL_NEW_MSG, newmsg);
@@ -6138,38 +6336,14 @@ cmd_upload(char *args)
     }
 
     /*
-     * If UPLOADPRGM contains a slash, verify it directly.
-     * If it is just "rz", execvp() will later search PATH.
+     * Receive into a unique private directory below FILE_DB.
+     * rz never writes directly into the real conference area.
      */
-    if (strchr(UPLOADPRGM, '/') != NULL && access(UPLOADPRGM, X_OK) == -1) {
-        dlog(3, "cmd_upload: UPLOADPRGM not executable: %s", UPLOADPRGM);
-        output(MSG_ULPRGMERROR"\n\n");
-
-        signal(SIGNAL_NEW_TEXT, baffo);
-        signal(SIGNAL_NEW_MSG, newmsg);
-        set_avail(Uid, 0);
-        return 0;
-    }
-    
-    /* Ensure upload dir within files root directory exists, if not create it */
-    if (access(filed, F_OK) == -1) {
-        dlog(7, "cmd_upload: dir missing, creating %s (mode 0775)", filed);
-       if (mkdir(filed, 0775) == -1) {
-            dlog(3, "cmd_upload: mkdir failed for %s", filed);
-            output(MSG_FILE_DB_ER "\n\n");
-
-            signal(SIGNAL_NEW_TEXT, baffo);
-            signal(SIGNAL_NEW_MSG, newmsg);
-            set_avail(Uid, 0);
-            return 0;
-        }
-        if (chown(filed, getuid(), getgid()) == -1) {
-            dlog(5, "cmd_upload: chown failed (non-fatal) for %s", filed);
-        }
-    }
-
-     if (chdir(filed) == -1) {
-        dlog(3, "cmd_upload: chdir failed to %s", filed);
+    if (snprintf(tmpdir, sizeof(tmpdir),
+                 "%s/.upload-XXXXXX", FILE_DB) >=
+        (int)sizeof(tmpdir)) {
+        dlog(3,
+             "cmd_upload: temporary upload path too long");
         output(MSG_FILE_DB_ER "\n\n");
 
         signal(SIGNAL_NEW_TEXT, baffo);
@@ -6177,15 +6351,68 @@ cmd_upload(char *args)
         set_avail(Uid, 0);
         return 0;
     }
-    dlog(7, "cmd_upload: chdir -> %s", filed);
 
-    pid_t pid = fork();
-       if (pid < 0) {
-        dlog_with("files", 2, "cmd_upload: fork failed");
+    if (mkdtemp(tmpdir) == NULL) {
+        dlog(3,
+             "cmd_upload: mkdtemp failed: %s",
+             strerror(errno));
+        output(MSG_FILE_DB_ER "\n\n");
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return 0;
+    }
+
+    /*
+     * mkdtemp() creates mode 0700, but explicitly enforce our
+     * expected mode and clear any inherited special bits.
+     */
+    if (chmod(tmpdir, 0700) == -1) {
+        dlog(3,
+             "cmd_upload: chmod failed for %s: %s",
+             tmpdir, strerror(errno));
+
+        (void)rmdir(tmpdir);
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        output(MSG_FILE_DB_ER "\n\n");
+        return 0;
+    }
+
+    dlog(6,
+         "cmd_upload: temporary upload dir=[%s]",
+         tmpdir);
+
+    if (chdir(tmpdir) == -1) {
+        dlog(3,
+             "cmd_upload: chdir failed to %s: %s",
+             tmpdir, strerror(errno));
+
+        (void)rmdir(tmpdir);
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        output(MSG_FILE_DB_ER "\n\n");
+        return 0;
+    }
+
+    pid = fork();
+
+    if (pid < 0) {
+        dlog_with("files", 2,
+                  "cmd_upload: fork failed");
 
         if (chdir(cwd) == -1) {
-            dlog_errno_with("files", 3, "cmd_upload: chdir back to cwd after fork failure");
+            dlog_errno_with(
+                "files", 3,
+                "cmd_upload: chdir back after fork failure");
         }
+
+        (void)rmdir(tmpdir);
 
         signal(SIGNAL_NEW_TEXT, baffo);
         signal(SIGNAL_NEW_MSG, newmsg);
@@ -6193,75 +6420,390 @@ cmd_upload(char *args)
         return -1;
     }
 
-    if (pid > 0) {
-        /* parent */
-        dlog(6, "cmd_upload: parent waiting for child pid=%d", (int)pid);
-        (void) wait(&status);
-#ifdef WIFEXITED
-        if (WIFEXITED(status)) {
-            dlog(7, "cmd_upload: child exit=%d", WEXITSTATUS(status));
-
-            if (WEXITSTATUS(status) == 127) {
-                output("\n"MSG_ULPRGMERROR"\n\n");
-
-                if (chdir(cwd) == -1) {
-                    dlog(3, "cmd_upload: chdir back to cwd failed after exec failure: %s", cwd);
-                }
-
-                signal(SIGNAL_NEW_TEXT, baffo);
-                signal(SIGNAL_NEW_MSG, newmsg);
-                set_avail(Uid, 0);
-                return 0;
-            }
-        }
-
-        if (WIFSIGNALED(status))
-            dlog(3, "cmd_upload: child signaled sig=%d", WTERMSIG(status));
-#endif
-    } else {
+    if (pid == 0) {
         /* child */
+        char *execv_args[3];
+        int i = 0;
+
         sig_reset();
 
-        /* Build args and exec */
-        char *execv_args[] = { (char*)UPLOADPRGM, (char*)ULOPT1, NULL };
+        execv_args[i++] = (char *)LRZ_BIN;
 
-        dlog(6, "cmd_upload: execvp %s %s (euid=%d)",
-             UPLOADPRGM, ULOPT1, (int)geteuid());
+        if (LRZ_ARGS[0])
+            execv_args[i++] = (char *)LRZ_ARGS;
 
-#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
-        /* We can capture stderr here */
-#endif
+        execv_args[i] = NULL;
 
-        execvp(UPLOADPRGM, execv_args);
-        /* If we get here, exec failed */
-        dlog(2, "cmd_upload: execvp failed for %s", UPLOADPRGM);
+        if (prepare_zmodem_child() == -1) {
+            dlog(2,
+                 "cmd_upload: could not prepare ZMODEM child");
+            _exit(126);
+        }
+
+        dlog(6,
+             "cmd_upload: ZMODEM ids "
+             "uid=%d euid=%d gid=%d egid=%d",
+             (int)getuid(), (int)geteuid(),
+             (int)getgid(), (int)getegid());
+
+        dlog(6,
+             "cmd_upload: execvp %s args=[%s]",
+             LRZ_BIN, LRZ_ARGS);
+
+        execvp(LRZ_BIN, execv_args);
+
+        dlog(2,
+             "cmd_upload: execvp failed for %s",
+             LRZ_BIN, strerror(errno));
+
         _exit(127);
     }
 
-    if (chdir(cwd) == -1) {
-        dlog(3, "cmd_upload: chdir back to cwd failed: %s", cwd);
-        return 0;
-    }
-    dlog(7, "cmd_upload: chdir back -> %s", cwd);
+    /*
+     * Parent: wait specifically for our ZMODEM child.
+     */
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited == -1 && errno == EINTR);
 
-    signal(SIGNAL_NEW_TEXT, baffo);
-    signal(SIGNAL_NEW_MSG, newmsg);
+    if (waited == -1) {
+        dlog(2,
+             "cmd_upload: waitpid failed: %s",
+             strerror(errno));
 
-    /* Rebuild index after upload */
-    dlog(6, "cmd_upload: rebuild_index_file()");
-    if (rebuild_index_file() == -1) {
-        dlog(3, "cmd_upload: rebuild_index_file FAILED");
-        output("\n%s\n\n", "Failed to rebuild index file."); /* original stderr line, but visible to user now */
+        if (chdir(cwd) == -1)
+            dlog(3,
+                 "cmd_upload: chdir back failed: %s",
+                 cwd);
+
+        (void)rmdir(tmpdir);
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
         set_avail(Uid, 0);
         return -1;
     }
 
-    /* Tell user to describe file */
-    output(MSG_SUCCESSUL"\n\n");
+    /*
+     * A transfer is successful only if rz exits normally with 0.
+     */
+    if (!WIFEXITED(status) ||
+        WEXITSTATUS(status) != 0) {
+        if (WIFEXITED(status)) {
+            dlog(3,
+                 "cmd_upload: child exit=%d",
+                 WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            dlog(3,
+                 "cmd_upload: child signaled sig=%d",
+                 WTERMSIG(status));
+        }
 
+        if (chdir(cwd) == -1)
+            dlog(3,
+                 "cmd_upload: chdir back failed: %s",
+                 cwd);
+
+        /*
+         * rmdir succeeds if rz did not leave a partial file.
+         * Otherwise the private directory remains for SysOp
+         * inspection instead of deleting unknown partial data.
+         */
+        (void)rmdir(tmpdir);
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+
+        output("\n" MSG_ULPRGMERROR "\n\n");
+        return 0;
+    }
+
+    dlog(7, "cmd_upload: child exit=0");
+
+    if (chdir(cwd) == -1) {
+        dlog(3,
+             "cmd_upload: chdir back to cwd failed: %s",
+             cwd);
+
+        signal(SIGNAL_NEW_TEXT, baffo);
+        signal(SIGNAL_NEW_MSG, newmsg);
+        set_avail(Uid, 0);
+        return 0;
+    }
+
+    signal(SIGNAL_NEW_TEXT, baffo);
+    signal(SIGNAL_NEW_MSG, newmsg);
+
+    /*
+     * Validate everything before importing anything.
+     */
+    {
+        DIR *dp;
+        struct dirent *de;
+        struct stat dstst;
+        char src[PATH_MAX];
+        char dst[PATH_MAX];
+        int invalid = 0;
+
+        dp = opendir(tmpdir);
+
+        if (dp == NULL) {
+            dlog(3,
+                 "cmd_upload: opendir failed for %s: %s",
+                 tmpdir, strerror(errno));
+            set_avail(Uid, 0);
+            output(MSG_FILE_DB_ER "\n\n");
+            return -1;
+        }
+
+        while ((de = readdir(dp)) != NULL) {
+            if (!strcmp(de->d_name, ".") ||
+                !strcmp(de->d_name, ".."))
+                continue;
+
+            /*
+             * Hidden files are never valid uploads.
+             * In particular, rz must never be able to install
+             * something such as .index.
+             */
+            if (de->d_name[0] == '.') {
+                dlog(3,
+                     "cmd_upload: refusing hidden file [%s]",
+                     de->d_name);
+                invalid = 1;
+                break;
+            }
+
+            if (snprintf(src, sizeof(src),
+                         "%s/%s",
+                         tmpdir, de->d_name) >=
+                (int)sizeof(src) ||
+                snprintf(dst, sizeof(dst),
+                         "%s/%s",
+                         filed, de->d_name) >=
+                (int)sizeof(dst)) {
+                dlog(3,
+                     "cmd_upload: uploaded filename too long");
+                invalid = 1;
+                break;
+            }
+
+            /*
+             * Never follow symlinks or accept directories,
+             * devices, sockets, FIFOs, etc.
+             */
+            if (lstat(src, &st) == -1 ||
+                !S_ISREG(st.st_mode)) {
+                dlog(3,
+                     "cmd_upload: refusing non-regular file [%s]",
+                     de->d_name);
+                invalid = 1;
+                break;
+            }
+
+            /*
+             * Existing conference files must never be replaced.
+             */
+            if (lstat(dst, &dstst) == 0) {
+                dlog(3,
+                     "cmd_upload: destination already exists [%s]",
+                     de->d_name);
+                invalid = 1;
+                break;
+            }
+
+            if (errno != ENOENT) {
+                dlog(3,
+                     "cmd_upload: cannot check destination %s: %s",
+                     de->d_name, strerror(errno));
+                invalid = 1;
+                break;
+            }
+
+            if (uploaded_files == 0 &&
+                strlen(de->d_name) < sizeof(uploaded_name)) {
+                strlcpy(uploaded_name, de->d_name,
+                        sizeof(uploaded_name));
+            }
+
+            uploaded_files++;
+        }
+
+        closedir(dp);
+
+        if (invalid || uploaded_files == 0) {
+            if (uploaded_files == 0 && !invalid)
+                dlog(3,
+                     "cmd_upload: rz exited successfully "
+                     "but received no files");
+
+            set_avail(Uid, 0);
+            output(MSG_FILE_DB_ER "\n\n");
+            return 0;
+        }
+
+        /*
+         * Import the validated files.
+         *
+         * tmpdir and filed are both below FILE_DB and therefore
+         * on the same filesystem. link() gives us atomic
+         * no-clobber semantics: an existing destination causes
+         * the operation to fail instead of being overwritten.
+         */
+        dp = opendir(tmpdir);
+
+        if (dp == NULL) {
+            dlog(3,
+                 "cmd_upload: second opendir failed for %s: %s",
+                 tmpdir, strerror(errno));
+            set_avail(Uid, 0);
+            output(MSG_FILE_DB_ER "\n\n");
+            return -1;
+        }
+
+        while ((de = readdir(dp)) != NULL) {
+            if (!strcmp(de->d_name, ".") ||
+                !strcmp(de->d_name, ".."))
+                continue;
+
+            snprintf(src, sizeof(src),
+                     "%s/%s",
+                     tmpdir, de->d_name);
+
+            snprintf(dst, sizeof(dst),
+                     "%s/%s",
+                     filed, de->d_name);
+
+            /*
+             * Uploaded files belong to SklaffKOM and are private.
+             * This also removes any executable or special bits.
+             */
+            if (chmod(src, 0600) == -1) {
+                dlog(3,
+                     "cmd_upload: chmod failed for %s: %s",
+                     de->d_name, strerror(errno));
+                closedir(dp);
+
+                set_avail(Uid, 0);
+                output(MSG_FILE_DB_ER "\n\n");
+                return -1;
+            }
+
+            if (link(src, dst) == -1) {
+                dlog(3,
+                     "cmd_upload: import failed for [%s]: %s",
+                     de->d_name, strerror(errno));
+                closedir(dp);
+
+                /*
+                 * Some earlier files from a multi-file transfer
+                 * may already have been imported. Rebuild the
+                 * index so the file database remains consistent.
+                 */
+                (void)rebuild_index_file();
+
+                set_avail(Uid, 0);
+                output(MSG_FILE_DB_ER "\n\n");
+                return -1;
+            }
+
+            if (unlink(src) == -1) {
+                dlog(3,
+                     "cmd_upload: unlink temporary file [%s] failed: %s",
+                     de->d_name, strerror(errno));
+
+                /*
+                 * Roll back this individual destination if the
+                 * temporary link could not be removed.
+                 */
+                if (unlink(dst) == -1) {
+                    dlog(2,
+                         "cmd_upload: rollback failed for [%s]: %s",
+                         de->d_name, strerror(errno));
+                }
+
+                closedir(dp);
+                (void)rebuild_index_file();
+
+                set_avail(Uid, 0);
+                output(MSG_FILE_DB_ER "\n\n");
+                return -1;
+            }
+
+            dlog(6,
+                 "cmd_upload: imported [%s] into %s",
+                 de->d_name, filed);
+        }
+
+        closedir(dp);
+    }
+
+    /*
+     * A successful import must leave the temporary directory empty.
+     */
+    if (rmdir(tmpdir) == -1) {
+        dlog(3,
+             "cmd_upload: could not remove temporary dir %s: %s",
+             tmpdir, strerror(errno));
+
+        /*
+         * The actual upload is already installed at this point,
+         * so rebuild the index before returning an error.
+         */
+        (void)rebuild_index_file();
+
+        set_avail(Uid, 0);
+        output(MSG_FILE_DB_ER "\n\n");
+        return -1;
+    }
+
+    dlog(6, "cmd_upload: removed temporary dir %s",
+         tmpdir);
+
+    /*
+     * Rebuild the conference file index only after the files
+     * have been safely imported.
+     */
+    dlog(6, "cmd_upload: rebuild_index_file()");
+
+    if (rebuild_index_file() == -1) {
+        dlog(3,
+             "cmd_upload: rebuild_index_file FAILED");
+        output("\n%s\n\n",
+               "Failed to rebuild index file.");
+        set_avail(Uid, 0);
+        return -1;
+    }
+
+   /*
+    * Transfer and import are complete. The user is no longer
+    * busy with ZMODEM before entering the interactive description.
+    */
     set_avail(Uid, 0);
+
+    output(MSG_SUCCESSUL "\n");
+
+   /*
+    * For the normal single-file upload, immediately let the user
+    * describe the file. cmd_describe() expects the rebuilt .index,
+    * so this must happen after rebuild_index_file().
+    *
+    * Multi-file ZMODEM transfers remain supported, but are not
+    * automatically described here.
+    */
+    if (uploaded_files == 1 && uploaded_name[0] != '\0') {
+    dlog(6,
+         "cmd_upload: describing newly uploaded file [%s]",
+         uploaded_name);
+
+    (void)cmd_describe(uploaded_name);
+    }
+
     dlog(6, "cmd_upload: leave OK");
+
     return 0;
+    
 }
 
 /*
@@ -6277,22 +6819,24 @@ cmd_download(char *args)
     LONG_LINE filed;
     sigset_t sigmask, oldsigmask;
 
-    dlog(6, "cmd_download: enter args=[%s]", (args && *args) ? args : "(empty)");
+    dlog(6, "cmd_download: enter args=[%s]",
+         (args && *args) ? args : "(empty)");
 
     Change_msg = 1;
     Change_prompt = 1;
-    
-	    if (DOWNLOADPRGM == NULL || *DOWNLOADPRGM == '\0') {
-        dlog(4, "cmd_download: DOWNLOADPRGM is empty, download disabled");
+
+    if (LSZ_BIN[0] == '\0') {
+        dlog(4, "cmd_download: LSZ_BIN is empty, download disabled");
         output("\n%s\n\n", MSG_FILES_OFF);
         return 0;
     }
 
-	if (!Current_conf) {
+    if (!Current_conf) {
         dlog(4, "cmd_download: not in mailbox -> MSG_NOTINMBOX");
         output("\n%s\n\n", MSG_NOTINMBOX);
         return 0;
     }
+
     output("\n");
 
     if (*args == '\0') {
@@ -6308,95 +6852,144 @@ cmd_download(char *args)
         return 0;
     }
 
-    if (strchr(fname, '/') || strchr(fname, ';') || strchr(fname, ':') ||
-        strchr(fname, '<') || strchr(fname, '>') || strchr(fname, '?') ||
-        strchr(fname, '*') || strchr(fname, '|') || strchr(fname, '&')) {
+    if (strchr(fname, '/') ||
+        strchr(fname, ';') ||
+        strchr(fname, ':') ||
+        strchr(fname, '<') ||
+        strchr(fname, '>') ||
+        strchr(fname, '?') ||
+        strchr(fname, '*') ||
+        strchr(fname, '|') ||
+        strchr(fname, '&')) {
+
         dlog(5, "cmd_download: bad filename rejected: [%s]", fname);
         output("%s\n\n", MSG_BADFNAME);
         return 0;
     }
+
     if (getcwd(cwd, LINE_LEN) == NULL) {
         dlog(3, "cmd_download: getcwd failed");
         return 0;
     }
+
     dlog(7, "cmd_download: cwd=[%s] file=[%s]", cwd, fname);
 
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGNAL_NEW_TEXT);
     sigaddset(&sigmask, SIGNAL_NEW_MSG);
     sigprocmask(SIG_BLOCK, &sigmask, &oldsigmask);
+
     signal(SIGNAL_NEW_TEXT, SIG_IGN);
     signal(SIGNAL_NEW_MSG, SIG_IGN);
+
     set_avail(Uid, 1);
-    snprintf(filed, sizeof(filed), "%s/%d", FILE_DB, Current_conf);
+
+    snprintf(filed, sizeof(filed), "%s/%d",
+             FILE_DB, Current_conf);
+
     dlog(6, "cmd_download: file dir=[%s]", filed);
+
     if (chdir(filed) == -1) {
         dlog(3, "cmd_download: chdir failed to %s", filed);
         sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
         return 0;
     }
+
     dlog(7, "cmd_download: chdir -> %s", filed);
 
     pid_t pid = fork();
-	if (pid < 0) {
-    dlog_with("files", 2, "cmd_download: fork failed");
-    if (chdir(cwd) == -1) {
-        dlog_errno_with("files", 3, "cmd_download: chdir back to cwd after fork failure");
+
+    if (pid < 0) {
+        dlog_with("files", 2, "cmd_download: fork failed");
+
+        if (chdir(cwd) == -1) {
+            dlog_errno_with(
+                "files", 3,
+                "cmd_download: chdir back to cwd after fork failure");
+        }
+
+        sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
+        return -1;
     }
-    sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
-    return -1;
-	}
 
     if (pid == 0) {
         /* child */
+        char *args_exec[4];
+        int i = 0;
+
         sig_reset();
 
-        /* Build argument list dynamically, omitting empty args */
-        char *args_exec[10];
-        int i = 0;
-        args_exec[i++] = (char*)DOWNLOADPRGM;
-        if (DLOPT1[0]) args_exec[i++] = (char*)DLOPT1;
-        if (DLOPT2[0]) args_exec[i++] = (char*)DLOPT2;
-        if (DLOPT3[0]) args_exec[i++] = (char*)DLOPT3;
+        /*
+         * Build argument list dynamically so an empty LSZ_ARGS
+         * does not become an empty argv entry.
+         */
+        args_exec[i++] = (char *)LSZ_BIN;
+
+        if (LSZ_ARGS[0])
+            args_exec[i++] = (char *)LSZ_ARGS;
+
         args_exec[i++] = fname;
-        args_exec[i]   = NULL;
+        args_exec[i] = NULL;
 
-        dlog(6, "cmd_download: execvp %s (euid=%d) with file=[%s]",
-             DOWNLOADPRGM, (int)geteuid(), fname);
-#if defined(LOGLEVEL) && (LOGLEVEL >= 8)
-        /* If we later want to redirect stderr, we can exec /bin/sh -c here */
-#endif
+        dlog(6,
+             "cmd_download: execvp %s args=[%s] "
+             "(euid=%d) with file=[%s]",
+             LSZ_BIN, LSZ_ARGS, (int)geteuid(), fname);
 
-        execvp(DOWNLOADPRGM, args_exec);
-        dlog(2, "cmd_download: execvp failed for %s", DOWNLOADPRGM);
+        if (prepare_zmodem_child() == -1) {
+            dlog(2, "cmd_download: could not prepare ZMODEM child");
+            _exit(126);
+        }
+        
+        dlog(6,
+             "cmd_download: ZMODEM ids uid=%d euid=%d gid=%d egid=%d",
+             (int)getuid(), (int)geteuid(),
+             (int)getgid(), (int)getegid());
+
+        execvp(LSZ_BIN, args_exec);
+
+        dlog(2, "cmd_download: execvp failed for %s", LSZ_BIN);
         _exit(127);
+
     } else {
         int status = 0;
-        dlog(6, "cmd_download: parent waiting pid=%d", (int)pid);
+
+        dlog(6, "cmd_download: parent waiting pid=%d",
+             (int)pid);
+
         waitpid(pid, &status, 0);
+
 #ifdef WIFEXITED
         if (WIFEXITED(status))
-            dlog(7, "cmd_download: child exit=%d", WEXITSTATUS(status));
+            dlog(7, "cmd_download: child exit=%d",
+                 WEXITSTATUS(status));
+
         if (WIFSIGNALED(status))
-            dlog(3, "cmd_download: child signaled sig=%d", WTERMSIG(status));
+            dlog(3, "cmd_download: child signaled sig=%d",
+                 WTERMSIG(status));
 #endif
     }
 
     tty_raw();
+
     signal(SIGNAL_NEW_TEXT, baffo);
     signal(SIGNAL_NEW_MSG, newmsg);
     sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
 
- 	  if (chdir(cwd) == -1) {
-    dlog(3, "cmd_download: chdir back failed to %s", cwd);
-    return 0;
-	}
+    if (chdir(cwd) == -1) {
+        dlog(3, "cmd_download: chdir back failed to %s", cwd);
+        return 0;
+    }
+
     dlog(7, "cmd_download: chdir back -> %s", cwd);
 
     tty_raw();
     output("\n");
+
     set_avail(Uid, 0);
+
     dlog(6, "cmd_download: leave OK");
+
     return 0;
 }
 
@@ -7073,9 +7666,6 @@ int
 cmd_nethack(char *args)
 {
     sigset_t sigmask, oldsigmask;
-    char nethack_path[256] = DEFAULT_NETHACK_PATH; /* Now set in sklaff.h as it should be, 2025-09-24 PL */
-    FILE *which_fp;
-    char which_buf[256];
 
     if (!ENABLE_NETHACK) {
         output("\n%s\n\n", MSG_NETHACK_OFF);
@@ -7085,23 +7675,8 @@ cmd_nethack(char *args)
     Change_msg = 1;
     Change_prompt = 1;
 
-    /* Check default path first */
-    if (access(nethack_path, X_OK) != 0) {
-        /* Try fallback using "which nethack" */
-        which_fp = popen("which nethack", "r");
-        if (which_fp && fgets(which_buf, sizeof(which_buf), which_fp)) {
-            which_buf[strcspn(which_buf, "\n")] = '\0';  /* strip newline */
-            if (access(which_buf, X_OK) == 0) {
-                strncpy(nethack_path, which_buf, sizeof(nethack_path) - 1);
-                nethack_path[sizeof(nethack_path) - 1] = '\0';
-            }
-        }
-        if (which_fp)
-            pclose(which_fp);
-    }
-
     /* If still not found */
-    if (access(nethack_path, X_OK) != 0) {
+    if (access(NETHACK_BIN, X_OK) != 0) {
         output("\n"MSG_NETHACKER01"\n");
         return 0;
     }
@@ -7117,7 +7692,7 @@ cmd_nethack(char *args)
     if (!fork()) {
         sig_reset();
         tty_reset();
-        execl(nethack_path, nethack_path, NULL);
+        execl(NETHACK_BIN, NETHACK_BIN, NULL);
         perror("execl");
         _exit(1);
     } else {
@@ -7680,8 +8255,8 @@ cmd_post_survey(char *args)
 
 #ifdef SOLARIS
         snprintf(cmdline, sizeof(cmdline), "%s '%s %d %ld' | %s -t %4d%02d%02d%02d%02d 2>/dev/null",
-            SKLAFFECHO, SURVREPORT, confid, textnum,
-            SKLAFFAT,
+            ECHO_BIN, SURVREPORT, confid, textnum,
+            AT_BIN,
             reporttime.tm_year + 1900,
             reporttime.tm_mon + 1,
             reporttime.tm_mday,
@@ -7690,8 +8265,8 @@ cmd_post_survey(char *args)
 #endif
 #ifdef LINUX
         snprintf(cmdline, sizeof(cmdline), "%s '%s %d %ld' | %s %02d%02d%02d %02d%02d 2>/dev/null",
-            SKLAFFECHO, SURVREPORT, confid, textnum,
-            SKLAFFAT,
+            ECHO_BIN, SURVREPORT, confid, textnum,
+            AT_BIN,
             reporttime.tm_mday,
             reporttime.tm_hour,
             reporttime.tm_min,
@@ -7700,8 +8275,8 @@ cmd_post_survey(char *args)
 #endif
 #ifdef FREEBSD
         snprintf(cmdline, sizeof(cmdline), "%s '%s %d %ld' | %s %02d%02d %02d%02d%02d 2>/dev/null",
-            SKLAFFECHO, SURVREPORT, confid, textnum,
-            SKLAFFAT,
+            ECHO_BIN, SURVREPORT, confid, textnum,
+            AT_BIN,
             reporttime.tm_hour,
             reporttime.tm_min,
             reporttime.tm_mon + 1,
@@ -7955,12 +8530,501 @@ cmd_mod_numlines(char *args)
     output(MSG_NUMLNSOK, v);
     return 0;
 }
+#if defined(HAVE_FROTZ) && HAVE_FROTZ
+static int ensure_dir(const char *path, mode_t mode);
+#endif
+
+#define ZGAME_COMMAND_LEN 64
+#define ZGAME_TITLE_LEN   160
+#define ZGAME_TITLE_COLUMN 38
+
+struct ZGAME_ENTRY {
+    char command[ZGAME_COMMAND_LEN];
+    char title[ZGAME_TITLE_LEN];
+    char filename[NAME_MAX + 1];
+};
+
+
+/*
+ * Trim leading and trailing whitespace in-place.
+ */
+static char *
+zgame_trim(char *s)
+{
+    char *end;
+
+    while (*s && isspace((unsigned char)*s))
+        s++;
+
+    end = s + strlen(s);
+
+    while (end > s && isspace((unsigned char)end[-1]))
+        *--end = '\0';
+
+    return s;
+}
+
+
+/*
+ * Read one entry from ZGAMES_FILE.
+ *
+ * Format:
+ *
+ *   command:title:filename
+ *
+ * The first ':' separates command from title and the last ':'
+ * separates title from filename. This allows ':' inside titles.
+ *
+ * Blank lines and comments beginning with '#' are ignored.
+ *
+ * Returns 1 for an entry, 0 at EOF.
+ */
+static int
+read_zgame_entry(FILE *fp, struct ZGAME_ENTRY *game)
+{
+    char line[512];
+    char *p;
+    char *first;
+    char *last;
+    char *command;
+    char *title;
+    char *filename;
+
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        line[strcspn(line, "\r\n")] = '\0';
+
+        p = zgame_trim(line);
+
+        if (*p == '\0' || *p == '#')
+            continue;
+
+        first = strchr(p, ':');
+        last = strrchr(p, ':');
+
+        if (first == NULL || last == NULL || first == last)
+            continue;
+
+        *first = '\0';
+        *last = '\0';
+
+        command = zgame_trim(p);
+        title = zgame_trim(first + 1);
+        filename = zgame_trim(last + 1);
+
+        if (*command == '\0' ||
+            *title == '\0' ||
+            *filename == '\0')
+            continue;
+
+        /*
+         * Story files must live directly in ZGAME_DIR.
+         * Do not allow paths in zgames.
+         */
+        if (strchr(filename, '/') != NULL ||
+            !strcmp(filename, ".") ||
+            !strcmp(filename, ".."))
+            continue;
+
+        if (strlen(command) >= sizeof(game->command) ||
+            strlen(title) >= sizeof(game->title) ||
+            strlen(filename) >= sizeof(game->filename))
+            continue;
+
+        strlcpy(game->command, command, sizeof(game->command));
+        strlcpy(game->title, title, sizeof(game->title));
+        strlcpy(game->filename, filename, sizeof(game->filename));
+
+        return 1;
+    }
+
+    return 0;
+}
+
+
+/*
+ * Build the full path to a story file.
+ */
+static int
+zgame_path(const struct ZGAME_ENTRY *game,
+           char *path, size_t pathsz)
+{
+    int n;
+
+    n = snprintf(path, pathsz, "%s/%s",
+                 ZGAME_DIR, game->filename);
+
+    if (n < 0 || (size_t)n >= pathsz)
+        return -1;
+
+    return 0;
+}
+
+
+/*
+ * Check whether a story file is actually installed and readable.
+ *
+ * open() is intentional here rather than access(): SklaffKOM runs
+ * setuid and access() checks the real uid instead of the effective uid.
+ */
+static int
+zgame_installed(const struct ZGAME_ENTRY *game,
+                char *path, size_t pathsz)
+{
+    struct stat st;
+    int fd;
+
+    if (zgame_path(game, path, pathsz) == -1)
+        return 0;
+
+    fd = open(path, O_RDONLY);
+    if (fd == -1)
+        return 0;
+
+    if (fstat(fd, &st) == -1) {
+        close(fd);
+        return 0;
+    }
+
+    close(fd);
+
+    return S_ISREG(st.st_mode);
+}
+
+
+/*
+ * Run one Z-machine story through Frotz.
+ *
+ * This intentionally follows the terminal and signal handling
+ * already used successfully by cmd_zork().
+ */
+static int
+run_frotz_game(const char *gamefile)
+{
+#if !defined(HAVE_FROTZ) || !HAVE_FROTZ
+    (void)gamefile;
+    output("\n%s\n\n", MSG_ZORK_OFF);
+    return 0;
+#else
+
+    struct stat st;
+    sigset_t sigmask, oldsigmask;
+    pid_t pid;
+    int status = 0;
+
+    if (ensure_dir(ZGAME_DIR, 0755) == -1) {
+        output("%s\n", MSG_FROTZ_GAMEDIR_ERROR);
+        return 0;
+    }
+
+    if (ensure_dir(FROTZ_DATA_DIR, 0700) == -1) {
+        output("%s\n", MSG_FROTZ_DATADIR_ERROR);
+        return 0;
+    }
+
+    /*
+     * SklaffKOM only supports the bundled, SklaffKOM-specific Frotz.
+     * Never fall back to a stock frotz from PATH.
+     */
+    if (stat(FROTZ_BIN, &st) == -1 || !S_ISREG(st.st_mode)) {
+        dlog(3, "run_frotz_game: bundled Frotz missing: %s",
+             FROTZ_BIN);
+        output("%s\n", MSG_FROTZ_NOT_FOUND);
+        return 0;
+    }
+
+    /*
+     * The current SklaffKOM Frotz build uses UTF-8 terminal I/O.
+     * Do not prevent other terminal encodings from trying it: ASCII-only
+     * games may work fine, but warn that non-ASCII input/output can differ.
+     */
+    if (!Utf8) {
+    LINE answer;
+
+    output("\n%s\n", MSG_FROTZ_UTF8_WARNING);
+    output(MSG_FROTZ_CONTINUE);
+    fflush(stdout);
+
+    input("", answer, 2, 0, 0, 0);
+    output("\n");
+}
+
+    {
+        char *const argv[] = {
+            (char *)FROTZ_BIN,
+            "-Z", "0",
+            "-R", FROTZ_DATA_DIR,
+            (char *)gamefile,
+            NULL
+        };
+
+        sigemptyset(&sigmask);
+        sigaddset(&sigmask, SIGNAL_NEW_TEXT);
+        sigaddset(&sigmask, SIGNAL_NEW_MSG);
+
+        sigprocmask(SIG_BLOCK, &sigmask, &oldsigmask);
+
+        signal(SIGNAL_NEW_TEXT, SIG_IGN);
+        signal(SIGNAL_NEW_MSG, SIG_IGN);
+
+        set_avail(Uid, 1);
+
+        pid = fork();
+
+        if (pid < 0) {
+            perror("fork");
+            set_avail(Uid, 0);
+            signal(SIGNAL_NEW_TEXT, baffo);
+            signal(SIGNAL_NEW_MSG, newmsg);
+            sigprocmask(SIG_SETMASK, &oldsigmask, NULL);
+            return 0;
+        }
+
+        if (pid == 0) {
+            sig_reset();
+            tty_reset();
+
+            execv(FROTZ_BIN, argv);
+
+            perror("execv");
+            _exit(127);
+        }
+
+        (void)waitpid(pid, &status, 0);
+    }
+
+    signal(SIGNAL_NEW_TEXT, baffo);
+    signal(SIGNAL_NEW_MSG, newmsg);
+    sigprocmask(SIG_SETMASK, &oldsigmask, NULL);
+
+    tty_raw();
+    output("\n");
+    set_avail(Uid, 0);
+
+    return 1;
+#endif
+}
+
+static size_t
+zgame_display_len(const char *s)
+{
+    const unsigned char *p = (const unsigned char *)s;
+    size_t len = 0;
+
+    while (*p) {
+        /*
+         * Count UTF-8 characters rather than bytes.
+         * Continuation bytes begin with binary 10xxxxxx.
+         */
+        if ((*p & 0xc0) != 0x80)
+            len++;
+
+        p++;
+    }
+
+    return len;
+}
+
+
+/*
+ * Sort the installed-game list by title.  strcasecmp() is sufficient
+ * for the mostly ASCII/UTF-8 titles used here and keeps ASCII titles
+ * case-insensitive.  Use the command as a stable tie-breaker.
+ */
+static int
+zgame_compare_title(const void *a, const void *b)
+{
+    const struct ZGAME_ENTRY *ga = a;
+    const struct ZGAME_ENTRY *gb = b;
+    int r;
+
+    r = strcasecmp(ga->title, gb->title);
+    if (r == 0)
+        r = strcasecmp(ga->command, gb->command);
+
+    return r;
+}
+
+
+/*
+ * Output one row in the adventure table.
+ *
+ * printf field widths count bytes, not displayed UTF-8 characters,
+ * so calculate the padding ourselves.
+ */
+static void
+zgame_output_row(const char *title, const char *command)
+{
+    size_t len;
+    int padding;
+
+    len = zgame_display_len(title);
+    padding = ZGAME_TITLE_COLUMN - (int)len;
+
+    if (padding < 2)
+        padding = 2;
+
+    output("%s%*s%s\n", title, padding, "", command);
+}
+
+/*
+ * cmd_adventure - list installed Z-machine games or start one
+ *
+ * Examples:
+ *
+ *   Äventyr
+ *   Äventyr zork 1
+ *   Äventyr stugan
+ *
+ * A game is available only when it exists both in ZGAMES_FILE
+ * and as a regular readable file in ZGAME_DIR.
+ */
+int
+cmd_adventure(char *args)
+{
+    FILE *fp;
+    struct ZGAME_ENTRY game;
+    struct ZGAME_ENTRY *games = NULL;
+    char query[ZGAME_COMMAND_LEN];
+    char gamefile[PATH_MAX];
+    char *p;
+    size_t count = 0;
+    size_t capacity = 0;
+    size_t i;
+
+#if !defined(HAVE_FROTZ) || !HAVE_FROTZ
+    output("\n%s\n\n", MSG_ZORK_OFF);
+    return 0;
+#endif
+
+    Change_msg = 1;
+    Change_prompt = 1;
+
+    fp = fopen(ZGAMES_FILE, "r");
+    if (fp == NULL) {
+        dlog(3, "cmd_adventure: cannot open %s: %s",
+             ZGAMES_FILE, strerror(errno));
+        output("\n%s\n\n", MSG_ADVENTURE_REGISTRY_ERROR);
+        return 0;
+    }
+
+    if (args == NULL)
+        args = "";
+
+    while (*args && isspace((unsigned char)*args))
+        args++;
+
+    /*
+     * No argument: collect all installed games, sort by title,
+     * then display them in the same friendly style as BBSLink.
+     */
+    if (*args == '\0') {
+        while (read_zgame_entry(fp, &game)) {
+            struct ZGAME_ENTRY *tmp;
+            size_t new_capacity;
+
+            if (!zgame_installed(&game,
+                                 gamefile, sizeof(gamefile)))
+                continue;
+
+            if (count == capacity) {
+                new_capacity = capacity ? capacity * 2 : 16;
+
+                tmp = realloc(games,
+                              new_capacity * sizeof(*games));
+                if (tmp == NULL) {
+                    free(games);
+                    fclose(fp);
+                    sys_error("cmd_adventure", 1, "realloc");
+                    return -1;
+                }
+
+                games = tmp;
+                capacity = new_capacity;
+            }
+
+            games[count++] = game;
+        }
+
+        fclose(fp);
+
+        output("\n%s\n\n", MSG_ADVENTURE_INTRO1);
+        output("%s\n\n", MSG_ADVENTURE_INTRO2);
+        output("%s\n\n", MSG_ADVENTURE_INTRO3);
+
+        if (count == 0) {
+            output("%s\n\n", MSG_ADVENTURE_NO_GAMES);
+            free(games);
+            return 0;
+        }
+
+        qsort(games, count, sizeof(*games),
+              zgame_compare_title);
+
+        zgame_output_row(MSG_ADVENTURE_TITLE,
+                         MSG_ADVENTURE_CODE);
+        zgame_output_row(MSG_ADVENTURE_TITLE_RULE,
+                         MSG_ADVENTURE_CODE_RULE);
+
+        for (i = 0; i < count; i++)
+            zgame_output_row(games[i].title,
+                             games[i].command);
+
+        free(games);
+        output("\n");
+        return 0;
+    }
+
+    /*
+     * Trim the requested command.
+     */
+    if (strlen(args) >= sizeof(query)) {
+        fclose(fp);
+        output("\n%s\n\n", MSG_ADVENTURE_UNKNOWN);
+        return 0;
+    }
+
+    strlcpy(query, args, sizeof(query));
+
+    p = zgame_trim(query);
+
+    if (p != query)
+        memmove(query, p, strlen(p) + 1);
+
+    /*
+     * Exact, case-insensitive match against the command field.
+     */
+    while (read_zgame_entry(fp, &game)) {
+        if (strcasecmp(query, game.command) != 0)
+            continue;
+
+        fclose(fp);
+
+        if (!zgame_installed(&game,
+                             gamefile, sizeof(gamefile))) {
+            output("\n" MSG_ADVENTURE_NOT_INSTALLED "\n\n",
+                   game.title);
+            return 0;
+        }
+
+        dlog(6,
+             "cmd_adventure: starting [%s] file=[%s]",
+             game.command, game.filename);
+
+        return run_frotz_game(gamefile);
+    }
+
+    fclose(fp);
+
+    output("\n" MSG_ADVENTURE_UNKNOWN_NAMED "\n\n",
+           query);
+    return 0;
+}
 
 /*
 * Implementation of Zork (and possibly other z-code games
 * Work in progress, only testing for now
 */
-
+#if defined(HAVE_FROTZ) && HAVE_FROTZ
 static int ensure_dir(const char *path, mode_t mode)
 {
     struct stat st;
@@ -7972,136 +9036,69 @@ static int ensure_dir(const char *path, mode_t mode)
     if (errno != ENOENT) return -1;
     return mkdir(path, mode);
 }
-
-static int file_exists_r(const char *path)
-{
-    return access(path, R_OK) == 0;
-}
-
-static int find_frotz(char *out, size_t outsz)
-{
-    /* Prefer pinned path */
-    if (access(FROTZ_BIN, X_OK) == 0) {
-        snprintf(out, outsz, "%s", FROTZ_BIN);
-        return 0;
-    }
-    /* Fallback to PATH using which (silent) */
-    FILE *pf = popen("which frotz 2>/dev/null", "r");
-    if (!pf) return -1;
-    char buf[PATH_MAX] = {0};
-    if (fgets(buf, sizeof buf, pf) == NULL) {
-        pclose(pf);
-        return -1;
-    }
-    pclose(pf);
-    /* strip trailing newline */
-    size_t n = strcspn(buf, "\r\n");
-    buf[n] = '\0';
-    if (buf[0] == '\0' || access(buf, X_OK) != 0) return -1;
-    snprintf(out, outsz, "%s", buf);
-    return 0;
-}
+#endif
 
 int
 cmd_zork(char *args)
 {
     char *p = args;
-    char gamefile[PATH_MAX], zdir[PATH_MAX], datadir[PATH_MAX];
-    char frotz_path[PATH_MAX];
-    const char *zname = NULL;
+    char adventure_cmd[16];
 
-    if (!ENABLE_ZORK) {
-        output("\n%s\n\n", MSG_ZORK_OFF);
-        return 0;
-    }
+#if !defined(HAVE_FROTZ) || !HAVE_FROTZ
+    output("\n%s\n\n", MSG_ZORK_OFF);
+    return 0;
+#endif
 
     Change_msg = 1;
     Change_prompt = 1;
 
-    /* No arguments => prompt */
-    if (!p) {
-        output(MSG_BADARG);
-        return 0;
-    }
+    if (!p)
+        p = "";
 
-    while (*p && isspace((unsigned char)*p)) p++;
+    while (*p && isspace((unsigned char)*p))
+        p++;
+
+    /*
+     * No argument: show the traditional Zork help/menu.
+     */
     if (*p == '\0') {
         output(MSG_BADARG);
         return 0;
     }
 
-    /* Accept “1”, “2”, or “3” (also tolerant of words like “zork 1”) */
-    if (*p == '1') zname = FROTZ_ZORK1;
-    else if (*p == '2') zname = FROTZ_ZORK2;
-    else if (*p == '3') zname = FROTZ_ZORK3;
-    else {
+    if (*p != '1' && *p != '2' && *p != '3') {
         output(MSG_NOARG);
         return 0;
     }
 
-    /* Build paths: /usr/local/sklaff/doors/frotz and .../data */
-    {
-        int r;
+    snprintf(adventure_cmd, sizeof(adventure_cmd),
+             "zork %c", *p);
 
-        r = snprintf(zdir, sizeof zdir, "%s", FROTZ_HOME);
-        if (r < 0 || (size_t)r >= sizeof zdir) {
-            output("Frotz home path is too long.\n");
-            return 0;
-        }
+    return cmd_adventure(adventure_cmd);
+}
 
-        r = snprintf(datadir, sizeof datadir, "%s/data", FROTZ_HOME);
-        if (r < 0 || (size_t)r >= sizeof datadir) {
-            output("Frotz data path is too long.\n");
-            return 0;
-        }
-    }
-
-    if (ensure_dir(zdir, 0755) == -1) {
-        output("Could not find or create Frotz home directory.\n");
-        return 0;
-    }
-
-    if (ensure_dir(datadir, 0700) == -1) {
-        output("Could not find or create Frotz save directory.\n");
-        return 0;
-    }
-
-    /* Verify chosen z-code file exists */
-    {
-        size_t need = strlen(zdir) + 1 + strlen(zname) + 1;
-        if (need > sizeof gamefile) {
-            output("Zork game path is too long.\n");
-            return 0;
-        }
-        int r = snprintf(gamefile, sizeof gamefile, "%s/%s", zdir, zname);
-        if (r < 0 || (size_t)r >= sizeof gamefile) {
-            output("Failed to build Zork game path.\n");
-            return 0;
-        }
-    }
-
-    if (!file_exists_r(gamefile)) {
-        output(MSG_NO_ZORK);
-        return 0;
-    }
-
-    /* Find frotz binary */
-    if (find_frotz(frotz_path, sizeof frotz_path) == -1) {
-        output("Frotz not found. Please install it or set FROTZ_BIN.\n");
-        return 0;
-    }
-
-    /* Prepare argv: frotz -Z 0 -R <datadir> <gamefile> */
-    char *const argv[] = {
-        frotz_path,
-        "-Z", "0",
-        "-R", (char *)datadir,
-        (char *)gamefile,
-        NULL
+/*
+ * launch_bbslink_client - run the bundled C client with BBSLink credentials
+ *
+ * SklaffKOM may be setuid to the sklaff service account. Normalize both
+ * real and effective IDs in the *child* before invoking any external helper,
+ * so the client can read a private, service-account-owned credentials file.
+ * Never use a shell or interpolate a door code into a command string.
+ */
+#if defined(ENABLE_BBSLINK) && ENABLE_BBSLINK
+static int
+launch_bbslink_client(const char *door, const char *user_number)
+{
+    sigset_t sigmask, oldsigmask;
+    pid_t pid;
+    int status = 0;
+    const char *const argv_plain[] = {
+        BBSLINK_CLIENT_BIN, door, user_number, NULL
+    };
+    const char *const argv_utf8[] = {
+        CP437_BIN, BBSLINK_CLIENT_BIN, door, user_number, NULL
     };
 
-    /* Full signal handling and terminal reset block */
-    sigset_t sigmask, oldsigmask;
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGNAL_NEW_TEXT);
     sigaddset(&sigmask, SIGNAL_NEW_MSG);
@@ -8110,54 +9107,57 @@ cmd_zork(char *args)
     signal(SIGNAL_NEW_MSG, SIG_IGN);
     set_avail(Uid, 1);
 
-    pid_t pid = fork();
+    pid = fork();
     if (pid < 0) {
         perror("fork");
-        set_avail(Uid, 0);
-        sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
-        return 0;
     } else if (pid == 0) {
-        /* child */
+        gid_t egid = getegid();
+        uid_t euid = geteuid();
         sig_reset();
         tty_reset();
-        execv(frotz_path, argv);
-        perror("execv");
+
+        /* The BBSLink client explicitly refuses mismatched process IDs. */
+        if (setregid(egid, egid) != 0 || setreuid(euid, euid) != 0) {
+            perror("bbslink: normalize process credentials");
+            _exit(126);
+        }
+
+        if (Utf8)
+            execv(CP437_BIN, (char *const *)argv_utf8);
+        else
+            execv(BBSLINK_CLIENT_BIN, (char *const *)argv_plain);
+        perror("bbslink: exec");
         _exit(127);
+    } else {
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
+            ;
     }
 
-    /* parent */
-    int status = 0;
-    (void)waitpid(pid, &status, 0);
     signal(SIGNAL_NEW_TEXT, baffo);
     signal(SIGNAL_NEW_MSG, newmsg);
-    sigprocmask(SIG_UNBLOCK, &oldsigmask, NULL);
+    sigprocmask(SIG_SETMASK, &oldsigmask, NULL);
     tty_raw();
     output("\n");
     set_avail(Uid, 0);
-    return 1;
+    return pid < 0 ? -1 : 0;
 }
+#endif
 
 /*
  * cmd_bbslink - show available BBSLink games or start a game
- * args: game code (optional)
- * ret: ok (0) or error (-1)
  *
- * Without arguments, displays information about BBSLink and all
- * configured games found in BBSLINK_INTRO.
- *
- * With a game code argument, verifies that the game exists in
- * BBSLINK_INTRO and launches DEFAULT_BBSLINK_PATH/bbslink.py.
- *
- * If DEFAULT_BBSLINK_PATH is empty, BBSLink is considered disabled.
- *
- * 2026-05-30 PL
+ * The bundled bbslink_client is built by --enable-bbslink.  The game list
+ * remains in SklaffKOM; the client performs only network authentication
+ * and the Telnet connection.  Incoming FTN/news/mail are unrelated.
  */
 int
 cmd_bbslink(char *args)
 {
     char uid_buf[16];
     char game_code[64];
-    char script_path[256];
+#if defined(ENABLE_BBSLINK) && ENABLE_BBSLINK
+    struct stat client_st;
+#endif
 
     if (!ENABLE_BBSLINK) {
         output("\n" MSG_BBSLINK_OFF "\n\n");
@@ -8167,16 +9167,9 @@ cmd_bbslink(char *args)
     Change_msg = 1;
     Change_prompt = 1;
 
-    if (DEFAULT_BBSLINK_PATH[0] == '\0') {
-        output("\n" MSG_BBSLINK_OFF "\n\n");
-        return 0;
-    }
-
     snprintf(uid_buf, sizeof(uid_buf), "%d", Uid);
-
     if (!args)
         args = "";
-
     while (*args == ' ')
         args++;
 
@@ -8184,34 +9177,23 @@ cmd_bbslink(char *args)
         show_bbslink_games();
         return 0;
     }
-
     if (!find_bbslink_game(args, game_code, sizeof(game_code))) {
         output("\nOkänt BBSLink-spel: %s\n\n", args);
         return 0;
     }
 
-    snprintf(script_path, sizeof(script_path), "%s/bbslink.py", DEFAULT_BBSLINK_PATH);
-
-    if (Utf8) {
-        const char *cmd[] = {
-            CP437_WRAPPER,
-            script_path,
-            game_code,
-            uid_buf,
-            NULL
-        };
-        return run_external_cmd_args(cmd, 0);
-    } else {
-        const char *cmd[] = {
-            script_path,
-            game_code,
-            uid_buf,
-            NULL
-        };
-        return run_external_cmd_args(cmd, 0);
+#if defined(ENABLE_BBSLINK) && ENABLE_BBSLINK
+    /* Use stat(), not access(): this BBS can run setuid sklaff. */
+    if (stat(BBSLINK_CLIENT_BIN, &client_st) != 0 ||
+        !S_ISREG(client_st.st_mode)) {
+        output("\n" MSG_BBSLINK_OFF "\n\n");
+        return 0;
     }
+    return launch_bbslink_client(game_code, uid_buf);
+#else
+    return 0;
+#endif
 }
-
 /* 
  * cmd_footnote - allows adding a "footnote" to a text
  * args: textnumber (args)
@@ -9215,7 +10197,7 @@ cmd_wall(char *args)
     }
 
 
-    if (IBOL_LOGOUT_COUNT <= 0) {
+    if (!ENABLE_IBOL || IBOL_LOGOUT_COUNT <= 0) {
         output("\n%s\n\n", MSG_IBOL_DISABLED);
         return 0;
     }

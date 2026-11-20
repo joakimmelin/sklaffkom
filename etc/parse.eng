@@ -16,6 +16,7 @@
 # Y - Synonyms and aliases
 #
 Add permissions:cmd_add_rights:Add permissions for user in current conference:C
+Adventure:cmd_adventure:Play adventure games:X
 (Display article) again:cmd_display_last:Redisplay last article read:T
 (Define) alias:cmd_alias:Defines an alias for a command:P
 (Read) all (texts):cmd_readall:Displays all your unread articles:T

@@ -30,6 +30,8 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <glob.h>
+#include <sys/wait.h>
 #include <pwd.h>
 #include <signal.h>
 #include <string.h>
@@ -810,81 +812,147 @@ int
 grep(int conf, char *search)
 {
     LONG_LINE dirname, lineread, tsear, greparg;
-    char cmdline[512];
     LINE cwd;
-    FILE *pipe;
-    int found;
-    long lasttext, curtext;
+    int found = 0, failed = 0;
+    long lasttext = last_text(conf, Uid), curtext;
 
-    lasttext = last_text(conf, Uid);
-
-    if (conf) {
+    if (conf)
         snprintf(dirname, sizeof(dirname), "%s/%d", SKLAFF_DB, conf);
-    } else {
+    else
         strlcpy(dirname, Mbox, sizeof(dirname));
+
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("getcwd");
+        return -1;
     }
-    if (getcwd(cwd, LINE_LEN) == NULL) {
-    perror("getcwd");  /* modified on 2025-07-25, PL */
-    return -1;  /* modified on 2025-07-25, PL */
-    }
-    found = 0;
     if (chdir(dirname) != 0) {
-    perror("chdir (to dirname)");  /* modified on 2025-07-25, PL */
-    return -1;  /* modified on 2025-07-25, PL */
+        perror("chdir (to dirname)");
+        return -1;
     }
 
-    /* All dangerous characters must be taken out of the search string before
-     * passing it on to the shell. */
-
-    strcpy(tsear, search);
+    /* Preserve the historical search-string filtering. */
+    strlcpy(tsear, search, sizeof(tsear));
     strip_string(tsear, " {}]|[:\\");
 
-    /* I hope the space, pipe and backslash are ok. */
+    /* Search 100 texts at a time, as before, allowing interruption. */
+    for (curtext = 0; found < 2 && curtext <= lasttext; curtext += 100) {
+        glob_t paths = {0};
+        int gr, fd[2], status;
+        pid_t child;
+        FILE *stream;
+        char *argv[112];
+        char optionbuf[] = GREP_ARGS;
+        char *option, *saveptr = NULL;
+        size_t i, argc = 0;
 
-
-    /* Search 100 texts at a time. This allows user to break search after each
-     * batch, instead of having to wait for ALL texts.  / OR 2000-01-14 */
-
-    curtext = 0;
-
-    strcpy(greparg, "[1-9] [1-9][0-9]");        /* Text 1-99 */
-
-    while (found < 2 && curtext <= lasttext) {
-        snprintf(cmdline, sizeof(cmdline), "%s %s \'%s\' %s 2>/dev/null",
-            SKLAFFGREP, GREPOPT, tsear, greparg);
-
-        if ((pipe = (FILE *) popen(cmdline, "r")) == NULL) {
-            output("%s\n\n", MSG_NOGREP);
-            return -1;
+        /* Expand exactly the same numbered filenames as the old shell. */
+        if (curtext == 0) {
+            gr = glob("[1-9]", 0, NULL, &paths);
+            if (gr == 0 || gr == GLOB_NOMATCH)
+                gr = glob("[1-9][0-9]", gr == 0 ? GLOB_APPEND : 0,
+                          NULL, &paths);
         } else {
-            while (!feof(pipe)) {
-                if (fgets(lineread, 80, pipe) == NULL) {	/* error handling */
-    		break;  					/* modified on 2025-07-25, PL */
-	}
-                  if (!feof(pipe)) {
-                    if (!found) {
-                        output("\n");
-                    }
-                    found = 1;
-                    if (output("%s", lineread)) {
-                        found = 2;
-                        break;
-                    }
+            snprintf(greparg, sizeof(greparg), "%ld[0-9][0-9]",
+                     curtext / 100);
+            gr = glob(greparg, 0, NULL, &paths);
+        }
+        if (gr != 0 && gr != GLOB_NOMATCH) {
+            globfree(&paths);
+            failed = 1;
+            break;
+        }
+        if (paths.gl_pathc == 0) {
+            globfree(&paths);
+            continue;
+        }
+
+        argv[argc++] = (char *)GREP_BIN;
+        for (option = strtok_r(optionbuf, " \t", &saveptr);
+             option != NULL;
+             option = strtok_r(NULL, " \t", &saveptr)) {
+            if (argc + paths.gl_pathc + 4 >= sizeof(argv) / sizeof(argv[0])) {
+                failed = 1;
+                break;
+            }
+            argv[argc++] = option;
+        }
+        if (failed) {
+            globfree(&paths);
+            break;
+        }
+        argv[argc++] = "-e";
+        argv[argc++] = tsear;
+        argv[argc++] = "--";
+        for (i = 0; i < paths.gl_pathc; i++)
+            argv[argc++] = paths.gl_pathv[i];
+        argv[argc] = NULL;
+
+        if (pipe(fd) != 0) {
+            globfree(&paths);
+            failed = 1;
+            break;
+        }
+        child = fork();
+        if (child == 0) {
+            uid_t euid = geteuid();
+            close(fd[0]);
+            if (dup2(fd[1], STDOUT_FILENO) == -1)
+                _exit(127);
+            close(fd[1]);
+            /* Keep grep's diagnostics hidden, as in the old command. */
+            {
+                int devnull = open("/dev/null", O_WRONLY);
+                if (devnull >= 0) {
+                    (void)dup2(devnull, STDERR_FILENO);
+                    close(devnull);
                 }
             }
-            pclose(pipe);
+            /* Avoid losing SklaffKOM's setuid access across exec(). */
+            if (setreuid(euid, euid) != 0)
+                _exit(126);
+            execv(GREP_BIN, argv);
+            _exit(127);
         }
-        curtext += 100;
-        /* Text curtext - curtext+99 */
-        snprintf(greparg, sizeof(greparg), "%ld[0-9][0-9]", (long) curtext / 100);
+        close(fd[1]);
+        if (child < 0) {
+            close(fd[0]);
+            globfree(&paths);
+            failed = 1;
+            break;
+        }
+        stream = fdopen(fd[0], "r");
+        if (stream) {
+            while (fgets(lineread, 80, stream) != NULL) {
+                if (!found)
+                    output("\n");
+                found = 1;
+                if (output("%s", lineread)) {
+                    found = 2;
+                    break;
+                }
+            }
+            fclose(stream);
+        } else {
+            close(fd[0]);
+            failed = 1;
+        }
+        while (waitpid(child, &status, 0) == -1 && errno == EINTR)
+            ;
+        globfree(&paths);
+        if (failed)
+            break;
     }
 
     if (chdir(cwd) != 0) {
-    perror("chdir (restore cwd)");  /* compiler silencer on linux, modified on 2025-07-25, PL */
-    return -1;  /* modified on 2025-07-25, PL */
+        perror("chdir (restore cwd)");
+        return -1;
     }
     tty_raw();
     sig_setup();
+    if (failed) {
+        output("%s\n\n", MSG_NOGREP);
+        return -1;
+    }
     return found;
 }
 
@@ -958,8 +1026,10 @@ exec_logout(int tmp)
         if (tmp == 0 && !restart && Ibol_logout) {
             clear_screen();
 
-            if (display_ibol_entries(IBOL_LOGOUT_COUNT) >= 0)
-                (void)prompt_ibol_oneliner();
+            if (display_ibol_entries(IBOL_LOGOUT_COUNT) >= 0) {
+                if (prompt_ibol_oneliner() == 1)
+                    sleep(2);
+            }
         }
 #endif
 

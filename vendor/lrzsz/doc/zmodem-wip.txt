@@ -1,0 +1,1549 @@
+ZMODEM — the current state of things. September 2026.
+===========================================================================
+
+This document is a rewrite of the original ZMODEM specification. The
+goal was to tighten security and improve interoperability. Where the
+original documentation left behaviour open, it is now pinned down, and
+features that never interoperated are explicitly deprecated.
+
+No new features have been introduced.
+
+# 1. Protocol overview
+
+ZMODEM is a unidirectional file transfer protocol: the sender sends files,
+the receiver receives files, and the back channel is only used to transfer
+protocol information, never file data.
+
+A ZMODEM session typically has three phases:
+
+- synchronization
+- transfer of one or more files
+- finalizing
+
+The first two are the essential ones; the third is trivial.
+
+The byte stream is subject to ZDLE encoding (section 2.1.1), which makes
+it possible to use ZMODEM over many types of networks unable to deal
+with certain characters or that (ab)use them for other purposes.
+
+All frames (think of them as messages) transferred over a ZMODEM session
+are CRC protected.
+
+ZMODEM allows the sender to define an attention sequence, which the
+receiver sends before its error responses (in practice: before the
+ZRPOS of error recovery, see section 5). This is an optional mechanism for
+interrupt-based error recovery on systems that cannot sample the reverse
+channel. It is rarely needed on modern systems. See the error recovery
+section for details.
+
+
+## 1.1 Example sessions
+
+The following three example sessions — a complete transfer, a minimal
+one, and one with error recovery — illustrate the message flow. They
+are illustrative, not normative; the details are described in the
+Wire format, Stream control, Frame types, and Error recovery sections.
+
+Shown from the sender's perspective:
+
+    S-->R ZRQINIT [until the sender receives a valid ZRINIT]
+    S<--R ZRINIT
+    [synchronization ends]
+
+    S-->R ZFILE
+    S-->R [data subpacket with file metadata]
+    S<--R ZRPOS 0
+    S-->R ZDATA 0
+    S-->R [1024 byte data subpacket with ZCRCW]
+    S<--R ZACK 1024
+    S-->R [1024 byte data subpacket with ZCRCG]
+    S-->R [1024 byte data subpacket with ZCRCG]
+    S-->R [1024 byte data subpacket with ZCRCQ] << ZCRCQ!
+    S-->R [1024 byte data subpacket with ZCRCG]
+    S<--R ZACK 4096 [R's answer to the ZCRCQ; the ZCRCG sent after it
+                     had not yet reached R]
+    S-->R [1024 byte data subpacket with ZCRCG]
+    S-->R [1024 byte data subpacket with ZCRCE]
+    S-->R ZEOF 7168
+    S<--R ZRINIT
+    S-->R ZFIN
+    S<--R ZFIN
+    S-->R OO ("Over and Out" — cosmetic for the sender)
+
+Often things are simpler:
+
+    S-->R ZRQINIT [until the sender receives a valid ZRINIT]
+    S<--R ZRINIT
+    S-->R ZFILE
+    S-->R [data subpacket with file metadata]
+    S<--R ZRPOS 0
+    S-->R ZDATA 0
+    S-->R [1024 byte data subpacket with ZCRCG]
+    [repeat ...]
+    S-->R [1024 byte data subpacket with ZCRCE]
+    S-->R ZEOF some number
+    S<--R ZRINIT
+    S-->R ZFIN
+    S<--R ZFIN
+    S-->R OO ("Over and Out" — cosmetic for the sender)
+
+And sometimes things go wrong:
+
+    S-->R ZDATA 4096
+    S-->R [1024 byte data subpacket with ZCRCG]
+    S-->R [1024 byte data subpacket with ZCRCG]  << this one has a CRC error
+    S-->R [1024 byte data subpacket with ZCRCG]
+    S<--R ZRPOS 5120  [receiver: "resend from here"]
+    [sender discards the subpackets it already sent after 5120 - but if it
+     cannot do that, for example because the data already is in the network,
+     the receiver will have to do it]
+    S-->R ZDATA 5120
+    S-->R [1024 byte data subpacket with ZCRCW]
+                     << first block after error: wait
+    S<--R ZACK 6144
+    S-->R [1024 byte data subpacket with ZCRCG]
+    [streaming resumes ...]
+
+As you can see, there is a kind of stream control involved. The "fire as
+much as you can and hope for the best" approach yields the best performance
+on perfect connections. It is a recipe for disaster on slow, fat and buggy
+lines (that is: high ping times, high bandwidth, high error rate).
+
+The details of each frame type are described in section 4. The error
+recovery flow is described in section 5.
+
+
+# 2. Wire format
+
+## 2.1 ZDLE encoding and decoding
+
+ZMODEM escapes certain control characters by sending a ZDLE character
+followed by the character to send, XOR'd with 0x40.
+
+ZDLE is otherwise known as CAN or ^X (0x18). This value was chosen so that
+a sequence of 5 consecutive CAN characters can serve as a session abort
+signal, compatible with YMODEM session abort.
+
+ZMODEM escapes ZDLE (0x18), 0x10, 0x90, 0x11, 0x91, 0x13, and 0x93.
+0x0d and 0x8d are also escaped if they are preceded by 0x40 or 0xC0,
+to protect the Telenet command escape CR-@-CR. (Not telnet, but Telenet.
+See https://archive.org/download/howtouse-telenet/howtouse-telenet.pdf.)
+
+All ZMODEM implementations MUST, either by default or by an option, be
+able to escape and un-escape the full list of characters listed in the
+paragraph above.
+
+If the ESCCTL (ZRINIT) or TESCCTL (ZSINIT) flag is set, all bytes < 0x20
+(and their 0x80-0x9f high-bit forms) are escaped via ZDLE encoding, not
+just the default minimal set. 0x7f is not escaped by common
+implementations, but the receiver must be able to decode its escape
+sequence should a peer send it.
+
+A common extension or optimization is to not escape 0x10, 0x90, 0x0d
+and 0x8d (this is often called turbo escaping).
+Another common extension is to escape additional characters, for example
+the ssh escape char.
+
+### 2.1.1 ZDLE decoding
+
+The receiver decodes any sequence of ZDLE followed by a byte with bit 6
+set and bit 5 reset to the original value by inverting bit 6 (XOR by
+0x40).
+
+The receiver also recognizes escapes for 0x7f and 0xff should these
+characters need to be escaped.
+
+The receiver ignores 0x11, 0x91, 0x13, and 0x93 characters it receives
+in the raw (unescaped) data stream. These are XON (0x11) and XOFF (0x13)
+and their high-bit variants — flow control characters that may be
+generated by the transport. This does not mean that the receiver ignores
+the ZDLE-escaped versions of these characters.
+
+The same rule applies after a ZDLE character: 0x11, 0x91, 0x13, and 0x93
+are ignored there, too, in every mode.
+
+### 2.1.2 The ESC8/TESC8 flags are deprecated
+
+The ESC8 (ZRINIT ZF0) and TESC8 (ZSINIT ZF0) flags (both 0x80) were
+never publicly documented. Two interpretations and implementations exist
+which are mutually incompatible on the wire, when one side turns on the
+ESC8 feature. The flags are therefore deprecated:
+
+- A receiver MUST NOT set ESC8 (ZRINIT), and a sender MUST NOT set
+  TESC8 (ZSINIT).
+- The reader of each flag MUST ignore it: a sender ignores ESC8 in
+  a received ZRINIT, a receiver ignores TESC8 in a received ZSINIT.
+  Neither side may derive 8th-bit escaping behavior from the flag
+  bits, because the flag is ambiguous between the two dialects.
+- Both sides MUST still decode ZDLE-escaped bytes with bit 7 set
+  (the classic escaped forms); such pairs can occur in traffic from
+  old implementations, and decoding them is unambiguous. This
+  applies to header decoding as well.
+
+Note that the plain escaping of section 2.1.1 is not affected: ESCCTL
+and TESCCTL share their meaning across all known implementations and
+remain fully supported (see section 10.6 and 10.9).
+
+Also note that neither interpretation was ever widely implemented.
+
+## 2.2 Headers
+
+All ZMODEM frames begin with a header which may be sent in hex or in one
+of two binary forms.
+
+A header has a type byte that selects the header format (A, B, or C),
+followed by the frame's type byte and four position/flag bytes, in this
+order:
+
+    F3/P0 F2/P1 F1/P2 F0/P3
+
+The flag and position bytes are interleaved: the flag bytes are called
+ZF0..ZF3, the position bytes ZP0..ZP3. ZF0/ZP0 is the least significant
+byte, ZF3/ZP3 the most significant.
+
+### Hex headers: ZHEX ('B' type header)
+
+A hex header begins with the sequence ZPAD, ZPAD, ZDLE, ZHEX. Compared
+to the binary headers it has an extra ZPAD character which allows the
+receiving program to detect an asynchronous header (indicating an error
+condition) and then get the rest of the header with a non-error-specific
+routine.
+
+The type byte, four position/flag bytes, and the 16-bit CRC follow, and
+are sent in hex using the character set 0123456789abcdef (upper-case
+hex digits are not allowed). Each byte is transferred as two hex
+characters.
+
+A CR and LF pair follows. Some programs only send LF. The LF has
+sometimes been sent as 0x8a (LF with the highest bit set).
+Implementation MUST sent CR and LF, and MUST NOT depend on incoming
+CR LF.
+
+The CRC is a 16-bit CRC, calculated over the type byte and the four
+position/flag bytes.
+
+All hex headers except ZACK and ZFIN are followed by an XON character.
+XON is omitted after ZACK to protect flow control in streaming
+situations, and after ZFIN to allow clean session cleanup.
+
+A hex header therefore looks like this:
+
+    * * ZDLE B TYPE F3/P0 F2/P1 F1/P2 F0/P3 CRC-1 CRC-2 CR LF XON
+    * * ZDLE B 00   01    02    03    04    fe    dc    \r \n XON
+
+Hex headers exist because the receiver sends headers back to the sender,
+and the reverse channel may strip, mangle, or interpret binary bytes.
+Hex encoding ensures the header payload consists only of hex digits
+(0–9, a–f), which are printable ASCII. The framing characters (ZDLE,
+CR, LF, XON) are control characters but are widely handled correctly
+by terminal and network systems. The sender can also use hex headers
+when not sending binary data subpackets, for the same reason.
+
+In theory, data subpackets with a 16-bit CRC can follow a ZHEX frame
+sent from the sender to the receiver. This should not be done. The
+16-bit CRC is adequate for headers but weak for data packets.
+
+### Binary headers with 16-bit CRC: ZBIN ('A' type header)
+
+A binary header is sent by the sending program to the receiving program,
+and begins with the sequence ZPAD, ZDLE, ZBIN. They are followed by:
+
+- the frame type byte (ZDLE encoded).
+- four position/flag bytes (ZDLE encoded).
+- two bytes of CRC of the frame type and position/flag bytes.
+  The CRC is calculated over the type byte and the four position/flag
+  bytes (in their unencoded state).
+
+Zero or more binary data subpackets with 16-bit CRC may follow (but see
+section 2.4 for when sending data with CRC-16 is allowed).
+
+A ZBIN header therefore looks like this:
+
+    * ZDLE A TYPE F3/P0 F2/P1 F1/P2 F0/P3 CRC-1 CRC-2
+
+Some old advice suggests always using ZBIN because it needs less space
+than ZHEX. This MUST NOT be done. The CRC-16 polynomial is weak — very
+weak compared to CRC-32, and weak compared to better CRC-16 polynomials.
+This will rarely matter over error-free channels, but it will matter as
+soon as data is sent over faulty lines.
+
+### Binary headers with 32-bit CRC: ZBIN32 ('C' type header)
+
+A ZBIN32 header MUST ONLY be sent after a ZRINIT frame with the CANFC32
+bit set has been received. This negotiation is required because a
+receiver that does not understand ZBIN32 would interpret the 4-byte CRC
+as a 2-byte CRC plus two data bytes, corrupting the frame parsing and
+desynchronizing the protocol stream.
+
+A binary header with CRC32 begins with the sequence ZPAD, ZDLE, ZBIN32.
+They are followed by:
+
+- the frame type byte (ZDLE encoded).
+- four position/flag bytes (ZDLE encoded).
+- four bytes of CRC of the frame type and position/flag bytes.
+  The CRC is calculated over the type byte and the four position/flag
+  bytes (in their unencoded state).
+
+Zero or more binary data subpackets with 32-bit CRC may follow.
+
+A ZBIN32 header therefore looks like this:
+
+    * ZDLE C TYPE F3/P0 F2/P1 F1/P2 F0/P3 CRC-1 CRC-2 CRC-3 CRC-4
+
+### Unknown flags
+
+The flags bytes ZF0..ZF3 of all frames are extension points: every flag
+in them was introduced at some point in ZMODEM's history, and several
+were never implemented anywhere. Therefore:
+
+- A sender MUST send all unused/unknown flag bits as 0.
+- A receiver MUST ignore all flag bits it does not know, and SHOULD
+  ignore flag bits it knows but does not support (unless the flag's
+  documentation says otherwise).
+
+This applies to the position bytes ZP0..ZP3 as well, except where a
+frame documents a specific meaning for them.
+
+## 2.3 Data subpackets
+
+A data subpacket is a stream of bytes, followed by a frameend byte and a
+CRC. The data subpacket is ZDLE encoded. Variable-length subpackets are
+used instead of fixed-size blocks — this avoids padding overhead and
+eliminates the block-number limitations of XMODEM-style protocols.
+
+A data subpacket always uses the CRC type (16- or 32-bit) of the header
+frame it follows (see section 2.4).
+
+### Subpacket sizes
+
+The original ZMODEM documentation specifies a maximum data subpacket size
+of 1024 bytes, with recommended sizes of 256 bytes below 2400 bps, 512
+bytes at 2400 bps, and 1024 above 4800 bps or on relatively error-free
+links.
+
+1024 bytes remains the safest choice: all ZMODEM implementations support
+it, and some only support 1024. Attempts to use larger subpackets with
+these implementations will fail.
+
+Larger subpacket sizes (4096, 8192 bytes) are common extensions
+that reduce per-subpacket overhead. They are widely used on modern
+implementations (lrzsz, sexyz, and others). lrzsz uses 1024 bytes by
+default; the user can select 4096 (`-4, --try-4k`) or 8192
+(`-8, --try-8k`) if the receiver supports it.
+
+The receiver may specify a segment length in the ZRINIT frame (ZP0/ZP1,
+little-endian); 0 means unlimited (see section 3). If a segment length
+was specified, the subpacket size MUST NOT exceed it.
+
+A larger subpacket size reduces per-subpacket overhead (CRC, frameend,
+ZDLE escaping) but increases the amount of data that must be
+retransmitted on error. On error-free connections, larger subpackets
+improve throughput; on noisy connections, smaller subpackets reduce
+retransmission cost. Note the flip side (see section 3, "Subpacket
+loss undetectability"): the smaller the subpacket, the likelier that a
+silently dropped contiguous run of bytes covers a whole subpacket
+including frameend and CRC, which is a damage no checksum can detect
+and that only non-streaming mode fully protects against.
+
+### Frameend
+
+The frameend byte terminates a data subpacket and may also end a frame.
+There are four different frameend values, which control streaming:
+
+- ZCRCG: the sender does not expect a response and continues to stream.
+  If the receiver detects an error, it sends the attention sequence
+  before the ZRPOS. 'G' like 'go go go'.
+
+- ZCRCW: the sender expects a response before it sends the next frame.
+  'W' like 'wait'.
+
+- ZCRCQ: the sender expects a response but continues to stream.
+  'Q' like 'Query'.
+
+- ZCRCE: the sender does not expect a response, and the stream ends.
+  This is sent when the sender detected end of file within the data
+  subpacket. 'E' like 'end'.
+
+  The final subpacket may also be a ZCRCW instead (the frame then ends
+  and the sender waits for the ZACK); this is a sender's choice, and
+  some implementations use it to make the receiver's end-of-file
+  processing synchronous.
+
+The general logic is:
+
+- if the receiver detects an error (CRC, format, unexpected frame), it
+  sends the attention sequence (if any) and a ZRPOS frame with the last
+  known good position.
+- otherwise it sends a ZACK with the last known position, if and only if
+  the sender expects an answer (ZCRCW or ZCRCQ).
+
+## 2.4 CRC
+
+### CRC implementation details
+
+For CRC-16, the CCITT polynomial 0x1021 is used.
+For CRC-32, the 0xEDB88320 (reversed) polynomial is used.
+Both are used with standard init/finalize: CRC-16 init 0, CRC-32 init
+0xFFFFFFFF, invert the result.
+
+The CRCs cover:
+- the data bytes and the frameend byte in data subpackets.
+- the type byte and the position/flag bytes in headers.
+
+### CRC policy
+
+The following rules apply:
+
+- You MUST implement CRC-16 for hex headers. There is no way around it,
+  and the CCITT-1021 polynomial is adequate for that purpose.
+- You MUST be able to handle incoming CRC-16 binary headers.
+- You MUST implement CRC-32.
+- A receiver MUST advertise CANFC32 in its ZRINIT frames (section 4).
+- You MAY reject file transfer with CRC-16.
+- You MAY send CRC-16 binary headers when NOT sending data subpackets.
+- You MUST send CRC-32 binary headers when sending data subpackets
+  over a connection where the receiver advertised CANFC32; without
+  CANFC32 you MUST use CRC-16 (see section 2.2).
+
+The reason for this is that the CCITT CRC-16 polynomial is weak even for
+a 16-bit CRC. It is adequate for headers (which are short and sent
+rarely), but for data subpackets (which are large and numerous), the
+collision probability accumulates: after ~1000 blocks with random
+errors, there is a ~1.5% chance of at least one undetected corruption.
+CRC-32 reduces this to negligible levels even for terabyte-scale
+transfers.
+
+The ZMODEM CRC-32 polynomial is relatively strong compared to other
+CRC-32 polynomials. There are better ones, but it is good enough.
+
+
+# 3. Stream control
+
+The sender controls the stream with the frameend bytes (see section
+2.3). The three streaming modes below can be combined (see Mixed modes).
+
+## Segmented streaming
+
+Segmented streaming was originally introduced to support receivers unable
+to do overlapping serial and disk I/O (rarely a problem today). In this
+mode the sender sends a ZCRCW subpacket after approximately the segment
+length, and then waits for a status update from the receiver.
+
+Traditionally, Omen software sz and lsz default to a 16 KB segment
+length.
+
+The receiver can specify a segment length in the ZRINIT frame bytes ZP0
+and ZP1 (little-endian). The range of possible values is 0 to 65535
+bytes, where 0 means unlimited.
+
+Segmented streaming is the safe approach for faulty lines.
+
+## Window streaming
+
+In this mode the sender uses ZCRCQ data subpackets to trigger ZACK
+responses from the receiver, in which the receiver reports its current
+position. The sender typically triggers a ZCRCQ when the window size —
+the distance between the sender's current position and the last reported
+receiver position — exceeds some limit. The sender continues streaming
+while waiting for the ZACK.
+
+Some implementations use an unlimited window. This is fine on error-free
+lines but not recommended if the line generates errors.
+
+The entire file can be used as the window. This simplifies buffer
+management and avoids the window-overrun failure modes that affect
+fixed-window protocols.
+
+## Non-streaming mode
+
+In this mode the sender waits (ZCRCW) for a response after every
+subpacket. This can be slow, especially over high-latency connections,
+but it is the safest approach when the connection is really bad.
+
+## Subpacket loss undetectability (why non-streaming exists)
+
+In both streaming modes (segmented streaming and window streaming, at
+any segment length or window size) and in plain streaming without
+sync points at all, the loss of an entire subpacket together with its
+frameend and CRC is undetectable:
+- every surviving subpacket still carries a valid CRC (the CRC is
+  position independent),
+- the position is only anchored at the ZDATA header,
+- and the receiver writes the following subpackets at its current
+  file offset.
+The transferred file is then silently corrupted.
+
+This is a protocol-inherent blind spot, not an implementation bug.
+Senders can manage it in one of two ways:
+
+- Size the subpackets so that the transport's plausible loss window (the
+  longest continuous span it can silently remove) is smaller than a
+  subpacket: every loss then damages at least one CRC and is detected
+  and healed as usual.
+  Note:
+  - on transports that always retransmit lost packets on layers below the
+    byte stream (TCP, ISDN, X.25), no loss window exists and any subpacket
+    size is safe.
+  - on transports that only corrupt individual bytes (noise on modem or
+    serial lines), the loss window is zero.
+  - resync points already built into the modes mentioned above (a ZCRCW at
+    the end of a segment, a ZACK inside a window) shrink but do not close
+    this window: a loss between two sync points still swallows a whole
+    subpacket.
+- If the loss window cannot be bounded with any confidence, use
+  non-streaming mode (ZCRCW after every data subpacket). In this mode
+  only one subpacket is in flight, a loss will be detected, and the
+  protocol resync retransmits exactly the lost subpacket. This recovery
+  (see section 5) is immune to losses of any size, at the cost of one
+  round trip per subpacket.
+
+## Mixed modes
+
+Segment length of 32 KB with a window of 4 KB? Why not. The modes can be
+combined as needed.
+
+
+# 4. Frame types
+
+Frame types are grouped by direction. Constants are shown next to each
+flag/option.
+
+## Sender to receiver (S-->R)
+
+### ZRQINIT (S-->R)
+
+Sent by the sender to request a ZRINIT from the receiver. The sender may
+repeat ZRQINIT if no response is received.
+
+ZF0 has one known flag bit: ZCOMMAND (0x01), which indicated that the
+sender wanted to send a command. This feature is purely historical and
+MUST NOT be implemented.
+
+### ZSINIT (S-->R)
+
+With this frame the sender sends flags to the receiver, followed by a
+data subpacket with ZCRCW.
+
+Flags (ZF0):
+- TESCCTL (0x40): the sender expects control chars to be escaped.
+- TESC8   (0x80): the sender expects the 8th bit to be escaped.
+  (TESC8 is DEPRECATED: see section 2.1.2.)
+
+The ESCCTL mode must be activated by the receiver before reading
+the data subpacket.
+
+The data subpacket contains the null-terminated attention sequence,
+limited to 32 bytes including the final null.
+
+The receiver must answer with ZACK and 0 in the position/flag bytes, or
+ZNAK if the ZSINIT frame was garbled. A garbled attention-sequence
+subpacket is answered with ZNAK, too: the receiver re-enables the
+previous escape settings and awaits a fresh ZSINIT.
+
+Note: the resetting of the escape setting is important. The sender
+might retry the ZSINIT with a different escape setting.
+
+### ZFILE (S-->R)
+
+The ZFILE frame begins a file transmission attempt. The ZFILE header is
+followed by a ZCRCW data subpacket containing the file metadata.
+
+Note: the ZCRCW here is special — normally ZCRCW means "wait for a
+response before sending the next frame." In this case, the expected
+response is ZRPOS (or ZSKIP), not ZACK. The sender SHOULD wait for the
+receiver's ZRPOS/ZSKIP/ZNAK response rather than interpreting the
+ZCRCW as expecting a ZACK. Some implementations stemming from the Omen
+Technology code line do not handle a ZACK received here well and run
+into a timeout; a receiver MUST NOT send a ZACK in response to the
+ZFILE data subpacket.
+
+ZF0..ZF3 contain options.
+
+#### ZF0 — conversion options
+
+The sender MUST use one of the two following options:
+
+- ZCBIN (1) — "Binary" transfer.
+- ZCRESUM (3) — "Resume" transfer.
+
+There was a historic third option, ZCNL (2), to convert newlines. It is
+deprecated; see section 9.
+
+The receiver MUST assume ZCBIN if it encounters any value other than
+ZCBIN and ZCRESUM.
+
+The ZCRESUM option may be used to restart a failed transfer, or even to
+update a remote copy of a growing file (but do not try the latter with
+rotating log files).
+
+This option causes the receiver to check the local file. If it exists
+and is shorter than the source file, the transfer may resume. The
+receiver MAY request a CRC check (via ZCRC), and MAY also check file
+times for this decision. If it determines that a resume shall be done,
+it sends a ZRPOS to continue at the end of the local file. Otherwise it
+continues without resume (it may still reject the file for policy
+reasons).
+
+Override rules:
+- A sender's ZCBIN does NOT override the receiver's local ZCRESUM
+  policy (but did override ZCNL).
+- The receiver's local choice of ZCBIN DOES override the sender's
+  ZCRESUM (and did override ZCNL).
+
+#### ZF1 — management options
+
+If the receiver does not recognize the management option, the file
+should be transferred normally.
+
+- ZMSKNOLOC (0x80): instructs the receiver to bypass the file if it
+  does not have a file with the same name.
+
+- ZF1_ZMMASK (0x1f) masks the five lower bits; the resulting value
+  should be one of these mutually exclusive options:
+  - ZF1_ZMNEWL (1): transfer if source is newer or longer.
+  - ZF1_ZMCRC  (2): transfer if different file CRC or length.
+  - ZF1_ZMAPND (3): append contents to existing file (if any).
+  - ZF1_ZMCLOB (4): replace existing file.
+  - ZF1_ZMNEW  (5): transfer if source is newer.
+  - ZF1_ZMDIFF (6): transfer if dates or lengths differ.
+  - ZF1_ZMPROT (7): protect destination file.
+  - ZF1_ZMCHNG (8): change filename if destination exists.
+
+#### ZF2 — transport options
+
+All transport options are deprecated: run-length encoding, LZW
+compression, encryption. See section 9.
+
+#### ZF3 — extended options
+
+- ZCANVHDR (0x01): "Variable headers OK"
+  Deprecated. See section 9.
+- MOBYTURBO (0x04): "Mobyturbo escaping offered"
+  Deprecated. See section 9.
+- ZXSPARS  (0x40): Encoding for sparse file operations.
+  Deprecated. See section 9.
+
+#### The ZFILE data subpacket
+
+The length of the file information subpacket, including the trailing
+null, SHOULD NOT exceed 1024 bytes. Many implementations offer larger
+data subpacket sizes, but these SHOULD NOT be used for the ZFILE data
+subpacket.
+
+If longer subpackets are used here, the sender MUST be able to fall back
+to 1024-byte packets if it receives a ZNAK from the receiver. That is,
+the sender MUST be able to send a 1024-byte ZFILE data subpacket on the
+second attempt.
+
+ZMODEM sends the file metadata with the ZFILE frame data. It consists of
+the pathname field (mandatory) and optional further fields.
+
+The pathname is separated from the optional fields with a NUL character.
+The other fields are separated by a space character. No field may be
+skipped.
+
+The block of optional fields is followed by a NUL character. If the
+optional fields are missing, that NUL character is still mandatory.
+
+The fields:
+
+- Pathname (mandatory).
+
+  The pathname (the file name) is sent as a null-terminated ASCII
+  string. If the directory name is included, it is delimited by '/'.
+  'subdir/foo' is acceptable, 'subdir\foo' is not.
+
+  The pathname SHOULD be the file name stem (no directory prefix).
+  A relative directory prefix (e.g. 'subdir/foo') MAY be included if
+  needed.
+
+  The pathname MUST NOT be an absolute path (must not start with '/').
+  The pathname MUST NOT contain '..' path components.
+  The pathname MUST NOT contain drive designators (e.g. 'C:').
+  The receiver MUST protect against path traversal regardless, as a
+  defense-in-depth measure.
+
+  ZMODEM software MUST be able to deal with spaces in the pathname.
+  File names MUST NOT be translated to lower case.
+
+  When transmitting files between different operating systems, file
+  names should be acceptable to both the sender and receiving operating
+  systems. If they are not, the receiving program MAY apply
+  transformations to make the file names acceptable, MAY invent new
+  file names, or MAY reject the file with a ZSKIP.
+
+- Length.
+
+  The length field is stored as a decimal string counting the number of
+  data bytes in the file.
+
+- Modification date.
+
+  Sent as an octal number giving the time the contents of the file were
+  last changed, measured in seconds from Jan 1 1970 UTC. A date of 0
+  implies the modification date is unknown and should be left as the
+  date the file is received.
+
+- File access rights.
+
+  The file access rights are stored as an octal number (e.g. 0644).
+
+  Some historical implementations sent the full file mode (the st_mode
+  field from stat(2)). The receiving programs of the same historical
+  implementations checked the incoming mode for the 0x8000 bit, and
+  decided to disable the ZCNL mode (newline translation) if this was
+  found. You SHOULD NOT send this. You SHOULD NOT act upon it.
+
+  The receiver MUST either (a) discard the file access rights, or (b)
+  filter them so that they do not cause security problems and do not
+  cause non-regular files to be created.
+
+  The sender MUST either (a) send 0 as access rights, or (b) filter the
+  access rights so that they do not disclose possibly sensitive
+  information. 0440 is definitively safer than 06555.
+
+- Serial number.
+
+  Set this field to 0. See section 9 for rationale.
+
+- Number of files remaining in the batch.
+
+  Sent as a decimal number. The count includes the current file. It is
+  an estimate, intended for use in the user interface.
+
+- Number of bytes remaining in the batch.
+
+  Sent as a decimal number. The count includes the current file. It is
+  an estimate, intended for use in the user interface.
+
+- File type.
+
+  You may receive a data subpacket containing a file type (a decimal
+  number). You MUST ignore this field. You MUST NOT send it. This is
+  the only optional field which may (and should) be missing. Even its
+  preceding space is optional.
+
+Examples:
+- NAME\0\0
+  A file with the name NAME, and no further metadata.
+
+- all256.bin\0256 15242643773 100664 0 3 10496\0
+  A file with the name all256.bin, a length of 256 bytes, an octal
+  timestamp relatively near the time of writing, and access rights of
+  100664 (which means the sender doesn't adhere to this documentation,
+  otherwise it would be 0664). The file has the serial number 0, and
+  is part of the last three files in the batch, which together are
+  10496 bytes large.
+
+### ZDATA (S-->R)
+
+ZP0...ZP3 contain the file offset. One or more data subpackets follow.
+
+Zero-length data subpackets may be used as an idle subpacket to prevent
+the receiver from timing out in case data is not immediately available
+to the sender.
+
+The sender is free to choose frameend types, except that the first
+subpacket after a ZRPOS — the initial one as well as one during error
+recovery — MUST be ZCRCW (see section 5).
+
+The receiver compares the file position in the ZDATA header with the
+position it expects. If they differ, it sends a ZRPOS response with the
+correct position.
+
+#### ZDATA data subpackets
+
+The data subpackets must be ZDLE encoded (their CRC type follows the
+header, per section 2.3).
+
+At the end of each transmitted data subpacket, the sender SHOULD check
+for the presence of a header from the receiver. If it detects that input
+is available, the sender samples the reverse data stream for the presence
+of either a ZPAD or CAN character. It SHOULD act on flow control
+characters it receives.
+
+Other characters indicate line noise and cause the sender to increment a
+counter which is reset whenever the sender waits for a header from the
+receiver. If the counter overflows an implementation-defined limit, the
+sender sends the next data subpacket as ZCRCW and waits for a response.
+
+The sender MUST act upon a complete received frame as soon as possible.
+
+### ZEOF (S-->R)
+
+With this frame the sender reports the end of the file. ZP0...ZP3
+contain the ending file offset.
+
+If this position does not match the receiver's state, the receiver
+SHOULD ignore the ZEOF and wait, because it might have arrived before a
+pending ZRPOS. (The sender may have sent ZEOF before receiving the
+receiver's ZRPOS error response.)
+
+### ZFREECNT (S-->R) [half deprecated: sending it is forbidden,
+answering it is still required]
+
+The sender requests a ZACK frame with ZP0...ZP3 containing the number of
+free bytes on the current file system. A value of 0 represents an
+indefinite amount of free space.
+
+This command MUST NOT be sent, and MUST be answered with 0 in case
+some ZMODEM application asks for free space before a transfer.
+See Note 9.2.
+
+A future update of this documentation is likely to deprecate this
+feature entirely.
+
+## Receiver to sender (S<--R)
+
+### ZRINIT (S<--R)
+
+Sent by the receiver to inform the sender about the receiver's
+capabilities and to synchronize the session.
+
+ZF0 contains a bitwise OR of the receiver's capabilities:
+
+Useful flags:
+- CANFDX  (0x01): the receiver can send and receive true full duplex.
+  (This will be true for most current hardware.)
+- CANOVIO (0x02): the receiver can receive data during disk I/O.
+  (Most likely you can.)
+- CANBRK  (0x04): the receiver can send a break signal.
+  (If you have tcsendbreak and send via a terminal, set this.)
+- CANFC32 (0x20): the receiver can use 32-bit CRC.
+  (A receiver MUST set this; see section 2.4.)
+- ESCCTL  (0x40): the receiver expects control chars to be escaped.
+
+Deprecated ZF0 flags:
+- ESC8    (0x80): the receiver expects the 8th bit to be escaped.
+  (ESC8 is DEPRECATED: see section 2.1.2.)
+- CANCRY (0x08): the receiver can decrypt. Never implemented anywhere.
+- CANRLE (0x08): the receiver can decode ZMODEM run-length encoding.
+  Only implemented in Omen software.
+- CANLZW (0x10): the receiver can uncompress. Never implemented anywhere.
+
+Note: CANCRY and CANRLE share the same bit. The bit is meaningless
+today: a receiver receiving it set SHOULD ignore it, and MUST NOT
+interpret it as RLE or encryption capability.
+
+ZF1 is another bitwise OR mask of the receiver's capabilities. All
+deprecated:
+- CANVHDR (0x01): the receiver understands variable headers.
+- ZRRQWN  (0x08): the receiver specified window size in ZRPXWN.
+- ZRRQQQ  (0x10): the receiver specified additional chars to escape.
+These three are historic. There is currently no ZMODEM software
+implementing variable headers, and the other two depended on them.
+See section 9.
+
+ZP0 and ZP1 contain the receiver's segment length in bytes
+(little-endian), or 0 if nonstop I/O is allowed (see section 3).
+
+Recommendation: a typical ZRINIT sets CANFC32|CANFDX|CANOVIO,
+and maybe |CANBRK.
+
+### ZSKIP (S<--R)
+
+The receiver sends this in response to ZFILE to make the sender skip to
+the next file.
+
+### ZABORT (S<--R)
+
+The receiver sends this to terminate file transfers. The original
+documentation stated this was to be done when requested by the user.
+
+The sender responds with a ZFIN sequence.
+
+### ZRPOS (S<--R)
+
+Sent by the receiver to force file transfer to resume at the file offset
+given in ZP0...ZP3. This is part of the error recovery flow; see
+section 5. The offset is attacker-controlled from the sender's point
+of view; it MUST be validated before use (see section 5).
+
+### ZFERR (S<--R)
+
+The receiver detected an error when reading from or writing to a file.
+The protocol treats this as equivalent to ZABORT.
+
+### ZCHALLENGE (S<--R) [half deprecated]
+
+The receiver requests the sender to echo the number in ZP0...ZP3 in a
+ZACK frame.
+
+A receiver MUST NOT send a ZCHALLENGE frame.
+
+A sender MAY answer it with a ZACK frame containing the number in
+ZP0...ZP3. A sender might opt to do so for maximum compatibility, but
+it is unlikely this will ever be needed.
+
+The few implementations supporting it only answer a ZCHALLENGE; not one
+of them sends it.
+
+A future update of this documentation is likely to deprecate this
+feature entirely.
+
+See Note 9.3.
+
+### ZCOMPL (S<--R)
+
+The request was completed. This was used as a response to the deprecated
+ZCOMMAND frame, and possibly in the so-called server mode of Omen
+Technology software.
+
+Sending this frame is DEPRECATED. ZMODEM implementations receiving a
+ZCOMPL SHOULD treat it as any other unknown or out-of-sync frame.
+
+Receivers wishing to ensure maximum compatibility with old ZMODEM
+implementations MAY send a ZCOMPL with a value of 1 in response to a
+ZCOMMAND request, thereby informing the sender that the command failed.
+
+## Bidirectional (S<->R)
+
+### ZACK (S<->R)
+
+An acknowledgment, sent as an answer to a ZSINIT or ZCHALLENGE frame, or
+to a ZCRCQ or ZCRCW data subpacket — except the ZFILE metadata
+subpacket, which expects ZRPOS/ZSKIP and MUST NOT be answered with a
+ZACK (see the ZFILE frame description). The payload depends on what is
+being acknowledged: the current file offset for a ZCRCQ/ZCRCW subpacket,
+0 for a ZSINIT, and the echoed number for a ZCHALLENGE.
+
+### ZNAK (S<->R)
+
+The receiver sends this if the last header received was garbled. The
+sender sends this if it received a valid header that is not allowed at
+that point, or is of an unknown frame type. For example, the sender
+sends ZNAK when it is waiting for ZRINIT and receives something other
+than ZRINIT, ZCOMMAND, or ZCHALLENGE. The sender also sends ZNAK when
+it receives an unexpected frame while waiting for ZRPOS after sending
+ZFILE.
+
+### ZFIN (S<->R)
+
+The sender sends this to terminate the session. The receiver answers
+with its own ZFIN.
+
+A receiver that cannot continue MAY send ZFIN on its own. A sender
+receiving ZFIN mid-session SHOULD treat it as a session end request and
+exit; completing the ZFIN/"OO" handshake is a courtesy, not a
+requirement.
+
+### ZCRC (S<->R)
+
+The receiver requests a CRC for the number of bytes given in ZP0..ZP3.
+The sender computes a 32-bit CRC (the ZMODEM CRC-32 of section 2.4)
+over the requested bytes, initialized to 0xFFFFFFFF, and responds with
+the one's complement (bitwise inversion) of that CRC in ZP0..ZP3. This
+is why it occupies all four position/flag bytes; the frame itself is
+sent in whatever header format the negotiation dictates (section 2.2).
+A ZP0..ZP3 value of 0 in the request means "the CRC of the entire
+file".
+
+## Pseudo frame
+
+### ZCAN
+
+The original Omen ZMODEM implementations internally translated the
+session abort sequence into this pseudo frame, which was never sent over
+the wire.
+
+
+# 5. Error recovery
+
+When dealing with the possibility of errors (i.e. when you need to
+re-synchronize with the other side), expect that messages may arrive in
+seemingly impossible order. What your software just received may not be
+the answer to the last message you sent.
+
+## Receiver-side error detection
+
+The receiver detects errors in three ways:
+
+1. CRC mismatch in a data subpacket.
+2. Position mismatch in a ZDATA header (ZDATA offset != bytes_received).
+3. Unexpected frame (a frame that is not valid at the current point in
+   the protocol state machine).
+
+On detecting any of these, the receiver:
+
+1. Sends the attention sequence (if one was defined via ZSINIT).
+2. Sends a ZRPOS frame with the last known good position.
+3. Discards all data subpackets that arrive until a ZDATA frame with the
+   correct position is received.
+
+## Sender-side error recovery
+
+When the sender receives a ZRPOS:
+
+1. It SHOULD purge its output buffers and/or network of unprocessed
+   output data, to minimize the amount of stale data the receiver must
+   discard.
+2. It seeks to the position given in the ZRPOS. The position MUST be
+   validated first: it MUST NOT exceed the size of the input file (or
+   be negative, or otherwise nonsensical). The response to an invalid
+   position (rejecting the frame, or clamping it to the file size) is
+   implementation-defined. A sender that cannot seek (pipe,
+   non-seekable input) MUST NOT resume to a foreign offset; it either
+   ignores the ZRPOS position or restarts the transfer.
+3. It sends a ZDATA frame at that position.
+4. The first data subpacket MUST be ZCRCW (wait for ACK) to ensure both
+   sides are synchronized before resuming streaming.
+
+## Messages crossing in flight
+
+On buffered connections (networks, buffered modems, PTY pairs), by the
+time the sender receives a ZRPOS, it may have already sent many more
+data subpackets that are still in transit. These are not errors — the
+receiver must simply discard them.
+
+Conversely, the sender may receive a stale ZACK (acknowledging a
+position before the rewind) after it has already started resending from
+the ZRPOS position. The sender SHOULD ignore ZACKs with positions that
+do not match its current state.
+
+Similarly, the receiver may receive a ZEOF that was sent before the
+sender received the receiver's ZRPOS. The receiver SHOULD ignore such a
+ZEOF and wait for the sender's ZDATA resync.
+
+## Retry limits
+
+Both sides should implement retry limits. After a configurable number of
+consecutive errors (typical: 10–20), the transfer should be aborted with
+a cancel sequence or a ZABORT frame.
+
+
+# 6. Session lifecycle
+
+## 6.1 Startup
+
+The sender sends ZRQINIT to request the receiver's ZRINIT. The receiver
+responds with ZRINIT, advertising its capabilities (CANFDX, CANFC32,
+etc.) and segment length.
+
+The sender may optionally send ZSINIT to define an attention sequence
+or request control-character escaping. The receiver responds with ZACK.
+
+Once synchronization is complete, the sender proceeds to file transfer.
+
+## 6.2 File transfer
+
+For each file:
+
+1. The sender sends ZFILE with file metadata (name, length, date, etc.).
+2. The receiver examines the metadata and responds with:
+   - ZRPOS (begin transfer at the given offset, normally 0)
+   - ZSKIP (skip this file)
+   - ZCRC (request a CRC check before deciding)
+   - ZNAK (the ZFILE frame was garbled; the sender retries)
+   - ZABORT or ZFERR (terminate the batch; see section 4)
+3. The sender sends ZDATA at the requested offset, followed by data
+   subpackets.
+4. The sender sends ZEOF when the file is complete.
+5. The receiver verifies the ZEOF offset matches its received byte count,
+   then closes the file and responds with ZRINIT (ready for next file).
+
+If errors occur during step 3, see section 5 (error recovery).
+
+## 6.3 Cleanup
+
+After all files are transferred:
+
+1. The sender sends ZFIN.
+2. The receiver responds with ZFIN.
+3. The sender sends "OO" (Over and Out) and exits.
+4. The receiver waits briefly for "OO", then exits whether or not it
+   was received.
+
+## 6.4 Cancel sequence
+
+ZMODEM recognizes a cancel sequence: a sequence of 5 ^X (ZDLE aka CAN,
+0x18) characters will terminate a session.
+
+All ZMODEM implementations MUST recognize 5 CAN characters as a session
+cancel sequence. They MAY send 8 to 10 CAN characters (the extra ones
+being insurance), optionally followed by an equal number of backspace
+characters (in an attempt to erase the effect of the CAN characters if
+they were received by a command interpreter or shell). They MAY also
+choose not to implement sending the cancel sequence.
+
+After sending or receiving the cancel sequence, the ZMODEM session MUST
+be terminated. No further communication will be successful.
+
+
+# 7. Auto download
+
+Some 'sz' implementations upon start send a 'rz\r' (r z CR) to the
+receiving side. This was always a hack, but has long been used to
+trigger auto download. DO NOT send this.
+
+Interactive applications can monitor the data stream for ZDLE, then
+scan for "B00" indicating a ZRQINIT hex header, and start the receiver.
+This is the proper auto-download mechanism — it only triggers on actual
+ZMODEM frames and does not crash remote applications with unexpected
+control characters.
+
+
+# 8. Historical and deprecated features
+
+## Variable headers
+
+There has never been an open documentation of variable headers. You
+MUST NOT implement them.
+
+## Run-length encoding
+
+Only Omen ZMODEMs ever implemented RLE. It is not complicated, but it is
+only useful with files containing lots of repeated characters and very
+few RLE escape characters. It is practically useless, and worse than
+every other available compression.
+
+You MUST NOT implement RLE.
+
+## LZW compression
+
+Hasn't even been implemented in Omen software.
+
+## Sparse file handling (ZFILE ZF2 ZXSPARS option)
+
+If you want to implement sparse file handling on the receiving side,
+feel free to do so.
+
+But you MUST NOT implement the ZXSPARS option. The sender cannot know
+enough about the receiver's filesystem to drive that, and in cases where
+retransmissions and smaller subpacket sizes are needed, the sender's
+logic can only fail.
+Without the option, a receiver can only guess; the pragmatic approach is
+to detect sparse-friendly (highly repetitive) content after transfer and
+to punch holes then, or not to bother at all.
+
+## Serial number transfer
+
+Do not send the serial number in the ZFILE frame. You would transfer it
+in the open, for anyone to reuse.
+
+## File type transfer
+
+Do not send the file type in the ZFILE frame. This is neither useful nor
+has it ever been implemented.
+
+## File translation — ZFILE ZF0 flag ZCNL (2)
+
+ZCNL was supposed to translate line ends to the local convention, and
+also allowed "other processing appropriate to ASCII text files and the
+local operating system."
+
+Under UNIX, it deleted every carriage return (CR) and cut the file
+short at the first CP/M End of File character (^Z). CP/M EOF handling
+is a thing of the past, and even Windows editors can deal with or
+without CR.
+
+A ZMODEM file transfer using this option CANNOT be resumed in case of
+trouble.
+
+This option MUST NOT be used.
+
+## Historical frame types
+
+### ZCOMMAND (S-->R)
+
+The sender requests the receiver to execute a command in a ZCRCW-
+terminated data subpacket.
+
+The only secure implementation is to answer with a ZCOMPL with an exit
+status of 1 (as a position).
+
+You MUST NOT implement this in any other way.
+
+### ZSTDERR (S-->R)
+
+The sender requests the receiver to output the data in a ZCRCW-
+terminated data subpacket to stderr.
+
+This is, and was, the whole documentation. You MUST NOT implement this.
+
+
+# 9. Notes and commentary
+
+## 9.1 Notes for the pathname section
+
+The original ZMODEM documentation stated:
+
+- `No spaces are included in the pathname`
+  This requirement has been removed. Nowadays spaces are common in
+  filenames.
+
+- `File names should be translated to lower case unless the sending
+   system supports upper/lower case file names.`
+  This has been explicitly forbidden. Today practically all systems
+  support file names in different cases, even though they might also
+  support filesystems enforcing a single case.
+
+## 9.2 Rationale for the half deprecation of ZFREECNT
+
+ZFREECNT allowed the sender to inquire about the receiver's free space.
+
+This documentation deprecates the inquiry, and enforces the answer 0,
+aka 'indefinite'. Why?
+
+You may ask which filesystem the receiver should report, since the
+sender's pathname is unknown at that point? Good question, the answer
+is 0.
+
+You may ask how to represent N terabytes of free space in 4 bytes?
+Good question, the answer is 0.
+
+You may ask why the sender even wants to know this? Good question, the
+answer is 0.
+
+We have a safe answer here. Forbidding answers to a ZFREECNT would be
+more risky.
+
+## 9.3 ZCHALLENGE half deprecation
+
+Historical information: the ZCHALLENGE frame was sent by the receiving
+program to the sending program to verify that it is connected to an
+operating program, and was not activated by spurious data or a Trojan
+Horse message.
+
+As a security measure it is extremely weak, and 'spurious data' could
+be detected by simpler means.
+
+## 9.4 Variable header deprecation
+
+The variable length headers have been around for 30 years, and since then
+the only implementations of them have been in Omen software - but all of
+these are dead.
+
+V-Headers are just longer headers (with a maximum of 16 bytes payload
+instead of 4), with more information.
+
+Let's see what is known:
+#define ZRPXWN  8       /* 9th byte in header contains window size/256 */
+#define ZRPXQQ  9       /* 10th to 14th bytes contain quote mask */
+#define ZRRQWN  8       /* Receiver specified window size in ZRPXWN */
+#define ZRRQQQ  16      /* Additional control chars to quote in ZRPXQQ  */
+Summary:
+- the receiver can influence the sender's window size (still useful)
+- and it can set the control escaping per character (may still be useful).
+
+But it also leaves some open questions:
+a) Why 5 bytes (40 bits) for 32 control chars? (csz really uses 4 bytes)
+b) What is in bytes 5 to 8?
+
+I wouldn't want to implement anything on a documentation so spotty, even
+if the features are somewhat attractive.
+
+## 9.5 MobyTurbo, Pack-7, and RLE/ESC8 escaping
+
+None of this was ever documented publicly. We know about the details because
+DSZ was disassembled (see doc/disassembly.txt).
+
+The Omen "ESC8" is a mechanism different from and incompatible with
+the classic ZDLE+XOR-0x40 reading of the ESC8/TESC8 flags. Both
+interpretations share the flag bits, which is why those are deprecated
+(section 2.1.2).
+
+# 10 Constants
+
+## 10.1 characters
+
+- CAN    0x18    /* ^X, same as ZDLE */
+- XOFF   0x13    /* ^S, 19 */
+- XON    0x11    /* ^Q, 17 */
+- ZPAD     '*'   /* 0x2a Padding character begins frames */
+- ZDLE   0x18    /* ^X Zmodem escape - same as CAN */
+- ZRESC  0x7e    /* RLE flag/escape character [DEPRECATED] */
+
+## 10.2 header types
+- ZBIN 'A'        /* Binary frame indicator */
+- ZHEX 'B'        /* HEX frame indicator */
+- ZBIN32 'C'      /* Binary frame with 32 bit FCS */
+- ZBINR32 'D'     /* RLE packed Binary frame with 32 bit FCS [DEPRECATED] */
+- ZVBIN 'a'       /* Binary frame indicator (CRC-16)
+                     [DEPRECATED: variable headers] */
+- ZVHEX 'b'       /* HEX frame indicator [DEPRECATED: variable headers] */
+- ZVBIN32 'c'     /* Binary frame with 32 bit FCS
+                     [DEPRECATED: variable headers] */
+- ZVBINR32 'd'    /* RLE packed Binary frame with 32 bit FCS [DEPRECATED] */
+- 0x31 '1'        /* Omen ZMODEM-90 header: RLE + CRC32 + 8th-bit quoting
+                     [DEPRECATED: variable headers, proprietary,
+                     undocumented, CRC32 salted with a copyright notice;
+                     see section 9.5 and doc/disassembly.txt] */
+- 0x32 '2'        /* Omen ZMODEM-90 header: "Pack-7", payload as base-88
+                     digits 0x22-0x79 [DEPRECATED: same reasons as '1'] */
+- 0x33 '3'        /* Omen ZMODEM-90 header: "MobyTurbo", only ZDLE escaped
+                     [DEPRECATED: same reasons as '1'] */
+
+## 10.3 byte positions within the header payload array
+- ZF0     3       /* First flags byte */
+- ZF1     2
+- ZF2     1
+- ZF3     0
+- ZP0     0       /* Low order 8 bits of position */
+- ZP1     1
+- ZP2     2
+- ZP3     3       /* High order 8 bits of file position */
+
+## 10.4 frame types
+- ZRQINIT 0       /* Request receive init */
+- ZRINIT  1       /* Receive init */
+- ZSINIT 2        /* Send init sequence (optional) */
+- ZACK 3          /* ACK to above */
+- ZFILE 4         /* File name from sender */
+- ZSKIP 5         /* To sender: skip this file */
+- ZNAK 6          /* Last packet was garbled */
+- ZABORT 7        /* Abort batch transfers */
+- ZFIN 8          /* Finish session */
+- ZRPOS 9         /* Resume data trans at this position */
+- ZDATA 10        /* Data packet(s) follow */
+- ZEOF 11         /* End of file */
+- ZFERR 12        /* Fatal Read or Write error Detected */
+- ZCRC 13         /* Request for file CRC and response */
+- ZCHALLENGE 14   /* Receiver's Challenge [DEPRECATED] */
+- ZCOMPL 15       /* Request is complete [DEPRECATED] */
+- ZCAN 16         /* Other end canned session with CAN*5 */
+- ZFREECNT 17     /* Request for free bytes on filesystem
+                     [likely future DEPRECATION] */
+- ZCOMMAND 18     /* Command from sending program [DEPRECATED] */
+- ZSTDERR 19      /* Output to standard error, data follows [DEPRECATED] */
+
+## 10.5 frameends
+- ZCRCE 'h'       /* CRC next, frame ends, header packet follows */
+- ZCRCG 'i'       /* CRC next, frame continues nonstop */
+- ZCRCQ 'j'       /* CRC next, frame continues, ZACK expected */
+- ZCRCW 'k'       /* CRC next, ZACK expected, end of frame */
+
+## 10.6 ZRINIT byte ZF0
+- CANFDX  0x01    /* Rx can send and receive true FDX */
+- CANOVIO 0x02    /* Rx can receive data during disk I/O */
+- CANBRK  0x04    /* Rx can send a break signal */
+- CANCRY  0x08    /* Receiver can decrypt [DEPRECATED] (yes, same as RLE) */
+- CANRLE  0x08    /* Receiver can decode run-length encoding
+                     [DEPRECATED] (yes, same as CRY) */
+- CANLZW  0x10    /* Receiver can uncompress [DEPRECATED] */
+- CANFC32 0x20    /* Receiver can use 32 bit Frame Check */
+- ESCCTL  0x40    /* Receiver expects ctl chars to be escaped */
+- ESC8    0x80    /* Receiver expects 8th bit to be escaped
+                     [DEPRECATED: see section 2.1.2] */
+
+## 10.7 ZRINIT byte ZF1
+- CANVHDR 0x01  /* Variable headers OK [DEPRECATED] */
+- ZRRQWN  0x08       /* Receiver specified window size in ZRPXWN
+                        [DEPRECATED] */
+- ZRRQQQ  0x10      /* Additional control chars to quote in ZRPXQQ
+                       [DEPRECATED] */
+
+## 10.8 ZSINIT params
+- ZATTNLEN 32     /* Max length of attention string */
+- ALTCOFF ZF1     /* Offset to alternate canit string, 0 if not used */
+  This is all which is known about the alternate cancel string.
+
+## 10.9 ZSINIT byte ZF0
+- TESCCTL 0x40    /* Transmitter expects ctl chars to be escaped */
+- TESC8   0x80    /* Transmitter expects 8th bit to be escaped
+                     [DEPRECATED: see section 2.1.2] */
+
+## 10.10 ZFILE byte ZF0:
+- ZCBIN   1       /* Binary transfer - inhibit conversion */
+- ZCNL    2       /* Convert NL to local end of line convention [DEPRECATED] */
+- ZCRESUM 3       /* Resume interrupted file transfer */
+
+## 10.11 ZFILE byte ZF1
+- ZF1_ZMSKNOLOC   0x80 /* Skip file if not present at rx */
+- ZF1_ZMMASK      0x1f /* Mask for the choices below */
+- ZF1_ZMNEWL         1 /* Transfer if source newer or longer */
+- ZF1_ZMCRC          2 /* Transfer if different file CRC or length */
+- ZF1_ZMAPND         3 /* Append contents to existing file (if any) */
+- ZF1_ZMCLOB         4 /* Replace existing file */
+- ZF1_ZMNEW          5 /* Transfer if source newer */
+- ZF1_ZMDIFF         6 /* Transfer if dates or lengths different */
+- ZF1_ZMPROT         7 /* Protect destination file */
+- ZF1_ZMCHNG         8 /* Change filename if destination exists */
+
+## 10.12 ZFILE byte ZF2
+- ZTLZW   1       /* Lempel-Ziv compression [DEPRECATED] */
+- ZTCRYPT 2       /* Encryption [DEPRECATED] */
+- ZTRLE   3       /* Run Length encoding [DEPRECATED] */
+
+## 10.13 ZFILE byte ZF3:
+- ZCANVHDR  0x01    /* Variable headers OK [DEPRECATED] */
+  To the best of my knowledge this was used to signal the receiver
+  to ignore non-vhdr headers, and to turn off the 'unregistered copy'
+  message.
+- MOBYTURBO 0x04    /* Real constant name unknown [DEPRECATED] */
+  This was used, in the proprietary DSZ.EXE, to signal the senders
+  ability to use MobyTurbo escaping (only ZDLE is escaped in that
+  mode).
+- ZXSPARS   0x40    /* Encoding for sparse file operations [DEPRECATED] */
+
+## 10.14 Receiver window size override
+- ZRWOVR 4        /* byte position for receive window override/256
+                     [DEPRECATED: undocumented] */
+  (how this was meant or used is totally unknown)
+
+## 10.15 ZCOMMAND byte ZF0
+- ZCACK1  1       /* Acknowledge, then do command
+                     [DEPRECATED: ZCOMMAND is deprecated] */
+
+# 11. Differences from the original protocol descriptions
+
+## 11.1 Auto-download "rz\r" hack
+This has been deprecated, in favor of scanning for ZDLE + "B00".
+
+## 11.2 ZSINIT
+The sending of a serial number has been deprecated (send a zero).
+
+## 11.3 ZRQINIT ZF0 flag ZCOMMAND
+ZCOMMAND is deprecated. Senders MUST NOT send it. Receivers MUST NOT
+execute a ZCOMMAND request, and MAY answer it with a ZCOMPL with the
+value of 1.
+
+## 11.4 ZFILE ZF0 conversion options: renaming and semantics
+ZCNL has been deprecated.
+Receivers MUST assume ZCBIN if they encounter unknown ZF0 values.
+Override rules clarified: sender's ZCBIN does NOT override the receiver's
+local ZCRESUM policy.
+
+## 11.5 ZFILE ZF1 management option ZMCHNG
+documented it. Its been there forever.
+
+## 11.6 ZFILE ZF2 transport / ZF3 extended options
+Deprecated all transport options  (LZW, RLE, CRYPT).
+Deprecated all known extended options  (VHDR, MOBYTURBO, SPARSE).
+
+## 11.7 ZRINIT capability flags
+Deprecated CANCRY, CANRLE, CANLZW.
+Documented the ZF1 bits: CANVHDR, ZRRQWN, ZRRQQQ (and deprecated them).
+CANFC32 is now mandatory.
+
+## 11.8 32-bit CRC negotiation and usage rules (§2.2 and §2.4)
+Documented rules for ZHEX, ZBIN and ZBIN32 headers (2.4), and the
+polynomial used and their init details.
+Receivers MUST implement CRC-32 and send CANFC32.
+Added the rationale for the enforcing of CRC-32 for data.
+
+## 11.9 Header/packet size limits
+Documented the widely used 4096/8192-byte extensions (lrzsz -4/-8, sexyz),
+capped to the receiver's ZRINIT segment length.
+
+## 11.10 The ZFILE metadata subpacket acknowledgement exception
+The ZFILE frame is followed by a ZCRCW data subpacket, which is NOT to be
+answered with a ZACK header, but ZRPOS, ZSKIP or ZNAK. Receivers MUST NOT
+answer the ZFILE data subpacket with ZACK.
+This is established behavior of the Omen programs.
+
+## 11.11 ZNAK semantics
+Documented that ZNAK is not only sent from the receiver to the sender, but
+vice versa.
+Documented that the sender also sends ZNAK when it receives a valid,
+but out of order, or an frame of unknown type.
+
+## 11.12 ZFIN
+Document that the receiver MAY also send ZFIN on its own to end the
+session mid-stream.
+
+
+## 11.13 ZCHALLENGE
+half-deprecated:
+- a receiver MUST NOT send it
+- a sender MAY still answer for compatibility
+full deprecation planned.
+
+## 11.14 ZFREECNT
+half-deprecated:
+- a sender MUST NOT send it
+- a receiver MUST answer with a forced 0 ("indefinite").
+
+## 11.15 ZCOMMAND / ZSTDERR / ZCOMPL
+- ZCOMMAND MUST NOT be implemented except to answer with ZCOMPL/exit-status-1
+- ZSTDERR MUST NOT be implemented
+- ZCOMPL itself MAY be implemented to answer ZCOMMAND with the exit status 1.
+- the historic ZRQINIT-ZCOMMAND echo-check rule is dropped.
+
+## 11.16 Header-type constants (variable headers, RLE)
+deprecated ZBINR32 ('D'), ZVBIN/ZVHEX/ZVBIN32/ZVBINR32 ('a'–'d'),
+and ZRESC (0x7e), because they never were publicly documented.
+
+## 11.17 Cancel sequence details
+- 5 CAN characters MUST terminate the session.
+- implementations MAY send 8-10 with optional backspaces
+- implementations MAY omit sending the cancel sequence entirely
+- after a cancel sequence no further communication will be successful.
+
+## 11.18 ZFILE pathname rules
+- spaces allowed in filenames
+- lower-case translation explicitly forbidden
+- added security rules: file names MUST NOT be absolute paths, MUST
+  NOT contain "..", MUST NOT contain drive designators, and receiver
+  MUST defend against path traversal regardless.
+
+## 11.19 File-mode metadata semantics
+- deprecated the 0x8000/st_mode behavior as historical (detection of a
+  regular Unix file), forbade to send it, forbade to act upon it.
+- sender/receiver filtering requirements for security
+
+## 11.20 Streaming strategies
+The five original streaming strategies were shaped by 1980s paths: serial
+port, modem, mostly unbuffered copper or a small-buffering packet
+network, modem, serial port. Over today's internet hundreds of kilobytes
+may be in flight, and the old taxonomy no longer matches practice:
+- sampling is an implementation detail, not a strategy (section 3),
+- reverse interrupts cannot be relied upon end-to-end; the attention
+  mechanism remains optional (ZSINIT, section 5),
+- "error free channel" streaming was an illusion then and is one now;
+  links may correct errors, but packet loss happens.
+Normative today: the three modes of section 3, combinable, with recovery
+per section 5.
+Documented the subpacket-loss undetectability that all streaming modes
+share (section 3) when using transports able to lose continuous byte
+streams or packets: a loss window covering a whole subpacket including
+frameend and CRC breaks no checksum, and only non-streaming mode (ZCRCW
+per subpacket) protects against losses of arbitrary size.
+
+## 11.21 ZRPXWN/ZRRQWN/ZRWOVR
+- deprecated ZRPXWN
+- deprecated ZRRQWN
+- deprecated ZRWOVR
+
+## 11.22 Documented escaping exception / extensions
+- "turbo escaping" (not escaping 0x10/0x90/0x0d/0x8d),
+- mention often implemented additional escapes (ssh escape char)
+- the receiver ignores raw 0x11/0x91/0x13/0x93; since the ESC8/TESC8
+  deprecation (11.28) this rule applies regardless of the flags.
+
+## 11.23 Flag-byte discipline
+- senders MUST zero unused bits,
+- receivers MUST ignore unknown bits
+
+## 11.24 Hex-header trailing
+- specified the 'variations' of the CR LF seen in the wild.
+- Implementations MUST NOT depend on incoming CR and LF.
+
+## 11.25 Answers to ZFILE
+§6.2's enumerates the possible responses to ZFILE
+(ZRPOS/ZSKIP/ZCRC/ZNAK/ZABORT/ZFERR).
+
+## 11.26 YMODEM fallback
+Gone. There is no good reason to fall back to YMODEM if a ZMODEM connection
+cannot be established.
+
+## 11.27 Meta-characters in the Attn string
+The original ZMODEM specification documented two meta-characters for
+attention string:
+- \335 (octal) to send a break,
+- \336 to pause one second.
+Implementing such features can be helpful in many situations, but these
+are on a level below the ZMODEM protocol and therefore out of scope.
+
+## 11.28 ESC8/TESC8 deprecated
+The ESC8 (ZRINIT) and TESC8 (ZSINIT) flags were never publicly documented,
+and the two known readings of the 0x80 flag bits are incompatible
+wire formats: the classic ZDLE+XOR-0x40 8th-bit escaping, and the
+proprietary Omen ZMODEM-90 formats (headers 0x31/0x32/0x33, see 9.5
+and doc/disassembly.txt) which the Omen implementations and the
+current reimplementation (zmtx-zmrx) select when they see the flag. A
+session using the flags between two sides with different readings is
+mutually undecodable in both directions.
+
+Both flags are deprecated: senders MUST NOT set them, and the reader
+of each flag MUST ignore it. Both sides MUST still decode
+ZDLE-escaped bytes with bit 7 set. See section 2.1.2.

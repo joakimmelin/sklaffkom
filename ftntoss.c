@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <syslog.h>
 #include <sys/types.h>
 #include <sys/stat.h> /* modified on 2026-07-09, PL */
 #include <pwd.h> /* modified on 2026-06-14, PL */
@@ -267,7 +268,9 @@ static void release_ftntoss_lock(void);
 static void ftntoss_maybe_notify_stale_lock(void); /* modified on 2026-08-27, PL */
 static int ftntoss_read_lock_pid(pid_t *out_pid); /* modified on 2026-08-27, PL */
 static int ftntoss_lock_pid_alive(pid_t pid); /* modified on 2026-08-27, PL */
+#if ENABLE_EMAIL
 static int ftntoss_send_lock_mail(pid_t pid, long age, int pid_alive); /* modified on 2026-08-27, PL */
+#endif
 static int run_with_lock(int (*fn)(void *), void *arg);
 
 static int run_import_one_locked(void *arg);
@@ -1941,6 +1944,7 @@ ftntoss_lock_pid_alive(pid_t pid)
     return 0;
 }
 
+#if ENABLE_EMAIL
 static int
 ftntoss_send_lock_mail(pid_t pid, long age, int pid_alive)
 {
@@ -1960,10 +1964,17 @@ ftntoss_send_lock_mail(pid_t pid, long age, int pid_alive)
      *
      * modified on 2026-08-27, PL
      */
-    mail = popen("/usr/sbin/sendmail -t", "w");
+    {
+    char sendmail_cmd[PATH_MAX + 4];
+
+    snprintf(sendmail_cmd, sizeof(sendmail_cmd),
+             "%s -t", SENDMAIL_BIN);
+
+    mail = popen(sendmail_cmd, "w");
+    }
     if (mail == NULL) {
         fprintf(stderr,
-            "[ERROR] ftntoss: could not start /usr/sbin/sendmail: %s\n",
+            "[ERROR] ftntoss: could not start sendmail: %s\n",
             strerror(errno));
         return -1;
     }
@@ -2002,6 +2013,7 @@ ftntoss_send_lock_mail(pid_t pid, long age, int pid_alive)
 
     return 0;
 }
+#endif /* ENABLE_EMAIL */
 
 static void
 ftntoss_maybe_notify_stale_lock(void)
@@ -2033,9 +2045,9 @@ ftntoss_maybe_notify_stale_lock(void)
 
     /*
      * O_EXCL turns the marker into a second tiny lock: concurrent cron runs
-     * can notice the stale main lock, but only one of them sends the mail.
-     * A successful future lock acquisition removes this marker and arms the
-     * warning again for the next incident.
+     * can notice the stale main lock, but only one logs the detailed warning
+     * and optionally sends mail. A successful future lock acquisition removes
+     * this marker and arms the warning again for the next incident.
      *
      * modified on 2026-08-27, PL
      */
@@ -2058,6 +2070,21 @@ ftntoss_maybe_notify_stale_lock(void)
             strerror(errno));
     close(marker_fd);
 
+    /* Report stale locks even when external email support is disabled. */
+    openlog("ftntoss", LOG_PID, LOG_DAEMON);
+    syslog(LOG_WARNING,
+        "stale lock: %s age=%ld seconds, pid=%ld (%s); lock not removed",
+        FTNTOSS_LOCKFILE, age, (long)pid,
+        pid <= 1 ? "unknown" : (pid_alive ? "running" : "not running"));
+    closelog();
+
+    fprintf(stderr,
+        "[WARN] ftntoss: stale lock %s (age=%ld seconds, pid=%ld, %s); "
+        "lock not removed\n",
+        FTNTOSS_LOCKFILE, age, (long)pid,
+        pid <= 1 ? "unknown" : (pid_alive ? "running" : "not running"));
+
+#if ENABLE_EMAIL
     if (ftntoss_send_lock_mail(pid, age, pid_alive) != 0) {
         /* Mail failed: allow the next cron run to retry. */
         unlink(FTNTOSS_LOCK_NOTIFY_FILE);
@@ -2066,6 +2093,7 @@ ftntoss_maybe_notify_stale_lock(void)
 
     fprintf(stderr,
         "[WARN] ftntoss: stale lock warning mailed to local user sklaff\n");
+#endif
 }
 
 static int
@@ -2087,7 +2115,7 @@ acquire_ftntoss_lock(void)
         return -1;
     }
 
-    /* New lock incident: re-arm stale-lock mail notification. */
+    /* New lock incident: re-arm stale-lock warning notification. */
     if (unlink(FTNTOSS_LOCK_NOTIFY_FILE) == -1 && errno != ENOENT)
         fprintf(stderr,
             "[WARN] ftntoss: could not remove old notification marker %s: %s\n",
@@ -6116,7 +6144,29 @@ int
 main(int argc, char **argv)
 {
     struct ftn_conf_info ce;
-    
+
+    /* Disable only IBOL export.  Normal FTN import and export are separate. */
+    if (!ENABLE_IBOL && argc > 1 &&
+        strcmp(argv[1], "--export-ibol-job") == 0) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: IBOL is disabled "
+            "(configure with --enable-ibol).\n");
+        return 1;
+    }
+
+    /* Import and diagnostics always work; only outbound .MSG export is gated. */
+    if (!ENABLE_FTN_POSTING && argc > 1 &&
+        (strcmp(argv[1], "--export-one") == 0 ||
+         strcmp(argv[1], "--export-one-conf") == 0 ||
+         strcmp(argv[1], "--export-test") == 0 ||
+         strcmp(argv[1], "--export-netmail-job") == 0 ||
+         strcmp(argv[1], "--export-ibol-job") == 0)) {
+        fprintf(stderr,
+            "[ERROR] ftntoss: outgoing FTN posting is disabled "
+            "(configure with --enable-ftn-posting).\n");
+        return 1;
+    }
+
     if (argc == 2 && strcmp(argv[1], "--dump-ftn-config") == 0) {
         return dump_ftn_config_file(CRASHMAIL_PREFS_FILE) == 0 ? 0 : 1;
     }
