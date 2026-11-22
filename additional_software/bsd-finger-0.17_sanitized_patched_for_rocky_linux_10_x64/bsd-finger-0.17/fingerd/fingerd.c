@@ -87,9 +87,11 @@ static
 void
 timeout(int sig)
 {
+	static const char message[] = "fingerd: Input timeout\r\n";
+
 	(void)sig;
-	errno = ETIMEDOUT;
-	fatal("Input timeout", 0, 1, 1);
+	(void)write(STDERR_FILENO, message, sizeof(message) - 1);
+	_exit(1);
 }
 
 int
@@ -123,11 +125,15 @@ main(int argc, char *argv[])
 	if (!getuid() || !geteuid()) {
 		struct passwd *pwd = getpwnam("nobody");
 		if (pwd) {
-			initgroups(pwd->pw_name, pwd->pw_gid);
-			setgid(pwd->pw_gid);
-			setuid(pwd->pw_uid);
+			if (pwd->pw_uid == 0 || pwd->pw_gid == 0)
+				fatal("nobody account has a privileged ID", 0, 1, 0);
+			if (initgroups(pwd->pw_name, pwd->pw_gid) < 0)
+				fatal("initgroups", 1, 1, 0);
+			if (setgid(pwd->pw_gid) < 0)
+				fatal("setgid", 1, 1, 0);
+			if (setuid(pwd->pw_uid) < 0)
+				fatal("setuid", 1, 1, 0);
 		}
-		seteuid(0);   /* this should fail */
 		if (!getuid() || !geteuid()) {
 			fatal("setuid: couldn't drop root", 0, 1, 0);
 		}
@@ -224,7 +230,7 @@ main(int argc, char *argv[])
 		    }
 		}
 		
-if (!strcmp(s, "root")) {
+if (!strcasecmp(s, "root")) {
     fprintf(stderr, "fingerd: access to root denied\r\n");
     syslog(LOG_WARNING, "rejected finger request for root\n");
     printf("Login incorrect\r\n");
