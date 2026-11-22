@@ -183,6 +183,9 @@ check_nofinger(struct passwd *pw)
 	if (enable_nofinger) {
 		char path[PATH_MAX];
 		struct stat tripe;
+		if (pw->pw_uid == 0) {
+			return 1;
+		}
 		snprintf(path, sizeof(path), "%s/.nofinger", pw->pw_dir);
 		if (stat(path, &tripe)==0) {
 			return 1;
